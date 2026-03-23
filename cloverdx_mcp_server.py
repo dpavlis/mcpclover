@@ -11,9 +11,10 @@ WebServices and exposes the following tools:
   list_sandboxes          – List all available sandboxes on the server
   list_files              – List files/folders inside a sandbox directory
   find_file               – Find files in a sandbox using * and ? wildcards
+  grep_files              – Search file contents in a sandbox for a string (like grep -r)
   list_linked_assets      – List externalized/linkable assets by known file types
   get_sandbox_parameters  – Read/resolve sandbox parameters from workspace.prm (+ optional server overlays)
-  read_file               – Download a file (graph, metadata, params, …)
+    read_file               – Download a file or byte range (graph, metadata, params, …)
   rename_file             – Rename a file within a sandbox (RenameSandboxFile)
   copy_file               – Copy a file within/across sandboxes
   patch_file              – Patch a sandbox file using anchor-based line ranges
@@ -494,6 +495,87 @@ async def handle_list_tools() -> List[types.Tool]:
             },
         ),
         types.Tool(
+            name="grep_files",
+            description=(
+                "Search for files in a CloverDX sandbox whose content contains a given string. "
+                "Returns the path, size, and last-modified date of each matching file. "
+                "Optionally also returns the matching lines with line numbers (like grep -n). "
+                "\n\n"
+                "Primary use cases:\n"
+                "- Find all graphs that use a specific component type: "
+                "search_string='type=\"VALIDATOR\"', path='graph'\n"
+                "- Find all graphs that reference a specific subgraph: "
+                "search_string='OrderFileReader.sgrf'\n"
+                "- Find all files that reference a specific metadata id: "
+                "search_string='metadata=\"MetaOrder\"'\n"
+                "- Find all CTL files that call a specific function: "
+                "search_string='checkTotalPrice'\n"
+                "- Find all graphs that reference a specific connection: "
+                "search_string='DWHConnection'\n"
+                "- Find example graphs to use as reference before authoring a new one: "
+                "file_pattern='*.grf', search_string='type=\"DENORMALIZER\"'\n"
+                "\n"
+                "Combine with find_file when you need both name pattern AND content filtering: "
+                "first call find_file to get the candidate file list, then call grep_files "
+                "with a path scope to filter by content."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "sandbox": {
+                        "type": "string",
+                        "description": "Sandbox code to search in.",
+                    },
+                    "search_string": {
+                        "type": "string",
+                        "description": (
+                            "The string to search for in file contents. "
+                            "Plain string — not a regex. Case-sensitive by default."
+                        ),
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": (
+                            "Directory to search under (recursive). "
+                            "Defaults to sandbox root. "
+                            "Examples: 'graph', 'graph/subgraph', 'trans'."
+                        ),
+                    },
+                    "file_pattern": {
+                        "type": "string",
+                        "description": (
+                            "Optional shell-style wildcard to filter filenames before content search. "
+                            "Examples: '*.grf', '*.sgrf', '*.ctl'. "
+                            "Defaults to '*' (all files)."
+                        ),
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "Whether the search is case-sensitive. Default: true.",
+                    },
+                    "include_matching_lines": {
+                        "type": "boolean",
+                        "description": (
+                            "If true, each result includes the matching lines with line numbers. "
+                            "If false, returns only file paths and metadata. "
+                            "Default: false. "
+                            "Set true when you need to understand how the string is used "
+                            "(e.g. verifying which component ID uses a given attribute), "
+                            "false when you only need to know which files to read next."
+                        ),
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of matching files to return. Default: 20, max: 100.",
+                        "minimum": 1,
+                        "maximum": 100,
+                    },
+                },
+                "required": ["sandbox", "search_string"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
             name="list_linked_assets",
             description=(
                 "Lists all linkable/externalised assets available in a CloverDX sandbox — "
@@ -572,7 +654,8 @@ async def handle_list_tools() -> List[types.Tool]:
             name="read_file",
             description=(
                 "Read the content of a file from a CloverDX sandbox. "
-                "Use this to fetch .grf graph files, .fmt metadata files, .prm parameter files, etc."
+                "Use this to fetch .grf graph files, .fmt metadata files, .prm parameter files, etc. "
+                "Optionally read only a byte range by specifying both offset and byte_count."
             ),
             inputSchema={
                 "type": "object",
@@ -580,7 +663,16 @@ async def handle_list_tools() -> List[types.Tool]:
                 "properties": {
                     "sandbox": {"type": "string", "description": "Sandbox code"},
                     "path":    {"type": "string", "description": "Full file path within the sandbox (e.g. 'graph/MyGraph.grf')"},
+                    "offset": {
+                        "type": "integer",
+                        "description": "Optional zero-based byte offset from which to start reading. Must be provided together with byte_count.",
+                    },
+                    "byte_count": {
+                        "type": "integer",
+                        "description": "Optional number of bytes to read. Must be provided together with offset.",
+                    },
                 },
+                "additionalProperties": False,
             },
         ),
         types.Tool(
@@ -1179,6 +1271,89 @@ async def tool_find_file(args: Dict) -> List[types.TextContent]:
         return _text(f"ERROR: {e}")
 
 
+async def tool_grep_files(args: Dict) -> List[types.TextContent]:
+    import fnmatch as _fnmatch
+    try:
+        sandbox         = args["sandbox"]
+        search_string   = args["search_string"]
+        path            = str(args.get("path") or "").strip()
+        file_pattern    = str(args.get("file_pattern") or "*").strip() or "*"
+        case_sensitive  = bool(args.get("case_sensitive", True))
+        include_lines   = bool(args.get("include_matching_lines", False))
+        max_results     = min(int(args.get("max_results") or 20), 100)
+
+        client = get_soap_client()
+
+        # Collect candidate files matching file_pattern under path
+        candidate_files = client.find_files(
+            sandbox=sandbox,
+            pattern=file_pattern,
+            path=path,
+        )
+
+        needle = search_string if case_sensitive else search_string.lower()
+
+        results = []
+        for item in candidate_files:
+            if not isinstance(item, dict):
+                continue
+            file_path = str(
+                item.get("path") or item.get("filePath") or
+                item.get("name") or item.get("fileName") or ""
+            ).strip().lstrip("/")
+            if not file_path:
+                continue
+
+            try:
+                content = client.download_file(sandbox, file_path)
+            except Exception:
+                continue
+
+            lines = content.splitlines()
+            matching_lines = []
+            for lineno, line in enumerate(lines, start=1):
+                haystack = line if case_sensitive else line.lower()
+                if needle in haystack:
+                    matching_lines.append((lineno, line))
+
+            if not matching_lines:
+                continue
+
+            entry: Dict[str, Any] = {
+                "path": file_path,
+            }
+            # Include whatever metadata the server returned
+            for meta_key in ("size", "lastModified", "isFolder"):
+                if meta_key in item:
+                    entry[meta_key] = item[meta_key]
+            entry["match_count"] = len(matching_lines)
+
+            if include_lines:
+                entry["matching_lines"] = [
+                    {"line": lineno, "content": text}
+                    for lineno, text in matching_lines
+                ]
+
+            results.append(entry)
+            if len(results) >= max_results:
+                break
+
+        payload = {
+            "sandbox": sandbox,
+            "search_string": search_string,
+            "path": path or "/",
+            "file_pattern": file_pattern,
+            "case_sensitive": case_sensitive,
+            "include_matching_lines": include_lines,
+            "result_count": len(results),
+            "truncated": len(results) == max_results and len(results) < len(candidate_files),
+            "results": results,
+        }
+        return _text(json.dumps(payload, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
 async def tool_list_linked_assets(args: Dict) -> List[types.TextContent]:
     try:
         sandbox = args["sandbox"]
@@ -1308,6 +1483,25 @@ async def tool_get_sandbox_parameters(args: Dict) -> List[types.TextContent]:
 async def tool_read_file(args: Dict) -> List[types.TextContent]:
     try:
         content = get_soap_client().download_file(args["sandbox"], args["path"])
+
+        offset = args.get("offset")
+        byte_count = args.get("byte_count")
+        partial_requested = offset is not None or byte_count is not None
+
+        if partial_requested:
+            if offset is None or byte_count is None:
+                return _text("ERROR: offset and byte_count must both be provided when requesting a partial read.")
+
+            offset = int(offset)
+            byte_count = int(byte_count)
+
+            if offset < 0 or byte_count < 0:
+                return _text("ERROR: offset and byte_count must be non-negative integers.")
+
+            content_bytes = content.encode("utf-8")
+            sliced_bytes = content_bytes[offset:offset + byte_count]
+            return _text(sliced_bytes.decode("utf-8", errors="replace"))
+
         return _text(content)
     except Exception as e:
         return _text(f"ERROR: {e}")
@@ -1976,6 +2170,7 @@ _TOOL_MAP = {
     "list_sandboxes":          tool_list_sandboxes,
     "list_files":              tool_list_files,
     "find_file":               tool_find_file,
+    "grep_files":              tool_grep_files,
     "list_linked_assets":      tool_list_linked_assets,
     "get_sandbox_parameters":  tool_get_sandbox_parameters,
     "read_file":               tool_read_file,

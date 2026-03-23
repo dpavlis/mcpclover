@@ -1,51 +1,75 @@
 # CloverDX Workflow Guide — `edit_graph`
 
-> Follow every phase in order. The most critical rule for editing: always read before writing, and always validate after writing.
+> LLM-only guide. Core rule: read current server state before editing; validate immediately after every write.
+
+## PHASE 0 — Subgraph-first rules
+
+### 0.1 If the edit touches subgraphs, read the subgraph reference first
+Call:
+
+```
+read_resource("cloverdx://reference/subgraphs")
+```
+
+Do this before editing when any of these are true:
+- the file being edited is a `.sgrf`
+- a `.grf` edit adds/removes/reconfigures a `SUBGRAPH` component
+- subgraph ports, public parameters, `jobURL`, `SubgraphInput`, or `SubgraphOutput` are affected
+
+### 0.2 Subgraph edit rules
+- subgraph files are `.sgrf` and require `<Graph nature="subgraph">`
+- `SUBGRAPH_INPUT` and `SUBGRAPH_OUTPUT` rules are structural, not optional conventions
+- port numbering and `<Port name="N"/>` declarations are the source of truth for parent-graph edges
+- `debugInput="true"` and `debugOutput="true"` are only for standalone test-only nodes
+- parent graph should reference subgraphs via `${SUBGRAPH_DIR}/.../*.sgrf`
+- public subgraph parameters are passed as `__PARAM_NAME` attributes on the parent `SUBGRAPH` node
+
+Do not guess subgraph structure from generic graph rules alone.
 
 ---
 
-## PHASE 0 — Read and understand the current state
+## PHASE 1 — Read current state
 
-### 0.1 Read the graph file from the server first
-**Always read the current file before making any changes.** Never work from memory or from an earlier version in context.
+### 1.1 Read the current file first
+Always read the current server copy before changing anything:
 
 ```
 read_file("graph/MyGraph.grf", sandbox)
 ```
 
-The file on the server is the only source of truth. Your in-context copy becomes stale the moment any write occurs.
+After any successful write, patch, or rename, the in-context copy is stale.
 
-### 0.2 Read reference resources relevant to the change
-Fetch MCP reference resources for any component or pattern touched by the edit:
-- Graph XML structure if the change affects structure
-- CTL2 reference if the change involves CTL2 code
-- Component-specific documentation for any component being added or reconfigured
+### 1.2 Read only the references relevant to the edit
+Read:
+- Graph XML reference if structure changes
+- CTL2 reference if CTL changes
+- component detail docs for complex components being added or reconfigured
 
-### 0.3 Look for reference/example graphs if adding a new pattern
-If the edit introduces a pattern that doesn't exist in the graph yet (e.g. adding error handling, adding a new component type), search the sandbox for a working example first:
+### 1.3 Look for working examples if introducing a new pattern
 
 ```
 find_file("*Example*", sandbox)
 find_file("*Template*", sandbox)
 ```
 
-### 0.4 Sandbox safety rule (mandatory)
-- **Never create/store graphs or any files in `wrangler_shared_home`.**
-- `wrangler_shared_home` is a specialized shared sandbox on CloverDX servers and is not for LLM-generated artifacts.
-- Use a normal project sandbox chosen for the task.
+If an example exists, copy its pattern instead of inventing a new one.
+
+### 1.4 Sandbox rule
+Never create or store files in `wrangler_shared_home`.
 
 ---
 
-## PHASE 1 — Plan the change
+## PHASE 2 — Plan the exact delta
 
-### 1.1 Identify exactly what needs to change
-Before touching the file, enumerate precisely:
-- Which component(s) are affected?
-- Which attributes, CTL2 code blocks, metadata fields, or edges need to change?
-- Does the change require adding new components? New metadata fields? New edges?
-- Does removing or changing a component break any existing edge or metadata dependency?
+### 2.1 Enumerate the change precisely
+Before editing, identify:
+- affected components
+- affected attributes / metadata / edges / CTL blocks
+- new dependencies introduced by the change
+- broken dependencies that will result if a node/edge/metadata item is removed
 
-If new components may be introduced, first orient on available component types via `list_components` (optionally by category):
+### 2.2 If adding or reconfiguring components, re-check definitions
+Orient first if needed:
 
 ```
 list_components()
@@ -53,151 +77,127 @@ list_components("transformers")
 list_components("readers")
 ```
 
-### 1.2 Look up any components being added or modified
-Call `get_component_info` for any component type you are adding or significantly reconfiguring — even if it already exists in the graph:
+Then verify with:
 
 ```
 get_component_info("DENORMALIZER")
+get_component_details("XML_EXTRACT")
 ```
 
-Then call `get_component_details` for complex components:
+Do not rely on memory for port names, attribute names, or CTL entry points.
+
+### 2.3 CTL declaration rule
+User helper functions must use:
 
 ```
-get_component_details("VALIDATOR")
+function <returnType> <name>(<params>) { ... }
 ```
 
-Do not assume you remember the correct attribute names, port numbers, or CTL entry points from earlier in the session. Verify.
-
-### 1.3 Identify CTL2 entry points for any CTL being written or changed
-
-| Component | CTL entry point(s) |
-|---|---|
-| REFORMAT (Map) | `function integer transform()` |
-| DENORMALIZER | `function integer append()`, `function integer transform()`, `function void clean()` |
-| NORMALIZER | `function integer transform()`, `function integer count()` |
-| VALIDATOR `errorMapping` | `function integer transform()` — `$in.0` = record, `$in.1` = error info (`validationMessage`, `recordNo`) |
-| VALIDATOR `rules` `<expression>` | bare boolean expression — no `function`, no `return`, no `//#CTL2` |
-
-User-defined helper functions: `function` keyword comes **first**:
-```
-function <returnType> <functionName>(<params>) { ... }
-```
+Not `returnType function name(...)`.
 
 ---
 
-## PHASE 2 — Apply the change
+## PHASE 3 — Apply changes safely
 
-### 2.0 Apply changes iteratively (LLM execution strategy)
-For edits that add or rework pipeline logic, make incremental changes and verify data flow at each step:
+### 3.1 Pipeline edits must stay incremental
+For edits that change data flow:
+1. keep or add temporary `TRASH` terminals
+2. re-validate after each meaningful step
+3. replace `TRASH` with final destinations only after the branch is correct
 
-1. First ensure reading/input section is still correct after changes.
-2. Keep/insert a `TRASH` component as a temporary terminal at the current end of the changed branch.
-3. Configure `TRASH` to log received data to verify the branch output.
-4. Add the next transformation step, keep `TRASH` at the new end, then re-validate.
-5. Replace final `TRASH` component(s) with target destination component(s) only after iterative checks pass.
+### 3.2 Runtime checks require user consent
+If user consent exists, after meaningful steps:
+1. call `execute_graph`
+2. inspect `get_graph_tracking`
+3. confirm expected counts and flow behavior
 
-### 2.0.1 Iteration test guardrail (with user consent)
-For iterative pipeline edits, do runtime verification after each meaningful step **only after explicit user consent**:
+### 3.3 Choose `patch_file` vs `write_file`
+Use `patch_file` for small, isolated edits.
+Use `write_file` for:
+- larger structural rewrites
+- many nearby edits
+- already malformed files
 
-1. Execute the intermediate graph using `execute_graph`.
-2. Inspect `get_graph_tracking` for per-component/edge record counts.
-3. Use counts and flow progression for sanity checks (e.g. expected non-zero flow, expected drops after filters, expected splits/joins).
+If using `patch_file`:
+- run `dry_run: true` first
+- use unique anchors
+- if a patch succeeds and another patch is needed, re-read the file first
 
-`validate_graph` confirms structure/config validity; iterative execution + tracking provides a minimum-level logic check.
+### 3.4 Never patch from stale state
+After every successful `patch_file` or `write_file`, re-read before computing another change.
 
-### 2.1 Choose between `patch_file` and `write_file`
+### 3.5 If patching corrupted the file, stop patching
+Switch to a clean full rewrite with `write_file`.
 
-**Use `patch_file` for small, targeted changes (1–5 lines):**
-- Always run with `dry_run: true` first to verify the patch before applying it
-- Anchor string must uniquely identify the target line — if ambiguous, use `anchor_occurrence`
-- Use a longer surrounding context string if a short anchor is not unique
+### 3.6 Nested CDATA rule
+If `]]>` appears inside outer CDATA, escape it as:
 
-**Use `write_file` for:**
-- Large structural changes affecting many parts of the file
-- Any situation where the file is already malformed
-- When multiple patches would be needed in close proximity
-
-**Never patch a file you haven't just re-read.** After any successful `write_file` or `patch_file`, your in-context copy is stale. Re-read before making further changes.
-
-### 2.2 After patching — re-read before a second patch
-A successful patch changes the file on the server. If you need to apply more than one patch, re-read the file after each patch before computing the next one. Patching based on a stale mental model causes structural corruption.
-
-### 2.3 When patching has corrupted the file — stop patching, rewrite
-If the file has become malformed due to incorrect patches, do not attempt further patches. Switch to a clean `write_file` with fully correct content. Incremental patching of a broken file makes the situation worse.
-
-### 2.4 Nested CDATA escaping — check every change involving CDATA
-If the change touches any CDATA block that contains nested CDATA (e.g. VALIDATOR `rules` containing `<expression>` elements), ensure inner `]]>` sequences are escaped as:
 ```
 ]]]]><![CDATA[>
 ```
-This is the most common source of "Cannot load graph" errors.
 
-### 2.5 VALIDATOR-specific rules (if editing a VALIDATOR)
-- `customRejectMessage` is **not valid** on `<expression>` rule elements — use a descriptive `name` attribute instead
-- `errorMapping` is a separate `<attr name="errorMapping">` block — not inside `<attr name="rules">`
-- For rejection reasons: `errorMapping` captures `$in.1.validationMessage` + `$in.1.recordNo`; a DENORMALIZER keyed on `recordNo` consolidates multiple errors per record
-- **Never add a downstream REFORMAT that re-implements validation logic** to produce rejection messages
+### 3.7 Edge port names must match exact component docs
+Use the exact strings returned by `get_component_info`.
 
-### 2.6 Edge outPort names — must be exact
-If the change adds or modifies edges, use port names exactly as returned by `get_component_info`:
+Typical examples:
 
-| Component | outPort string |
+| Component | Exact `outPort` |
 |---|---|
 | Most readers | `Port 0 (output)` |
-| VALIDATOR valid | `Port 0 (valid)` |
-| VALIDATOR invalid | `Port 1 (invalid)` |
-| REFORMAT, DENORMALIZER, etc. | `Port 0 (out)` |
+| REFORMAT / DENORMALIZER / similar | `Port 0 (out)` |
 
 ---
 
-## PHASE 3 — Validate
+## PHASE 4 — Validate after every write
 
-**Always call `validate_graph` immediately after every `write_file` or `patch_file`.** Never present the edit as done without a passing validation.
+Always call:
 
 ```
 validate_graph("graph/MyGraph.grf", sandbox)
 ```
 
-### Interpreting results
+immediately after each `write_file` or `patch_file`.
 
-| Result | Action |
-|---|---|
-| `overall: PASS`, no problems | Edit is clean — done |
-| Stage 1 errors | XML is broken — graph won't open; fix before anything else |
-| Stage 2 ERROR | Component config invalid — fix all errors |
-| Stage 2 WARNING | Investigate — do not ignore |
+Interpretation:
 
-### Common errors and fixes
+| Result | Meaning | Action |
+|---|---|---|
+| `overall: PASS` | clean | proceed / done |
+| Stage 1 errors | XML broken | fix before anything else |
+| Stage 2 errors | component config invalid | fix all |
+| Stage 2 warnings | risk remains | investigate |
+
+Common failures:
 
 | Error | Fix |
 |---|---|
-| `Attribute 'X' is not allowed to appear in element 'Y'` | Remove that attribute — not valid on that element |
-| `element type "X" must be terminated by matching end-tag` | Malformed XML — check nested CDATA escaping |
-| `Can't deserialize validation rules` | VALIDATOR `rules` CDATA contains invalid XML — check escaping and invalid attributes |
-| `Syntax error on token 'function'` | CTL function declared as `returnType function name()` — flip to `function returnType name()` |
-| `CTL code compilation finished with N errors` | CTL syntax error in transform, errorMapping, or denormalize attribute |
+| `Attribute 'X' is not allowed to appear in element 'Y'` | remove invalid attribute |
+| `element type "X" must be terminated by matching end-tag` | fix malformed XML / nested CDATA escaping |
+| `Syntax error on token 'function'` | change to `function returnType name()` |
+| `CTL code compilation finished with N errors` | fix CTL syntax |
 
-If validation fails, fix all errors and re-validate before proceeding. Do not present the graph as done while errors remain.
+Do not present the edit as complete while validation errors or warnings remain unexplained.
 
 ---
 
-## CHECKLIST — before presenting the edit as complete
+## CHECKLIST
 
-- [ ] Read the current graph file from the server before making any changes
-- [ ] Fetched reference resources relevant to the change
-- [ ] Checked sandbox for reference/example graphs if adding a new pattern
-- [ ] Confirmed sandbox is not `wrangler_shared_home`
-- [ ] Called `list_components` to orient on available component types/categories when introducing new components
-- [ ] Called `get_component_info` for any component being added or modified
-- [ ] Called `get_component_details` for any complex component being added or modified
-- [ ] No new non-existent components introduced (no ROUTER, no FILTER)
-- [ ] All nested CDATA sequences correctly escaped (`]]]]><![CDATA[>`)
-- [ ] No `customRejectMessage` on `<expression>` rule elements
-- [ ] CTL user-defined functions: `function returnType name(...)` — not `returnType function name(...)`
-- [ ] Edge outPort strings match exactly the names from `get_component_info`
-- [ ] Metadata updated if the change requires new fields
-- [ ] Re-read the file between multiple patches (never patch a stale copy)
-- [ ] Iterative verification used for pipeline changes; `TRASH` kept as temporary logged terminal until finalization
-- [ ] For iterative steps, and with user consent, intermediate graph execution was verified using `execute_graph` + `get_graph_tracking`
-- [ ] `validate_graph` called after the most recent write or patch
-- [ ] Validation result is `overall: PASS` with no errors or warnings
+- [ ] If subgraph-related: read `cloverdx://reference/subgraphs` first
+- [ ] Read the current server file before editing
+- [ ] Read only the references relevant to the change
+- [ ] Checked sandbox for example/template graphs when introducing a new pattern
+- [ ] Sandbox is not `wrangler_shared_home`
+- [ ] Enumerated exact components / attributes / metadata / edges being changed
+- [ ] Called `list_components` when introducing new component types
+- [ ] Called `get_component_info` for added or reconfigured components
+- [ ] Called `get_component_details` for complex components
+- [ ] Did not invent non-existent components (`ROUTER`, `FILTER`)
+- [ ] Updated metadata if the edit requires new fields
+- [ ] Used correct CTL declaration form: `function returnType name(...)`
+- [ ] Escaped nested CDATA as `]]]]><![CDATA[>` where needed
+- [ ] Matched edge port names exactly to component docs
+- [ ] Re-read between multiple patches
+- [ ] Used incremental verification with temporary `TRASH` terminals for pipeline edits
+- [ ] If user consented, used `execute_graph` + `get_graph_tracking` for runtime checks
+- [ ] Called `validate_graph` after the most recent write or patch
+- [ ] Final validation is PASS with no unresolved issues
