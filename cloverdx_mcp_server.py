@@ -11,11 +11,11 @@ WebServices and exposes the following tools:
   list_sandboxes          – List all available sandboxes on the server
   list_files              – List files/folders inside a sandbox directory
   find_file               – Find files in a sandbox using * and ? wildcards
-    list_linked_assets      – List externalized/linkable assets by known file types
-    get_sandbox_parameters  – Read/resolve sandbox parameters from workspace.prm (+ optional server overlays)
+  list_linked_assets      – List externalized/linkable assets by known file types
+  get_sandbox_parameters  – Read/resolve sandbox parameters from workspace.prm (+ optional server overlays)
   read_file               – Download a file (graph, metadata, params, …)
-    rename_file             – Rename a file within a sandbox (RenameSandboxFile)
-    copy_file               – Copy a file within/across sandboxes
+  rename_file             – Rename a file within a sandbox (RenameSandboxFile)
+  copy_file               – Copy a file within/across sandboxes
   patch_file              – Patch a sandbox file using anchor-based line ranges
   write_file              – Upload / overwrite a file
   delete_file             – Delete a file from a sandbox
@@ -34,9 +34,9 @@ WebServices and exposes the following tools:
   get_graph_run_status    – Check the status of a single run by run ID
   get_graph_execution_log – Fetch the execution log for a run
   get_graph_tracking      – Fetch graph tracking metrics for a run
-    get_edge_debug_info     – List edge debug availability/details for a run edge
-    get_edge_debug_metadata – Fetch edge debug metadata XML for a run edge
-    get_edge_debug_data     – Fetch edge debug data summary for a run edge
+  get_edge_debug_info     – List edge debug availability/details for a run edge
+  get_edge_debug_metadata – Fetch edge debug metadata XML for a run edge
+  get_edge_debug_data     – Fetch edge debug data summary for a run edge
 
   Component reference (local, no server round-trip)
   ──────────────────────────────────────────────────

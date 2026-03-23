@@ -29,6 +29,11 @@ find_file("*Example*", sandbox)
 find_file("*Template*", sandbox)
 ```
 
+### 0.4 Sandbox safety rule (mandatory)
+- **Never create/store graphs or any files in `wrangler_shared_home`.**
+- `wrangler_shared_home` is a specialized shared sandbox on CloverDX servers and is not for LLM-generated artifacts.
+- Use a normal project sandbox chosen for the task.
+
 ---
 
 ## PHASE 1 — Plan the change
@@ -73,6 +78,24 @@ function <returnType> <functionName>(<params>) { ... }
 ---
 
 ## PHASE 2 — Apply the change
+
+### 2.0 Apply changes iteratively (LLM execution strategy)
+For edits that add or rework pipeline logic, make incremental changes and verify data flow at each step:
+
+1. First ensure reading/input section is still correct after changes.
+2. Keep/insert a `TRASH` component as a temporary terminal at the current end of the changed branch.
+3. Configure `TRASH` to log received data to verify the branch output.
+4. Add the next transformation step, keep `TRASH` at the new end, then re-validate.
+5. Replace final `TRASH` component(s) with target destination component(s) only after iterative checks pass.
+
+### 2.0.1 Iteration test guardrail (with user consent)
+For iterative pipeline edits, do runtime verification after each meaningful step **only after explicit user consent**:
+
+1. Execute the intermediate graph using `execute_graph`.
+2. Inspect `get_graph_tracking` for per-component/edge record counts.
+3. Use counts and flow progression for sanity checks (e.g. expected non-zero flow, expected drops after filters, expected splits/joins).
+
+`validate_graph` confirms structure/config validity; iterative execution + tracking provides a minimum-level logic check.
 
 ### 2.1 Choose between `patch_file` and `write_file`
 
@@ -155,6 +178,7 @@ If validation fails, fix all errors and re-validate before proceeding. Do not pr
 - [ ] Read the current graph file from the server before making any changes
 - [ ] Fetched reference resources relevant to the change
 - [ ] Checked sandbox for reference/example graphs if adding a new pattern
+- [ ] Confirmed sandbox is not `wrangler_shared_home`
 - [ ] Called `get_component_info` for any component being added or modified
 - [ ] Called `get_component_details` for any complex component being added or modified
 - [ ] No new non-existent components introduced (no ROUTER, no FILTER)
@@ -164,5 +188,7 @@ If validation fails, fix all errors and re-validate before proceeding. Do not pr
 - [ ] Edge outPort strings match exactly the names from `get_component_info`
 - [ ] Metadata updated if the change requires new fields
 - [ ] Re-read the file between multiple patches (never patch a stale copy)
+- [ ] Iterative verification used for pipeline changes; `TRASH` kept as temporary logged terminal until finalization
+- [ ] For iterative steps, and with user consent, intermediate graph execution was verified using `execute_graph` + `get_graph_tracking`
 - [ ] `validate_graph` called after the most recent write or patch
 - [ ] Validation result is `overall: PASS` with no errors or warnings

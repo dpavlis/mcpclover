@@ -24,6 +24,11 @@ find_file("*Template*", sandbox)
 
 A working reference graph is the most reliable source of truth. Read it. Follow its patterns. Do not invent a different approach when a working example exists.
 
+### 0.3 Sandbox safety rule (mandatory)
+- **Never create/store graphs or any files in `wrangler_shared_home`.**
+- `wrangler_shared_home` is a specialized shared sandbox on CloverDX servers and is not for LLM-generated artifacts.
+- Use a normal project sandbox chosen for the task.
+
 ---
 
 ## PHASE 1 — Plan the graph
@@ -95,6 +100,24 @@ function <returnType> <functionName>(<params>) { ... }
 
 ## PHASE 2 — Write the graph XML
 
+### 2.0 Build iteratively (LLM execution strategy)
+Use an incremental pipeline approach instead of building the final graph in one pass:
+
+1. Configure and validate input reading first.
+2. End each current branch with a `TRASH` component as a temporary terminal.
+3. Configure `TRASH` to log received data so input/output can be verified.
+4. After each new transformation step, keep `TRASH` at the current end of the pipeline and re-validate.
+5. Only after the flow is correct, replace final `TRASH` component(s) with the target destination component(s).
+
+### 2.0.1 Iteration test guardrail (with user consent)
+When building iteratively, do runtime checks after each meaningful step **only after explicit user consent**:
+
+1. Execute the intermediate graph using `execute_graph`.
+2. Inspect `get_graph_tracking` for per-component/edge record counts.
+3. Use counts and flow progression for sanity checks (e.g. expected non-zero flow, expected drops after filters, expected splits/joins).
+
+`validate_graph` proves XML/config validity; iterative execution + tracking provides a minimum-level logic check.
+
 ### 2.1 Nested CDATA escaping — most common source of errors
 Any `]]>` sequence inside an outer CDATA block (e.g. inner `<expression>` CDATA inside the VALIDATOR `rules` CDATA) must be escaped as:
 ```
@@ -154,6 +177,7 @@ validate_graph("graph/MyGraph.grf", sandbox)
 
 - [ ] Fetched relevant reference resources
 - [ ] Checked sandbox for reference/example graphs
+- [ ] Confirmed sandbox is not `wrangler_shared_home`
 - [ ] Identified at least two candidate components per processing step
 - [ ] Called `get_component_info` for every component type used
 - [ ] Called `get_component_details` for complex components
@@ -164,5 +188,7 @@ validate_graph("graph/MyGraph.grf", sandbox)
 - [ ] No `customRejectMessage` on `<expression>` rule elements
 - [ ] CTL user-defined functions: `function returnType name(...)` — not `returnType function name(...)`
 - [ ] Edge outPort strings match exactly the names from `get_component_info`
+- [ ] Graph was built iteratively; `TRASH` used as temporary logged terminal(s) during development
+- [ ] For iterative steps, and with user consent, intermediate graph execution was verified using `execute_graph` + `get_graph_tracking`
 - [ ] `validate_graph` called after writing
 - [ ] Validation result is `overall: PASS` with no errors or warnings
