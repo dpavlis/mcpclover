@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+java_src/
+.claude/
+README_dm.md
+README_http.md
+server.crt
+server.key
