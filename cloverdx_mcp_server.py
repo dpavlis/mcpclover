@@ -2058,9 +2058,18 @@ async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent
                 return _text(json.dumps({"status": "error", "message": (
                     f"value must be a valid <Record>...</Record> XML block: {exc}"
                 )}))
+            _metadata_inner_indent = _target.text
+            _metadata_closing_indent = None
+            _existing_children = list(_target)
+            if _existing_children:
+                _metadata_closing_indent = _existing_children[-1].tail
             for _child in list(_target):
                 _target.remove(_child)
             _target.append(_new_record)
+            if _metadata_inner_indent is not None:
+                _target.text = _metadata_inner_indent
+            if _metadata_closing_indent is not None:
+                _new_record.tail = _metadata_closing_indent
 
         elif attribute_name.startswith("attr:"):
             _attr_name = attribute_name[len("attr:"):]
@@ -2116,9 +2125,18 @@ async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent
                 return _text(json.dumps({"status": "error", "message": (
                     f"value must be a valid <Record>...</Record> XML block: {exc}"
                 )}))
+            _metadata_inner_indent_et = _target_et.text
+            _metadata_closing_indent_et = None
+            _existing_children_et = list(_target_et)
+            if _existing_children_et:
+                _metadata_closing_indent_et = _existing_children_et[-1].tail
             for _child_et in list(_target_et):
                 _target_et.remove(_child_et)
             _target_et.append(_new_rec_et)
+            if _metadata_inner_indent_et is not None:
+                _target_et.text = _metadata_inner_indent_et
+            if _metadata_closing_indent_et is not None:
+                _new_rec_et.tail = _metadata_closing_indent_et
 
         elif attribute_name.startswith("attr:"):
             _attr_name_et = attribute_name[len("attr:"):]
@@ -2145,6 +2163,12 @@ async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent
             output = output.replace(_sentinel, f"<![CDATA[{_cdata_val}]]>")
 
     # --- Step 7: Write back ---
+    # Both lxml and stdlib ET emit single-quoted XML declarations; normalise to double quotes.
+    output = output.replace(
+        "<?xml version='1.0' encoding='UTF-8'?>",
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        1,
+    )
     _dir_path, _filename = os.path.split(graph_path)
     try:
         get_soap_client().upload_file(
