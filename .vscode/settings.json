@@ -1,0 +1,10 @@
+{
+    "chat.mcp.serverSampling": {
+        "mcpclover/.vscode/mcp.json: cloverdx-data-manager": {
+            "allowedModels": [
+                "copilot/gpt-4.1",
+                "copilot/claude-sonnet-4"
+            ]
+        }
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "cloverdx-mcp-server": {
+      "command": "/Users/david/git/mcpclover/venv/bin/python",
+      "args": [
+        "/Users/david/git/mcpclover/cloverdx_mcp_server.py"
+      ],
+      "env": {
+        "CLOVERDX_BASE_URL": "http://your-cloverdx-host:8083/clover",
+        "CLOVERDX_USERNAME": "clover",
+        "CLOVERDX_PASSWORD": "clover",
+        "CLOVERDX_VERIFY_SSL": "false",
+        "CLOVERDX_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
