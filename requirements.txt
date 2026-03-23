@@ -3,3 +3,4 @@ zeep
 requests
 python-dotenv
 urllib3
+lxml

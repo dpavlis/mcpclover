@@ -37,6 +37,7 @@ WebServices and exposes the following tools:
   get_edge_debug_info     – List edge debug availability/details for a run edge
   get_edge_debug_metadata – Fetch edge debug metadata XML for a run edge
   get_edge_debug_data     – Fetch edge debug data summary for a run edge
+  set_graph_element_attribute – Set/replace an attribute or <attr> child on a graph element (DOM-based)
 
   Component reference (local, no server round-trip)
   ──────────────────────────────────────────────────
@@ -666,6 +667,97 @@ async def handle_list_tools() -> List[types.Tool]:
                         },
                     },
                 },
+            },
+        ),
+        types.Tool(
+            name="set_graph_element_attribute",
+            description=(
+                "Sets or updates a value on a specific element within a CloverDX graph XML file. "
+                "Operates on the parsed DOM — no text anchoring or line numbers required. "
+                "More reliable than patch_file for graph modifications. "
+                "\n\n"
+                "Supports two modification modes, selected via the 'attribute_name' parameter:\n"
+                "1. XML attribute — plain attribute on the element tag. "
+                "Use for: recordsNumber, joinType, enabled, guiX, guiY, fileURL, metadata, etc. "
+                "Example: attribute_name='recordsNumber', value='100'\n"
+                "2. <attr> child element — multi-line content stored as a CDATA child of a Node. "
+                "Prefix attribute_name with 'attr:' to select this mode. "
+                "Use for: CTL transforms, SQL queries, joinKey, mapping XML, rules, errorMapping, etc. "
+                "The value is stored as CDATA — do NOT wrap it yourself. "
+                "Example: attribute_name='attr:transform', value='//#CTL2\\nfunction integer transform() {...}'\n"
+                "\n"
+                "For Metadata elements: supply the full replacement <Record>...</Record> XML as value. "
+                "attribute_name is ignored for Metadata — set it to 'record' by convention. "
+                "The entire child content of <Metadata id='X'> is replaced. "
+                "External metadata (fileURL-style) cannot be modified with this tool — edit the .fmt file directly.\n"
+                "\n"
+                "Always call validate_graph after using this tool."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "graph_path": {
+                        "type": "string",
+                        "description": "Path to the .grf file within the sandbox (e.g. 'graph/MyGraph.grf').",
+                    },
+                    "sandbox": {
+                        "type": "string",
+                        "description": "Sandbox code.",
+                    },
+                    "element_type": {
+                        "type": "string",
+                        "enum": ["Node", "Edge", "Metadata", "GraphParameter", "Connection"],
+                        "description": (
+                            "The type of graph element to modify. "
+                            "Node: a processing component. "
+                            "Edge: a connection between components. "
+                            "Metadata: a record structure definition. "
+                            "GraphParameter: a graph parameter (matched by 'name' attribute, not 'id'). "
+                            "Connection: a database or service connection definition."
+                        ),
+                    },
+                    "element_id": {
+                        "type": "string",
+                        "description": (
+                            "The unique identifier of the target element. "
+                            "For Node, Edge, Metadata, Connection: matches the 'id' XML attribute. "
+                            "For GraphParameter: matches the 'name' XML attribute."
+                        ),
+                    },
+                    "attribute_name": {
+                        "type": "string",
+                        "description": (
+                            "What to set on the element. Two forms:\n"
+                            "- Plain name (e.g. 'recordsNumber', 'joinType', 'enabled', 'guiX', "
+                            "'fileURL', 'value') → sets an XML attribute directly on the element tag.\n"
+                            "- 'attr:X' prefix (e.g. 'attr:transform', 'attr:generate', "
+                            "'attr:sqlQuery', 'attr:joinKey', 'attr:rules', 'attr:errorMapping', "
+                            "'attr:denormalize', 'attr:mapping') → sets the content of an "
+                            "<attr name='X'> child element, CDATA-wrapped automatically.\n"
+                            "For Metadata elements: set to 'record' (ignored by implementation)."
+                        ),
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": (
+                            "The new value. "
+                            "For plain XML attributes: a simple string (e.g. '100', 'leftOuter', 'true'). "
+                            "For 'attr:' child elements: raw content, any length, any format "
+                            "(CTL code, SQL, XML) — CDATA wrapping is applied automatically. "
+                            "Do NOT wrap in <![CDATA[...]]> yourself. "
+                            "For Metadata: the full replacement <Record>...</Record> XML block."
+                        ),
+                    },
+                },
+                "required": [
+                    "graph_path",
+                    "sandbox",
+                    "element_type",
+                    "element_id",
+                    "attribute_name",
+                    "value",
+                ],
+                "additionalProperties": False,
             },
         ),
         types.Tool(
@@ -1689,6 +1781,184 @@ async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
         return _text(f"ERROR: {e}")
 
 
+async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent]:
+    graph_path     = args["graph_path"]
+    sandbox        = args["sandbox"]
+    element_type   = args["element_type"]
+    element_id     = args["element_id"]
+    attribute_name = args["attribute_name"]
+    value          = args["value"]
+
+    # --- Validation ---
+    if not attribute_name:
+        return _text(json.dumps({"status": "error", "message": "attribute_name must not be empty"}))
+    if element_type == "GraphParameter" and attribute_name.startswith("attr:"):
+        return _text(json.dumps({
+            "status": "error",
+            "message": "GraphParameter elements do not have <attr> children. Use plain attribute_name='value'.",
+        }))
+
+    _ID_ATTR: Dict[str, str] = {
+        "Node": "id", "Edge": "id", "Metadata": "id",
+        "Connection": "id", "GraphParameter": "name",
+    }
+    id_attr = _ID_ATTR[element_type]
+
+    # --- Step 1: Download graph file ---
+    try:
+        xml_text = get_soap_client().download_file(sandbox, graph_path)
+    except Exception:
+        return _text(json.dumps({
+            "status": "error",
+            "message": f"Graph file not found: {graph_path} in sandbox {sandbox}",
+        }))
+
+    # --- Steps 2-6: Parse, find, modify, serialize ---
+    try:
+        from lxml import etree as _lxml  # type: ignore
+        _use_lxml = True
+    except ImportError:
+        _use_lxml = False
+
+    output: str
+
+    if _use_lxml:
+        try:
+            _parser = _lxml.XMLParser(strip_cdata=False)
+            _root = _lxml.fromstring(xml_text.encode("utf-8"), _parser)
+        except Exception as exc:
+            return _text(json.dumps({"status": "error", "message": f"Graph file is not valid XML: {exc}"}))
+
+        _target = None
+        for _elem in _root.iter(element_type):
+            if _elem.get(id_attr) == element_id:
+                _target = _elem
+                break
+
+        if _target is None:
+            return _text(json.dumps({"status": "error", "message": (
+                f"Element <{element_type} {id_attr}='{element_id}'> not found in {graph_path}"
+            )}))
+
+        if element_type == "Metadata":
+            if _target.get("fileURL") is not None:
+                return _text(json.dumps({"status": "error", "message": (
+                    "This Metadata element is external (fileURL). Edit the .fmt file directly."
+                )}))
+            try:
+                _new_record = _lxml.fromstring(value.encode("utf-8"))
+            except Exception as exc:
+                return _text(json.dumps({"status": "error", "message": (
+                    f"value must be a valid <Record>...</Record> XML block: {exc}"
+                )}))
+            for _child in list(_target):
+                _target.remove(_child)
+            _target.append(_new_record)
+
+        elif attribute_name.startswith("attr:"):
+            _attr_name = attribute_name[len("attr:"):]
+            _attr_elem = None
+            for _child in _target:
+                if _child.tag == "attr" and _child.get("name") == _attr_name:
+                    _attr_elem = _child
+                    break
+            if _attr_elem is None:
+                _attr_elem = _lxml.SubElement(_target, "attr")
+                _attr_elem.set("name", _attr_name)
+            _attr_elem.text = _lxml.CDATA(value)
+
+        else:
+            _target.set(attribute_name, value)
+
+        output = _lxml.tostring(
+            _root,
+            pretty_print=True,
+            xml_declaration=True,
+            encoding="UTF-8",
+        ).decode("UTF-8")
+
+    else:
+        # stdlib fallback (lxml not installed)
+        import io as _io
+        try:
+            _root_et = ET.fromstring(xml_text)
+        except ET.ParseError as exc:
+            return _text(json.dumps({"status": "error", "message": f"Graph file is not valid XML: {exc}"}))
+
+        _target_et = None
+        for _elem_et in _root_et.iter(element_type):
+            if _elem_et.get(id_attr) == element_id:
+                _target_et = _elem_et
+                break
+
+        if _target_et is None:
+            return _text(json.dumps({"status": "error", "message": (
+                f"Element <{element_type} {id_attr}='{element_id}'> not found in {graph_path}"
+            )}))
+
+        _cdata_sentinels: Dict[str, str] = {}
+
+        if element_type == "Metadata":
+            if _target_et.get("fileURL") is not None:
+                return _text(json.dumps({"status": "error", "message": (
+                    "This Metadata element is external (fileURL). Edit the .fmt file directly."
+                )}))
+            try:
+                _new_rec_et = ET.fromstring(value)
+            except ET.ParseError as exc:
+                return _text(json.dumps({"status": "error", "message": (
+                    f"value must be a valid <Record>...</Record> XML block: {exc}"
+                )}))
+            for _child_et in list(_target_et):
+                _target_et.remove(_child_et)
+            _target_et.append(_new_rec_et)
+
+        elif attribute_name.startswith("attr:"):
+            _attr_name_et = attribute_name[len("attr:"):]
+            _attr_elem_et = None
+            for _child_et in _target_et:
+                if _child_et.tag == "attr" and _child_et.get("name") == _attr_name_et:
+                    _attr_elem_et = _child_et
+                    break
+            if _attr_elem_et is None:
+                _attr_elem_et = ET.SubElement(_target_et, "attr")
+                _attr_elem_et.set("name", _attr_name_et)
+            _sentinel = f"CDATA_PLACEHOLDER_{id(_attr_elem_et):x}"
+            _attr_elem_et.text = _sentinel
+            _cdata_sentinels[_sentinel] = value
+
+        else:
+            _target_et.set(attribute_name, value)
+
+        _buf = _io.BytesIO()
+        ET.ElementTree(_root_et).write(_buf, xml_declaration=True, encoding="UTF-8")
+        output = _buf.getvalue().decode("UTF-8")
+
+        for _sentinel, _cdata_val in _cdata_sentinels.items():
+            output = output.replace(_sentinel, f"<![CDATA[{_cdata_val}]]>")
+
+    # --- Step 7: Write back ---
+    _dir_path, _filename = os.path.split(graph_path)
+    try:
+        get_soap_client().upload_file(
+            sandbox=sandbox,
+            dir_path=_dir_path,
+            filename=_filename,
+            content=output,
+        )
+    except Exception as exc:
+        return _text(f"ERROR: {exc}")
+
+    return _text(json.dumps({
+        "status": "ok",
+        "element_type": element_type,
+        "element_id": element_id,
+        "attribute_name": attribute_name,
+        "graph_path": graph_path,
+        "sandbox": sandbox,
+    }))
+
+
 _TOOL_MAP = {
     "list_sandboxes":          tool_list_sandboxes,
     "list_files":              tool_list_files,
@@ -1713,6 +1983,7 @@ _TOOL_MAP = {
     "get_edge_debug_info":     tool_get_edge_debug_info,
     "get_edge_debug_metadata": tool_get_edge_debug_metadata,
     "get_edge_debug_data":     tool_get_edge_debug_data,
+    "set_graph_element_attribute": tool_set_graph_element_attribute,
     "list_resources":          tool_list_resources,
     "read_resource":           tool_read_resource,
     "get_workflow_guide":      tool_get_workflow_guide,
