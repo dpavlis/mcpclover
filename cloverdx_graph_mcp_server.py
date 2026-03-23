@@ -1,0 +1,2667 @@
+#!/usr/bin/env python3
+"""
+CloverDX Graph Builder MCP Server
+==================================
+A Model Context Protocol server that enables an LLM to create and modify
+CloverDX transformation graphs.  It connects to a CloverDX Server via SOAP
+WebServices and exposes the following tools:
+
+  File / sandbox operations
+  ─────────────────────────
+  list_sandboxes          – List all available sandboxes on the server
+  list_files              – List files/folders inside a sandbox directory
+  find_file               – Find files in a sandbox using * and ? wildcards
+    list_linked_assets      – List externalized/linkable assets by known file types
+    get_sandbox_parameters  – Read/resolve sandbox parameters from workspace.prm (+ optional server overlays)
+  read_file               – Download a file (graph, metadata, params, …)
+    rename_file             – Rename a file within a sandbox (RenameSandboxFile)
+    copy_file               – Copy a file within/across sandboxes
+  patch_file              – Patch a sandbox file using anchor-based line ranges
+  write_file              – Upload / overwrite a file
+  delete_file             – Delete a file from a sandbox
+
+  Resource access
+  ───────────────
+  list_resources          – List available resource URIs with names and descriptions
+  read_resource           – Fetch the content of a resource by URI
+  get_workflow_guide      – Return the authoritative workflow guide for a CloverDX task
+
+  Graph operations
+  ────────────────
+  validate_graph          – Two-stage validation (local XML + server checkConfig)
+  execute_graph           – Run a graph and wait for completion
+  list_graph_runs         – List recent executions (REST /executions endpoint)
+  get_graph_run_status    – Check the status of a single run by run ID
+  get_graph_execution_log – Fetch the execution log for a run
+  get_graph_tracking      – Fetch graph tracking metrics for a run
+    get_edge_debug_info     – List edge debug availability/details for a run edge
+    get_edge_debug_metadata – Fetch edge debug metadata XML for a run edge
+    get_edge_debug_data     – Fetch edge debug data summary for a run edge
+
+  Component reference (local, no server round-trip)
+  ──────────────────────────────────────────────────
+  list_components         – List available component types (by category)
+  get_component_info      – Get ports & properties for a component type/name
+  get_component_details   – Fetch detailed markdown docs for a complex component
+
+Resources exposed
+─────────────────
+  cloverdx://reference/graph-xml   – cloverdx-llm-reference.md
+  cloverdx://reference/ctl2        – CTL2_Reference_for_LLM_compact.md
+  cloverdx://reference/components  – components.json (non-deprecated)
+
+Configuration (.env)
+────────────────────
+  CLOVERDX_BASE_URL   http://host:port/clover
+  CLOVERDX_USERNAME   clover
+  CLOVERDX_PASSWORD   clover
+  CLOVERDX_VERIFY_SSL false   (optional, default false)
+
+Dependencies
+────────────
+  pip install mcp zeep requests python-dotenv urllib3
+"""
+
+import asyncio
+import base64
+from datetime import datetime
+import fnmatch
+import glob as _glob
+import json
+import logging
+import os
+import re
+import struct
+import time
+import xml.etree.ElementTree as ET
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+
+import urllib3
+import requests
+from dotenv import load_dotenv
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
+import mcp.server.stdio
+import mcp.types as types
+from zeep import Client
+from zeep.transports import Transport
+from zeep import helpers as zeep_helpers
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+# Log level is controlled by CLOVERDX_LOG_LEVEL (DEBUG | INFO | WARNING | ERROR).
+# Default is INFO.  Set to DEBUG to see full tool arguments and response sizes.
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# ── Constants ──────────────────────────────────────────────────────────────────
+
+SERVER_NAME    = "cloverdx-graph-builder"
+SERVER_VERSION = "1.0.0"
+
+POLL_TIMEOUT_S  = 120
+SERVER_WAIT_MS  = 10_000
+EXEC_POLL_S     = 2      # seconds between execution status polls
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ── Stage 1 validator (copied from validate_graph.py) ─────────────────────────
+
+class GraphValidator:
+    """
+    Validates a .grf XML string against the CloverDX graph schema rules.
+    Returns lists of errors and warnings.
+    """
+
+    VALID_FIELD_TYPES     = {"string", "integer", "long", "number", "decimal",
+                              "date", "boolean", "byte", "cbyte", "variant"}
+    VALID_RECORD_TYPES    = {"delimited", "fixed", "mixed"}
+    VALID_CONTAINER_TYPES = {"list", "map"}
+    VALID_ENABLED_VALUES  = {"enabled", "disabled", "passThrough"}
+
+    def __init__(self, xml_text: str):
+        self._xml     = xml_text
+        self.errors   = []
+        self.warnings = []
+
+    def _err(self, msg):  self.errors.append(msg)
+    def _warn(self, msg): self.warnings.append(msg)
+
+    def validate(self):
+        """Run all checks. Returns (errors: list[str], warnings: list[str])."""
+        try:
+            root = ET.fromstring(self._xml)
+        except ET.ParseError as e:
+            self._err(f"XML is not well-formed: {e}")
+            return self.errors, self.warnings
+
+        self._check_graph_root(root)
+
+        global_el = root.find("Global")
+        if global_el is not None:
+            self._check_graph_parameters(global_el)
+            for meta in global_el.findall("Metadata"):
+                self._check_metadata(meta)
+
+        return self.errors, self.warnings
+
+    def _check_graph_root(self, root):
+        tag = root.tag.split("}")[-1] if "}" in root.tag else root.tag
+        if tag != "Graph":
+            self._err(f"Root element must be <Graph>, found <{tag}>")
+            return
+        for attr in ("id", "name"):
+            if not root.get(attr):
+                self._warn(f"<Graph> is missing recommended attribute '{attr}'")
+        if root.find("Global") is None:
+            self._err("<Graph> is missing required <Global> section")
+        phases = root.findall("Phase")
+        if not phases:
+            self._warn("<Graph> has no <Phase> elements")
+        prev_number = -1
+        for phase in phases:
+            num_str = phase.get("number")
+            if num_str is None:
+                self._err("<Phase> is missing required 'number' attribute")
+            else:
+                try:
+                    n = int(num_str)
+                    if n < prev_number:
+                        self._err(f"<Phase number='{n}'> is out of order (previous was {prev_number})")
+                    prev_number = n
+                except ValueError:
+                    self._err(f"<Phase> 'number' must be an integer, got '{num_str}'")
+            for node in phase.findall("Node"):
+                self._check_node(node)
+            for edge in phase.findall("Edge"):
+                self._check_edge(edge)
+
+    def _check_node(self, node):
+        nid = node.get("id", "(unknown)")
+        if not node.get("id"):
+            self._err("<Node> is missing required 'id' attribute")
+        if not node.get("type"):
+            self._err(f"<Node id='{nid}'> is missing required 'type' attribute")
+        enabled = node.get("enabled")
+        if enabled and enabled not in self.VALID_ENABLED_VALUES:
+            self._warn(f"<Node id='{nid}'> has unknown 'enabled' value '{enabled}'")
+
+    def _check_edge(self, edge):
+        eid = edge.get("id", "(unknown)")
+        if not edge.get("id"):
+            self._err("<Edge> is missing required 'id' attribute")
+        for attr in ("fromNode", "toNode"):
+            val = edge.get(attr)
+            if not val:
+                self._err(f"<Edge id='{eid}'> is missing required '{attr}' attribute")
+            elif ":" not in val:
+                self._err(f"<Edge id='{eid}'> '{attr}' must be 'NodeID:portNumber', got '{val}'")
+
+    def _check_graph_parameters(self, global_el):
+        params_el = global_el.find("GraphParameters")
+        if params_el is None:
+            return
+        for child in params_el:
+            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if tag == "GraphParameter":
+                if child.get("fileURL"):
+                    self._err("<GraphParameter> must not have 'fileURL' — use <GraphParameterFile fileURL='...'> instead")
+                if not child.get("name"):
+                    self._err("<GraphParameter> is missing required 'name' attribute")
+                elif child.get("name") == "":
+                    self._err("<GraphParameter> has an empty 'name' attribute")
+
+    def _check_metadata(self, meta):
+        mid = meta.get("id", "(unknown)")
+        if not meta.get("id"):
+            self._err("<Metadata> is missing required 'id' attribute")
+        if meta.get("fileURL"):
+            return
+        records = meta.findall("Record")
+        if not records:
+            self._err(f"<Metadata id='{mid}'> has no <Record> child (and no fileURL)")
+            return
+        if len(records) > 1:
+            self._err(f"<Metadata id='{mid}'> has {len(records)} <Record> elements; expected 1")
+        for record in records:
+            self._check_record(mid, record)
+
+    def _check_record(self, mid, record):
+        rname    = record.get("name",  "(unnamed)")
+        rec_type = record.get("type")
+        ctx      = f"<Metadata id='{mid}'> <Record name='{rname}'>"
+        if not record.get("name"):
+            self._err(f"{ctx} is missing required 'name' attribute")
+        if not rec_type:
+            self._err(f"{ctx} is missing required 'type' attribute")
+        elif rec_type not in self.VALID_RECORD_TYPES:
+            self._err(f"{ctx} has invalid type '{rec_type}' (must be one of: {', '.join(sorted(self.VALID_RECORD_TYPES))})")
+        fields = record.findall("Field")
+        if not fields:
+            self._warn(f"{ctx} has no <Field> children")
+        seen_names: set = set()
+        for field in fields:
+            self._check_field(mid, rname, rec_type or "delimited", field, seen_names)
+
+    def _check_field(self, mid, rname, rec_type, field, seen_names):
+        fname = field.get("name")
+        ftype = field.get("type")
+        ctx   = f"<Metadata id='{mid}'> <Record name='{rname}'> <Field name='{fname or '?'}'>"
+        if not fname:
+            self._err(f"<Metadata id='{mid}'> <Record name='{rname}'> <Field> is missing required 'name' attribute")
+            fname = "(unknown)"
+        elif fname in seen_names:
+            self._err(f"{ctx} duplicate field name '{fname}'")
+        else:
+            seen_names.add(fname)
+        if not ftype:
+            self._err(f"{ctx} is missing required 'type' attribute")
+            return
+        if ftype not in self.VALID_FIELD_TYPES:
+            self._err(f"{ctx} has invalid type '{ftype}' (valid: {', '.join(sorted(self.VALID_FIELD_TYPES))})")
+        container = field.get("containerType")
+        if container and container not in self.VALID_CONTAINER_TYPES:
+            self._err(f"{ctx} has invalid containerType '{container}' (must be 'list' or 'map')")
+        if ftype == "decimal":
+            for attr in ("length", "scale"):
+                val = field.get(attr)
+                if val is not None:
+                    try:
+                        int(val)
+                    except ValueError:
+                        self._err(f"{ctx} decimal attribute '{attr}' must be an integer, got '{val}'")
+        if rec_type == "fixed" and not field.get("size"):
+            self._warn(f"{ctx} in a 'fixed' record is missing 'size' attribute")
+
+
+# ── SOAP Client ────────────────────────────────────────────────────────────────
+
+class CloverDXSoapClient:
+    """
+    Lazy-initialised SOAP client for CloverDX Server WebServices.
+    Handles login, session token reuse, and automatic re-login on expiry.
+    """
+
+    # Proactively re-login after this many idle seconds (default 25 min,
+    # comfortably inside the typical 30-min server-side session timeout).
+    _SESSION_TIMEOUT_S: int = int(os.getenv("CLOVERDX_SESSION_TIMEOUT", "1500"))
+
+    def __init__(self, base_url: str, username: str, password: str, verify_ssl: bool = False):
+        parsed   = urlparse(base_url.rstrip("/"))
+        scheme   = parsed.scheme or "http"
+        host     = parsed.hostname
+        port     = parsed.port or (443 if scheme == "https" else 8083)
+        self._wsdl_url  = f"{scheme}://{host}:{port}/clover/webservice?wsdl"
+        self._rest_base = f"{scheme}://{host}:{port}/clover/api/rest/v1"
+        self._username  = username
+        self._password  = password
+        self._verify_ssl = verify_ssl
+        self._token: Optional[str] = None
+        self._last_activity: float = 0.0   # epoch time of last successful SOAP call
+        self._client    = None
+        self._svc       = None
+
+    # ── Lazy init ──────────────────────────────────────────────────────────
+
+    def _init_client(self):
+        if self._client is not None:
+            return
+        session        = requests.Session()
+        session.auth   = (self._username, self._password)
+        session.verify = self._verify_ssl
+        self._client   = Client(wsdl=self._wsdl_url, transport=Transport(session=session))
+        self._svc      = self._client.service
+
+    # ── Auth ───────────────────────────────────────────────────────────────
+
+    def login(self) -> str:
+        self._init_client()
+        ops      = sorted(op for op in dir(self._svc) if not op.startswith("_"))
+        login_op = next((op for op in ops if op.lower() == "login"), None)
+        if login_op is None:
+            logger.info("No Login operation in WSDL — using HTTP Basic Auth only.")
+            self._token = ""
+            return ""
+        resp = getattr(self._svc, login_op)(
+            username=self._username, password=self._password, locale="en"
+        )
+        token = (getattr(resp, "sessionToken", None)
+                 or getattr(resp, "return_",    None)
+                 or getattr(resp, "token",      None)
+                 or str(resp))
+        self._token = token
+        self._last_activity = time.time()
+        logger.info("Logged in to CloverDX server.")
+        return token
+
+    def logout(self):
+        if self._token and self._svc:
+            try:
+                ops      = sorted(op for op in dir(self._svc) if not op.startswith("_"))
+                logout_op = next((op for op in ops if op.lower() == "logout"), None)
+                if logout_op:
+                    getattr(self._svc, logout_op)(sessionToken=self._token)
+                    logger.info("Logged out from CloverDX server.")
+            except Exception as e:
+                logger.warning(f"Logout failed (ignoring): {e}")
+        self._token = None
+
+    def _ensure_logged_in(self):
+        self._init_client()
+        if self._token is None:
+            self.login()
+        elif time.time() - self._last_activity > self._SESSION_TIMEOUT_S:
+            logger.info("Session idle >%ds — proactively re-logging in.", self._SESSION_TIMEOUT_S)
+            self._token = None
+            self.login()
+
+    # ── Internal call with re-login retry ─────────────────────────────────
+
+    def _call(self, op_name: str, **kwargs):
+        self._ensure_logged_in()
+        if self._token:
+            kwargs["sessionToken"] = self._token
+        try:
+            result = getattr(self._svc, op_name)(**kwargs)
+            self._last_activity = time.time()
+            return result
+        except Exception as e:
+            err_str = str(e).lower()
+            if any(phrase in err_str for phrase in ("invalid session", "session expired",
+                                                     "not authenticated", "sessiontoken")):
+                logger.info("Session expired — re-logging in.")
+                self._token = None
+                self.login()
+                if self._token:
+                    kwargs["sessionToken"] = self._token
+                return getattr(self._svc, op_name)(**kwargs)
+            raise
+
+    # ── File helpers ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _decode_content(raw) -> str:
+        content = getattr(raw, "fileContent", raw)
+        if isinstance(content, (bytes, bytearray)):
+            return content.decode("utf-8")
+        if isinstance(content, str):
+            try:
+                return base64.b64decode(content).decode("utf-8")
+            except Exception:
+                return content
+        raise RuntimeError(f"Unexpected file content type: {type(content)}")
+
+    def download_file(self, sandbox: str, path: str) -> str:
+        resp = self._call("DownloadFileContent", sandboxCode=sandbox, filePath=path)
+        return self._decode_content(resp)
+
+    def upload_file(self, sandbox: str, dir_path: str, filename: str, content: str):
+        content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        full_path = f"{dir_path.rstrip('/')}/{filename}"
+        try:
+            self._call("UploadFileContent",
+                       sandboxCode=sandbox,
+                       filePath=full_path,
+                       content=content_b64)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "not found" in err_str or "does not exist" in err_str or "no such" in err_str:
+                # File doesn't exist yet — create it first, then upload
+                self._call("CreateSandboxFile",
+                           sandboxCode=sandbox,
+                           filePath=full_path)
+                self._call("UploadFileContent",
+                           sandboxCode=sandbox,
+                           filePath=full_path,
+                           content=content_b64)
+            else:
+                raise
+
+    def copy_file(self, source_sandbox: str, source_path: str, dest_sandbox: str, dest_path: str):
+        if not os.path.basename(dest_path):
+            raise ValueError(f"Destination path must include a filename: '{dest_path}'")
+        self._call(
+            "CopySandboxFile",
+            sourceSandboxCode=source_sandbox,
+            sourceFilePath=source_path,
+            targetSandboxCode=dest_sandbox,
+            targetFilePath=dest_path,
+        )
+
+    def rename_file(self, sandbox: str, path: str, new_name: str):
+        if not new_name or os.sep in new_name or "/" in new_name:
+            raise ValueError(f"new_name must be a plain filename with no path separators: '{new_name}'")
+        self._call(
+            "RenameSandboxFile",
+            sandboxCode=sandbox,
+            path=path,
+            newName=new_name,
+        )
+
+    @staticmethod
+    def _ws_properties_to_dict(raw: Any) -> Dict[str, str]:
+        serialized = zeep_helpers.serialize_object(raw, target_cls=dict)
+        result: Dict[str, str] = {}
+
+        def _collect(obj: Any):
+            if isinstance(obj, dict):
+                key = obj.get("key")
+                if key is not None:
+                    value = obj.get("value")
+                    result[str(key)] = "" if value is None else str(value)
+                for value in obj.values():
+                    _collect(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    _collect(item)
+
+        _collect(serialized)
+        return result
+
+    def get_defaults(self) -> Dict[str, str]:
+        resp = self._call("GetDefaults")
+        return self._ws_properties_to_dict(resp)
+
+    def get_system_properties(self) -> Dict[str, str]:
+        resp = self._call("GetSystemProperties")
+        return self._ws_properties_to_dict(resp)
+
+    def list_files(self, sandbox: str, path: str, folder_only: bool = False) -> List[Dict]:
+        resp = self._call("ListFiles",
+                          sandboxCode=sandbox,
+                          folderPath=path)
+        raw  = zeep_helpers.serialize_object(resp, target_cls=dict)
+        # Flatten whatever structure zeep returns into a simple list of dicts
+        items = []
+        if isinstance(raw, list):
+            items = raw
+        elif isinstance(raw, dict):
+            for val in raw.values():
+                if isinstance(val, list):
+                    items = val
+                    break
+        result = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            entry = {k: v for k, v in item.items() if v is not None}
+            # Client-side folder filtering (WSDL has no folderOnly param)
+            if folder_only and not entry.get("isFolder", False):
+                continue
+            result.append(entry)
+        return result
+
+    def find_files(self, sandbox: str, pattern: str, path: str = "") -> List[Dict]:
+        """Find files in a sandbox using shell-style wildcards.
+
+        The WSDL does not expose a dedicated find operation, so this walks the
+        sandbox tree using ListFiles and applies fnmatch filtering locally.
+        Matching is performed against both the file name and sandbox-relative path.
+        """
+        matches: List[Dict] = []
+        visited: set[str] = set()
+
+        def _join(folder: str, name: str) -> str:
+            if not folder:
+                return name
+            return f"{folder.rstrip('/')}/{name}".lstrip("/")
+
+        def _walk(folder: str):
+            normalized = folder.strip("/")
+            if normalized in visited:
+                return
+            visited.add(normalized)
+
+            for item in self.list_files(sandbox=sandbox, path=normalized, folder_only=False):
+                if not isinstance(item, dict):
+                    continue
+
+                name = str(item.get("name") or item.get("fileName") or "")
+                raw_path = str(item.get("path") or item.get("filePath") or "")
+                is_folder = bool(item.get("isFolder") or item.get("folder"))
+                relative_path = raw_path.lstrip("/") if raw_path else _join(normalized, name)
+
+                if is_folder:
+                    _walk(relative_path or _join(normalized, name))
+                    continue
+
+                if fnmatch.fnmatch(name, pattern) or fnmatch.fnmatch(relative_path, pattern):
+                    entry = {k: v for k, v in item.items() if v is not None}
+                    if "path" not in entry and relative_path:
+                        entry["path"] = relative_path
+                    matches.append(entry)
+
+        _walk(path)
+        return matches
+
+    def delete_file(self, sandbox: str, path: str):
+        self._call("DeleteFile", sandboxCode=sandbox, filePath=path)
+
+    # ── Sandboxes ──────────────────────────────────────────────────────────
+
+    def get_sandboxes(self) -> List[Dict]:
+        resp = self._call("GetSandboxes")
+        raw  = zeep_helpers.serialize_object(resp, target_cls=dict)
+        items = []
+        if isinstance(raw, list):
+            items = raw
+        elif isinstance(raw, dict):
+            for val in raw.values():
+                if isinstance(val, list):
+                    items = val
+                    break
+                if isinstance(val, dict):
+                    items = [val]
+                    break
+        result = []
+        for item in items:
+            if isinstance(item, dict):
+                result.append({
+                    "code":        item.get("code", ""),
+                    "name":        item.get("name", ""),
+                    "description": item.get("description", ""),
+                })
+        return result
+
+    # ── checkConfig ────────────────────────────────────────────────────────
+
+    def start_check_config(self, sandbox: str, graph_path: str) -> int:
+        resp = self._call("StartCheckConfigOperation",
+                          sandboxCode=sandbox, graphPath=graph_path)
+        return resp if isinstance(resp, int) else int(
+            getattr(resp, "return_", getattr(resp, "handle", resp))
+        )
+
+    def poll_check_config(self, handle: int, timeout_s: int = POLL_TIMEOUT_S):
+        deadline = time.time() + timeout_s
+        while True:
+            resp = self._call("GetCheckConfigOperationResult",
+                              handle=handle, timeout=SERVER_WAIT_MS)
+            if getattr(resp, "aborted",       False):
+                return resp
+            if not getattr(resp, "timeoutExpired", True):
+                return resp
+            if time.time() > deadline:
+                try:
+                    self._call("AbortCheckConfigOperation", handle=handle)
+                except Exception:
+                    pass
+                raise TimeoutError(f"checkConfig timed out after {timeout_s}s")
+
+    def extract_problems(self, poll_result) -> List[Dict]:
+        result_dict = zeep_helpers.serialize_object(poll_result, target_cls=dict)
+        problems = []
+        for item in (result_dict.get("_value_1") or []):
+            p = item.get("problems") if isinstance(item, dict) else None
+            if not p:
+                continue
+            for entry in (p if isinstance(p, list) else [p]):
+                if isinstance(entry, dict) and entry:
+                    problems.append({
+                        "severity":      entry.get("severity",      ""),
+                        "priority":      entry.get("priority",      ""),
+                        "elementID":     entry.get("elementID",     ""),
+                        "attributeName": entry.get("attributeName", ""),
+                        "message":       entry.get("message",       ""),
+                    })
+        return problems
+
+    # ── Graph execution ────────────────────────────────────────────────────
+
+    def execute_graph(self, sandbox: str, graph_path: str,
+                      params: Optional[Dict[str, str]] = None,
+                      debug: bool = False) -> str:
+        kwargs: Dict[str, Any] = dict(sandboxCode=sandbox, graphPath=graph_path,
+                                      debugEnabled=debug)
+        if params:
+            kwargs["graphProperties"] = {
+                "properties": [{"key": k, "value": v} for k, v in params.items()]
+            }
+        resp = self._call("ExecuteGraph", **kwargs)
+        run_id = (getattr(resp, "runID",   None)
+                  or getattr(resp, "runId",   None)
+                  or getattr(resp, "return_", None)
+                  or str(resp))
+        return str(run_id)
+
+    def poll_execution_status(self, run_id: str,
+                              timeout_s: int = POLL_TIMEOUT_S) -> Dict:
+        start = time.time()
+        # The WSDL supports server-side waiting via waitForStatus + waitTimeout
+        resp = self._call("GetGraphExecutionStatus",
+                          runID=int(run_id),
+                          waitForStatus="FINISHED_OK",
+                          waitTimeout=timeout_s * 1000)
+        raw    = zeep_helpers.serialize_object(resp, target_cls=dict)
+        status = str(raw.get("status") or raw.get("runStatus") or "UNKNOWN").upper()
+        return {"run_id": run_id, "status": status,
+                "elapsed_seconds": round(time.time() - start, 1)}
+
+    @staticmethod
+    def _to_unix_seconds(value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.timestamp()
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+            except Exception:
+                return None
+        return None
+
+    def get_graph_run_status(self, run_id: str) -> Dict[str, Any]:
+        try:
+            resp = self._call("GetJobExecutionStatus", runID=int(run_id))
+        except Exception:
+            resp = self._call("GetGraphExecutionStatus", runID=int(run_id))
+
+        raw = zeep_helpers.serialize_object(resp, target_cls=dict)
+        status_obj = raw.get("out") if isinstance(raw, dict) and isinstance(raw.get("out"), dict) else raw
+        if not isinstance(status_obj, dict):
+            raise RuntimeError(f"Unexpected status response for run {run_id}: {status_obj!r}")
+
+        raw_status = str(status_obj.get("status") or "UNKNOWN").upper()
+        status_map = {
+            "RUNNING": "RUNNING",
+            "WAITING": "WAITING",
+            "FINISHED_OK": "SUCCESS",
+            "ERROR": "FAILED",
+            "ABORTED": "ABORTED",
+        }
+        normalized_status = status_map.get(raw_status, raw_status)
+
+        start_ts = self._to_unix_seconds(status_obj.get("startTime") or status_obj.get("submitTime"))
+        stop_ts = self._to_unix_seconds(status_obj.get("stopTime"))
+        now_ts = time.time()
+        elapsed_seconds: Optional[float] = None
+        if start_ts is not None:
+            end_ts = stop_ts if stop_ts is not None else now_ts
+            elapsed_seconds = round(max(0.0, end_ts - start_ts), 1)
+
+        result: Dict[str, Any] = {
+            "run_id": str(status_obj.get("runId") or run_id),
+            "status": normalized_status,
+            "raw_status": raw_status,
+            "start_time": status_obj.get("startTime"),
+            "stop_time": status_obj.get("stopTime"),
+            "elapsed_seconds": elapsed_seconds,
+            "error_message": status_obj.get("errMessage") or None,
+            "error_node_id": status_obj.get("errNodeId") or None,
+            "error_node_type": status_obj.get("errNodeType") or None,
+            "sandbox_id": status_obj.get("sandboxId") or None,
+            "graph_id": status_obj.get("graphId") or None,
+        }
+
+        if normalized_status == "RUNNING":
+            try:
+                tracking_resp = self._call("GetGraphTracking", runID=int(run_id))
+                tracking_raw = zeep_helpers.serialize_object(tracking_resp, target_cls=dict)
+                hierarchy = tracking_raw.get("out") if isinstance(tracking_raw, dict) else tracking_raw
+                root = hierarchy.get("rootTracking") if isinstance(hierarchy, dict) else None
+                phases = root.get("phaseTracking") if isinstance(root, dict) else None
+                phase_numbers: List[int] = []
+                for phase in (phases or []):
+                    if not isinstance(phase, dict):
+                        continue
+                    number = phase.get("phaseNumber")
+                    if number is None:
+                        continue
+                    try:
+                        phase_numbers.append(int(str(number)))
+                    except Exception:
+                        continue
+                result["current_phase_number"] = max(phase_numbers) if phase_numbers else None
+            except Exception:
+                result["current_phase_number"] = None
+
+        return result
+
+    # ── REST helpers ───────────────────────────────────────────────────────
+
+    def _rest_get(self, path: str, params: Optional[Dict] = None) -> Any:
+        """Make an authenticated GET to the CloverDX REST API."""
+        self._init_client()  # ensure session / auth is initialised
+        url = self._rest_base + path
+        resp = self._client.transport.session.get(
+            url,
+            params=params,
+            headers={"X-Requested-By": "mcp"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_graph_runs(
+        self,
+        sandbox: Optional[str] = None,
+        job_file: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 25,
+        start_index: int = 0,
+    ) -> Dict[str, Any]:
+        """Return recent graph executions from the REST /executions endpoint."""
+        params: Dict[str, Any] = {"pageSize": limit, "startIndex": start_index}
+        if sandbox:
+            params["sandboxCode"] = sandbox
+        if job_file:
+            params["jobFile"] = job_file
+        if status:
+            params["status"] = status
+
+        data = self._rest_get("/executions", params)
+        total = data.get("@totalItems", 0)
+        members = data.get("members") or []
+
+        runs = []
+        for item in members:
+            run: Dict[str, Any] = {
+                "run_id":          str(item.get("runId", "")),
+                "sandbox":         item.get("sandboxCode", ""),
+                "job_file":        item.get("jobFile", ""),
+                "job_type":        item.get("jobType", ""),
+                "status":          item.get("status", ""),
+                "submit_time":     item.get("submitTime"),
+                "start_time":      item.get("startTime"),
+                "stop_time":       item.get("stopTime"),
+                "duration_ms":     item.get("duration"),
+                "duration_string": item.get("durationString", ""),
+                "username":        item.get("username", ""),
+            }
+            err = item.get("jobError")
+            if err:
+                run["error"] = {
+                    "component_id": err.get("componentId", ""),
+                    "message":      err.get("message", ""),
+                }
+            runs.append(run)
+
+        return {"total": total, "returned": len(runs), "runs": runs}
+
+    def get_execution_log(self, run_id: str) -> str:
+        resp = self._call("GetGraphExecutionLog", runID=int(run_id), offset=0)
+        raw  = getattr(resp, "log", None) or getattr(resp, "return_", None) or resp
+        if isinstance(raw, (bytes, bytearray)):
+            return raw.decode("utf-8")
+        if isinstance(raw, str):
+            try:
+                return base64.b64decode(raw).decode("utf-8")
+            except Exception:
+                return raw
+        return str(raw)
+
+    # ── Graph tracking ─────────────────────────────────────────────────────
+
+    def get_graph_tracking(self, run_id: str) -> str:
+        resp = self._call("GetGraphTracking", runID=int(run_id))
+        raw  = zeep_helpers.serialize_object(resp, target_cls=dict)
+
+        lines = []
+        # resp has an 'out' key containing GraphTrackingHierarchy
+        hierarchy = raw.get("out") or raw
+        if isinstance(hierarchy, dict):
+            root = hierarchy.get("rootTracking") or hierarchy
+        else:
+            root = raw
+
+        def _ms(val):
+            if val is None: return ""
+            try: return f"{int(val)/1000:.1f}s"
+            except Exception: return str(val)
+
+        def _fmt_bytes(val):
+            if not val: return "0 B"
+            try:
+                v = int(val)
+                if v >= 1_048_576: return f"{v/1_048_576:.1f} MB"
+                if v >= 1024:      return f"{v/1024:.1f} KB"
+                return f"{v} B"
+            except Exception: return str(val)
+
+        def render_tracking(t, indent=0):
+            if not isinstance(t, dict):
+                return
+            pad = "  " * indent
+            status  = t.get("finalStatus", "")
+            exec_ms = t.get("execTime")
+            run_id_ = t.get("runId") or t.get("runID") or ""
+            if run_id_:
+                lines.append(f"Graph run {run_id_}  status={status}  exec={_ms(exec_ms)}")
+            for phase in (t.get("phaseTracking") or []):
+                if not isinstance(phase, dict): continue
+                pn  = phase.get("phaseNumber", "?")
+                pet = phase.get("execTime")
+                lines.append(f"{pad}  Phase {pn}  ({_ms(pet)})")
+                for node in (phase.get("nodeTracking") or []):
+                    if not isinstance(node, dict): continue
+                    nid   = node.get("nodeId", "")
+                    nname = node.get("nodeName", "")
+                    ntype = node.get("nodeType", "")
+                    nres  = node.get("result", "")
+                    ncpu  = node.get("totalCpuTime")
+                    label = nname or nid
+                    lines.append(f"{pad}    [{ntype}] {label}  cpu={_ms(ncpu)}  result={nres}")
+                    for port in (node.get("portTracking") or []):
+                        if not isinstance(port, dict): continue
+                        ptype = port.get("portType", "")
+                        pidx  = port.get("index", "?")
+                        recs  = port.get("totalRecords") or port.get("recordFlow", 0)
+                        byts  = port.get("totalBytes")   or port.get("byteFlow", 0)
+                        lines.append(f"{pad}      {ptype}[{pidx}]: {recs} records  {_fmt_bytes(byts)}")
+
+        render_tracking(root)
+        return "\n".join(lines) if lines else str(raw)
+
+    # ── Edge debug data ────────────────────────────────────────────────────
+
+    def get_edge_debug_info(self, sandbox: str, graph_path: str,
+                            run_id: str, edge_id: str,
+                            retries: int = 3, retry_delay: float = 2.0) -> List[Dict]:
+        # NOTE: edgeId must be a specific edge ID — empty string returns nothing.
+        # Debug files are written asynchronously; retry briefly if not yet available.
+        for attempt in range(retries):
+            resp = self._call("GetEdgeDebugInfoList",
+                              sandboxCode=sandbox, graphPath=graph_path,
+                              runId=int(run_id), edgeId=edge_id)
+            raw = zeep_helpers.serialize_object(resp, target_cls=dict)
+            if isinstance(raw, list):
+                items = raw
+            elif isinstance(raw, dict):
+                items = raw.get("items") or []
+                if isinstance(items, dict):
+                    items = [items]
+            else:
+                items = []
+            result = [i for i in items if isinstance(i, dict)]
+            if result:
+                return result
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+        return []
+
+    def get_edge_debug_metadata(self, sandbox: str, graph_path: str,
+                                run_id: str, edge_id: str) -> str:
+        info_list = self.get_edge_debug_info(sandbox, graph_path, run_id, edge_id)
+        if not info_list:
+            return f"No edge debug info found for edge '{edge_id}' in run {run_id}."
+        resp = self._call("GetEdgeDebugMetadata", edgeDebugInfo=info_list[0])
+        raw  = zeep_helpers.serialize_object(resp, target_cls=dict)
+        # zeep may return the metadata string directly or wrapped in a dict
+        if isinstance(raw, str):
+            return raw
+        return raw.get("metadata") or str(raw)
+
+    @staticmethod
+    def _clvi_record_count(data: bytes) -> Optional[int]:
+        """Extract the record count from the CLVI binary footer written by CloverDX.
+        The first 4-byte big-endian int immediately after the CLVI magic equals the
+        number of records present in this response chunk."""
+        idx = data.find(b"CLVI")
+        if idx < 0 or idx + 8 > len(data):
+            return None
+        count = struct.unpack_from(">I", data, idx + 4)[0]
+        return count if count >= 0 else None
+
+    def get_edge_debug_data(self, sandbox: str, graph_path: str,
+                            run_id: str, edge_id: str,
+                            start_record: int = 0,
+                            record_count: int = 100,
+                            filter_expression: str = "",
+                            field_selection: Optional[List[str]] = None) -> str:
+        # filterExpression must be valid CTL2 returning a boolean.
+        # An empty/absent expression means "no filter" → return true for every record.
+        # Always prepend //#CTL2 so the server doesn't try to compile it as legacy CTL1.
+        expr = filter_expression.strip() if filter_expression else ""
+        if not expr:
+            expr = "//#CTL2\ntrue"
+        elif not expr.startswith("//#CTL2"):
+            expr = "//#CTL2\n" + expr
+        resp = self._call("GetEdgeDebugData",
+                          sandboxCode=sandbox,
+                          graphPath=graph_path,
+                          writerRunId=int(run_id),
+                          readerRunId=int(run_id),
+                          edgeID=edge_id,
+                          startRecord=start_record,
+                          recordCount=record_count,
+                          filterExpression=expr,
+                          fieldSelection=field_selection or [])
+        raw = getattr(resp, "out", None) or getattr(resp, "return_", None) or resp
+
+        # Normalise to bytes
+        if isinstance(raw, (bytes, bytearray)):
+            data = bytes(raw)
+        elif isinstance(raw, str):
+            try:
+                data = base64.b64decode(raw)
+            except Exception:
+                return raw          # plain-text error from server
+        else:
+            return str(raw)
+
+        # Try to read the record count from the CLVI binary footer
+        n_returned = self._clvi_record_count(data)
+        count_info = f"{n_returned:,} record(s) returned" if n_returned is not None else "record count unavailable"
+        has_more   = (n_returned is not None and n_returned >= record_count)
+        more_info  = (f" (there may be more — re-call with start_record={start_record + n_returned})"
+                      if has_more else " (all captured records returned)")
+
+        return (
+            f"Edge debug data for '{edge_id}' (run {run_id}): {count_info}{more_info}.\n"
+            f"Payload is CloverDX binary (CLVI format, {len(data):,} bytes) — "
+            f"not human-readable directly. Use get_edge_debug_metadata to inspect the field schema."
+        )
+
+
+# ── Component Catalog ──────────────────────────────────────────────────────────
+
+class ComponentCatalog:
+    """In-memory index over components.json."""
+
+    def __init__(self, json_path: str):
+        self._path       = json_path
+        self._components: List[Dict] = []
+        self._by_type:    Dict[str, Dict] = {}
+        self._by_name_lower: Dict[str, Dict] = {}
+        self._by_category:   Dict[str, List[Dict]] = {}
+
+    def load(self):
+        with open(self._path, encoding="utf-8") as f:
+            self._components = json.load(f)
+        for comp in self._components:
+            t = (comp.get("type") or "").upper()
+            n = (comp.get("name") or "").lower()
+            c = (comp.get("category") or "").lower()
+            if t:
+                self._by_type[t] = comp
+            if n:
+                self._by_name_lower[n] = comp
+            self._by_category.setdefault(c, []).append(comp)
+
+    def _is_deprecated(self, comp: Dict) -> bool:
+        return (comp.get("category") or "").lower() == "deprecated"
+
+    def search(self, query: str, include_deprecated: bool = False) -> List[Dict]:
+        q_upper = query.strip().upper()
+        q_lower = query.strip().lower()
+
+        # 1. Exact type match
+        if q_upper in self._by_type:
+            comp = self._by_type[q_upper]
+            if include_deprecated or not self._is_deprecated(comp):
+                return [comp]
+
+        # 2. Exact name match
+        if q_lower in self._by_name_lower:
+            comp = self._by_name_lower[q_lower]
+            if include_deprecated or not self._is_deprecated(comp):
+                return [comp]
+
+        # 3. Substring match
+        results = []
+        for comp in self._components:
+            if not include_deprecated and self._is_deprecated(comp):
+                continue
+            if (q_lower in (comp.get("type")  or "").lower() or
+                    q_lower in (comp.get("name") or "").lower()):
+                results.append(comp)
+            if len(results) >= 5:
+                break
+        return results
+
+    def list_by_category(self, category: Optional[str] = None) -> List[Dict]:
+        if category:
+            return [c for c in self._by_category.get(category.lower(), [])
+                    if not self._is_deprecated(c)]
+        return [c for c in self._components if not self._is_deprecated(c)]
+
+    @staticmethod
+    def format_component(comp: Dict) -> str:
+        """Format a single component for display."""
+        lines = [
+            f"Type:        {comp.get('type', '')}",
+            f"Name:        {comp.get('name', '')}",
+            f"Category:    {comp.get('category', '')}",
+            f"Description: {comp.get('description') or comp.get('shortDescription', '')}",
+            "",
+        ]
+
+        in_ports  = comp.get("inputPorts",  []) or []
+        out_ports = comp.get("outputPorts", []) or []
+        if in_ports:
+            lines.append("Input Ports:")
+            for p in in_ports:
+                req = "required" if p.get("required") else "optional"
+                lines.append(f"  [{p.get('name', '')}] {p.get('label', '')} ({req})")
+        if out_ports:
+            lines.append("Output Ports:")
+            for p in out_ports:
+                req = "required" if p.get("required") else "optional"
+                lines.append(f"  [{p.get('name', '')}] {p.get('label', '')} ({req})")
+
+        properties = comp.get("properties", []) or []
+        if properties:
+            lines.append("")
+            lines.append("Properties:")
+            for prop in properties:
+                req  = " *required*" if prop.get("required") else ""
+                dval = f"  (default: {prop['defaultValue']})" if prop.get("defaultValue") else ""
+                desc = (prop.get("description") or "")[:100]
+                lines.append(f"  {prop.get('name', '')}{req}: [{prop.get('type', '')}]{dval}  {desc}")
+                if prop.get("type") == "enum" and prop.get("values"):
+                    vals = ", ".join(v.get("value", "") for v in prop["values"] if isinstance(v, dict))
+                    lines.append(f"    values: {vals}")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def format_compact(comps: List[Dict]) -> str:
+        """Compact listing for multiple results."""
+        rows = ["Type                         | Name                        | Category    | Short Description"]
+        rows.append("-" * 100)
+        for c in comps:
+            rows.append(f"{c.get('type',''):<29}| {c.get('name',''):<29}| {c.get('category',''):<12}| "
+                        f"{(c.get('shortDescription') or '')[:50]}")
+        return "\n".join(rows)
+
+
+# ── comp_details scanner ───────────────────────────────────────────────────────
+
+def _scan_comp_details(comp_details_dir: str) -> Dict[str, str]:
+    """Return a dict mapping uppercase component type to its .md file path."""
+    result: Dict[str, str] = {}
+    if not os.path.isdir(comp_details_dir):
+        return result
+    for md_path in _glob.glob(os.path.join(comp_details_dir, "*.md")):
+        basename = os.path.splitext(os.path.basename(md_path))[0].upper()
+        result[basename] = md_path
+    return result
+
+
+# ── Graph parameter helpers ────────────────────────────────────────────────────
+
+def _parse_graph_params(xml_text: str):
+    """
+    Extract <GraphParameter> elements from graph XML.
+    Returns:
+      with_value : dict[name -> default_value]  — params that have a non-empty default
+      no_value   : list[name]                   — params with no default (must be supplied)
+    """
+    with_value: Dict[str, str] = {}
+    no_value:   List[str]      = []
+    try:
+        root      = ET.fromstring(xml_text)
+        global_el = root.find("Global")
+        if global_el is not None:
+            params_el = global_el.find("GraphParameters")
+            if params_el is not None:
+                for param in params_el.findall("GraphParameter"):
+                    name  = param.get("name")
+                    value = param.get("value")
+                    if not name:
+                        continue
+                    if value is not None and value != "":
+                        with_value[name] = value
+                    else:
+                        no_value.append(name)
+    except Exception:
+        pass
+    return with_value, no_value
+
+
+_PARAM_REF_RE = re.compile(r"\$\{([^}]+)\}")
+
+
+def _parse_workspace_prm_xml(xml_text: str) -> tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Parse workspace.prm XML in CloverDX GraphParameters format.
+    Returns:
+      params:       dict[name -> value]
+      descriptions: dict[name -> description text]
+    """
+    params: Dict[str, str] = {}
+    descriptions: Dict[str, str] = {}
+
+    root = ET.fromstring(xml_text)
+    for param in root.findall(".//GraphParameter"):
+        name = (param.get("name") or "").strip()
+        if not name:
+            continue
+        params[name] = str(param.get("value") or "")
+
+        for attr in param.findall("attr"):
+            if (attr.get("name") or "").strip() == "description":
+                desc = (attr.text or "").strip()
+                if desc:
+                    descriptions[name] = desc
+                break
+
+    return params, descriptions
+
+
+def _resolve_parameter_references(params: Dict[str, str], max_passes: int = 12) -> tuple[Dict[str, str], Dict[str, List[str]]]:
+    """
+    Resolve ${PARAM_NAME} references against provided parameter dictionary.
+    Returns:
+      resolved_params, unresolved_refs (param -> missing referenced names)
+    """
+    resolved = dict(params)
+
+    for _ in range(max_passes):
+        changed = False
+        for key, value in list(resolved.items()):
+            if not isinstance(value, str) or "${" not in value:
+                continue
+
+            def _replace(match: re.Match[str]) -> str:
+                ref_name = match.group(1)
+                ref_value = resolved.get(ref_name)
+                return str(ref_value) if ref_value is not None else match.group(0)
+
+            updated = _PARAM_REF_RE.sub(_replace, value)
+            if updated != value:
+                resolved[key] = updated
+                changed = True
+
+        if not changed:
+            break
+
+    unresolved: Dict[str, List[str]] = {}
+    for key, value in resolved.items():
+        if not isinstance(value, str):
+            continue
+        refs = [m.group(1) for m in _PARAM_REF_RE.finditer(value)]
+        if refs:
+            unresolved[key] = sorted(set(refs))
+
+    return resolved, unresolved
+
+
+# ── Singletons ─────────────────────────────────────────────────────────────────
+
+soap_client:       Optional[CloverDXSoapClient] = None
+component_catalog: Optional[ComponentCatalog]   = None
+_comp_details_map: Dict[str, str]               = {}
+_reference_cache:  Dict[str, str]               = {}
+
+
+def get_soap_client() -> CloverDXSoapClient:
+    if soap_client is None:
+        raise RuntimeError("SOAP client not initialized")
+    return soap_client
+
+
+def get_catalog() -> ComponentCatalog:
+    if component_catalog is None:
+        raise RuntimeError("Component catalog not initialized")
+    return component_catalog
+
+
+def _load_reference(uri_key: str, file_path: str) -> str:
+    if uri_key not in _reference_cache:
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                _reference_cache[uri_key] = f.read()
+        except FileNotFoundError:
+            _reference_cache[uri_key] = f"[Reference file not found: {file_path}]"
+    return _reference_cache[uri_key]
+
+
+# ── MCP Server ─────────────────────────────────────────────────────────────────
+
+app = Server(SERVER_NAME)
+
+# ── Resource Registry ─────────────────────────────────────────────────────────
+# Single source of truth for all exposed resources.  To add a new resource:
+#   1. Add an entry here (uri → name / description / mimeType).
+#   2. Handle its URI in handle_read_resource() below.
+# The list_resources *tool* reads this dict automatically, so the tool output
+# stays in sync with whatever is registered here.
+_RESOURCE_REGISTRY: Dict[str, Dict[str, str]] = {
+    "cloverdx://reference/graph-xml": {
+        "name":        "CloverDX Graph XML Reference",
+        "description": "Authoritative guide for creating CloverDX transformation graph XML (.grf files)",
+        "mimeType":    "text/markdown",
+    },
+    "cloverdx://reference/ctl2": {
+        "name":        "CloverDX CTL2 Transformation Language Reference",
+        "description": "Authoritative reference for CTL2, the scripting language used inside CloverDX transformations",
+        "mimeType":    "text/markdown",
+    },
+    # "cloverdx://reference/components": {
+    #     "name":        "CloverDX Component Catalog",
+    #     "description": "All available CloverDX component types with their ports and properties (non-deprecated)",
+    #     "mimeType":    "application/json",
+    # },
+}
+
+_WORKFLOW_GUIDE_FILES: Dict[str, str] = {
+    "create_graph": os.path.join(_SCRIPT_DIR, "resources/workflow_create_graph.md"),
+    "edit_graph": os.path.join(_SCRIPT_DIR, "resources/workflow_edit_graph.md"),
+    "validate_and_run": os.path.join(_SCRIPT_DIR, "resources/workflow_validate_and_run.md"),
+}
+
+# ── Resources ──────────────────────────────────────────────────────────────────
+
+@app.list_resources()
+async def handle_list_resources() -> List[types.Resource]:
+    from pydantic import AnyUrl
+    return [
+        types.Resource(
+            uri=AnyUrl(uri),
+            name=meta["name"],
+            description=meta["description"],
+            mimeType=meta["mimeType"],
+        )
+        for uri, meta in _RESOURCE_REGISTRY.items()
+    ]
+
+
+@app.read_resource()
+async def handle_read_resource(uri) -> str:
+    uri_str = str(uri)
+
+    if uri_str.endswith("graph-xml"):
+        return _load_reference(
+            "graph-xml",
+            os.path.join(_SCRIPT_DIR, "resources/cloverdx-llm-reference.md")
+        )
+
+    if uri_str.endswith("ctl2"):
+        return _load_reference(
+            "ctl2",
+            os.path.join(_SCRIPT_DIR, "resources/CTL2_Reference_for_LLM_compact.md")
+        )
+
+    if uri_str.endswith("components"):
+        cat    = get_catalog()
+        non_dep = [c for c in cat._components if not cat._is_deprecated(c)]
+        return json.dumps(non_dep, indent=2)
+
+    raise ValueError(f"Unknown resource URI: {uri_str}")
+
+
+# ── Tools ──────────────────────────────────────────────────────────────────────
+
+@app.list_tools()
+async def handle_list_tools() -> List[types.Tool]:
+    return [
+        # ── Sandbox / File tools ───────────────────────────────────────────
+        types.Tool(
+            name="list_sandboxes",
+            description="List all sandboxes (projects) available on the CloverDX server.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="list_files",
+            description=(
+                "List files and folders inside a directory within a CloverDX sandbox. "
+                "Use folder_only=true to list only subdirectories."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "path"],
+                "properties": {
+                    "sandbox":     {"type": "string", "description": "Sandbox code (e.g. MySandbox)"},
+                    "path":        {"type": "string", "description": "Directory path within the sandbox (e.g. 'graph', 'data/in')"},
+                    "folder_only": {"type": "boolean", "description": "List only subdirectories (default: false)"},
+                },
+            },
+        ),
+        types.Tool(
+            name="find_file",
+            description=(
+                "Find files in a CloverDX sandbox using shell-style wildcards. "
+                "Supports '*' and '?'. Searches recursively by listing files and filtering client-side."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "pattern"],
+                "properties": {
+                    "sandbox": {"type": "string", "description": "Sandbox code"},
+                    "pattern": {"type": "string", "description": "Wildcard pattern, for example '*.grf', 'graph/*.grf', or 'data/file?.csv'"},
+                    "path": {"type": "string", "description": "Optional starting directory within the sandbox (default: root)"},
+                },
+            },
+        ),
+        types.Tool(
+            name="list_linked_assets",
+            description=(
+                "Lists all linkable/externalised assets available in a CloverDX sandbox — "
+                "metadata definitions (.fmt), connection definitions (.cfg), lookup table "
+                "definitions (.lkp), CTL2 transformation files (.ctl), sequence files (.seq), "
+                "and parameter files (.prm). "
+                "Call this early during graph creation to discover reusable shared assets before "
+                "defining new ones inline, and to confirm the correct fileURL paths to reference "
+                "in the graph XML. "
+                "Optionally filter by asset type to narrow results."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "sandbox": {
+                        "type": "string",
+                        "description": "Sandbox code to inspect.",
+                    },
+                    "asset_type": {
+                        "type": "string",
+                        "enum": ["metadata", "connection", "lookup", "ctl", "sequence", "parameters", "all"],
+                        "description": (
+                            "Type of asset to list. "
+                            "'metadata' → .fmt files; "
+                            "'connection' → .cfg files; "
+                            "'lookup' → .lkp files; "
+                            "'ctl' → .ctl transformation files; "
+                            "'sequence' → .seq files; "
+                            "'parameters' → .prm files; "
+                            "'all' → all of the above (default)."
+                        ),
+                    },
+                },
+                "required": ["sandbox"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="get_sandbox_parameters",
+            description=(
+                "Returns best-effort resolved graph parameter values for a CloverDX sandbox by "
+                "reading workspace.prm and optionally overlaying server-side defaults/properties. "
+                "Use this before writing file paths into a graph to know what ${DATAIN_DIR}, "
+                "${DATAOUT_DIR}, ${CONN_DIR} and related parameters resolve to in this sandbox context. "
+                "Response includes source provenance and unresolved placeholders."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "sandbox": {
+                        "type": "string",
+                        "description": "Sandbox code to inspect.",
+                    },
+                    "workspace_param_path": {
+                        "type": "string",
+                        "description": "Path to workspace parameter file within sandbox (default: 'workspace.prm').",
+                    },
+                    "include_defaults": {
+                        "type": "boolean",
+                        "description": "Overlay values from GetDefaults operation (default: true).",
+                    },
+                    "include_system_properties": {
+                        "type": "boolean",
+                        "description": "Overlay matching keys from GetSystemProperties (default: true).",
+                    },
+                    "include_all_server_properties": {
+                        "type": "boolean",
+                        "description": "Include server properties not present in workspace.prm (default: false).",
+                    },
+                },
+                "required": ["sandbox"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="read_file",
+            description=(
+                "Read the content of a file from a CloverDX sandbox. "
+                "Use this to fetch .grf graph files, .fmt metadata files, .prm parameter files, etc."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "path"],
+                "properties": {
+                    "sandbox": {"type": "string", "description": "Sandbox code"},
+                    "path":    {"type": "string", "description": "Full file path within the sandbox (e.g. 'graph/MyGraph.grf')"},
+                },
+            },
+        ),
+        types.Tool(
+            name="rename_file",
+            description=(
+                "Renames a file within a CloverDX sandbox. "
+                "Only the filename changes — the file stays in the same directory. "
+                "To move a file to a different directory, use copy_file + delete_file."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "path", "new_name"],
+                "properties": {
+                    "sandbox": {
+                        "type": "string",
+                        "description": "Sandbox code containing the file.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Full current file path within the sandbox (e.g. 'graph/MyGraph.grf').",
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New filename only — no directory component (e.g. 'MyGraphV2.grf').",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="copy_file",
+            description=(
+                "Copies a file within a CloverDX sandbox, or from one sandbox to another. "
+                "Primary use: create a safe backup of a graph or any other file before making "
+                "significant edits. The copy overwrites the destination if it already exists. "
+                "Always copy a graph to a backup path (e.g. 'graph/MyGraph.bak.grf') before "
+                "a large edit so the original can be restored if patching corrupts the file."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "source_path": {
+                        "type": "string",
+                        "description": "Full source file path within the source sandbox (e.g. 'graph/MyGraph.grf').",
+                    },
+                    "source_sandbox": {
+                        "type": "string",
+                        "description": "Sandbox code containing the source file.",
+                    },
+                    "dest_path": {
+                        "type": "string",
+                        "description": (
+                            "Full destination file path (e.g. 'graph/MyGraph.bak.grf'). "
+                            "Directory must already exist."
+                        ),
+                    },
+                    "dest_sandbox": {
+                        "type": "string",
+                        "description": (
+                            "Sandbox code for the destination. "
+                            "Omit or set to the same value as source_sandbox for an intra-sandbox copy."
+                        ),
+                    },
+                },
+                "required": ["source_path", "source_sandbox", "dest_path"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="patch_file",
+            description=(
+                "Patch a file in a CloverDX sandbox using anchor-based replacements. "
+                "Each patch locates an anchor string, computes a line range from from_offset/to_offset, "
+                "checks for conflicts, and applies all replacements bottom-up. "
+                "Supports dry_run preview mode."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "path", "patches"],
+                "properties": {
+                    "sandbox": {"type": "string", "description": "Sandbox code"},
+                    "path": {"type": "string", "description": "Full file path within the sandbox (for example 'graph/MyGraph.grf')"},
+                    "dry_run": {"type": "boolean", "description": "Validate and preview patches without writing the file (default: false)"},
+                    "patches": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["anchor", "from_offset", "to_offset", "new_content"],
+                            "properties": {
+                                "anchor": {"type": "string", "description": "Unique substring used to locate the target line. Matching is trim-insensitive."},
+                                "from_offset": {"type": "integer", "description": "Line offset from anchor line to start of replacement"},
+                                "to_offset": {"type": "integer", "description": "Line offset from anchor line to end of replacement (inclusive)"},
+                                "new_content": {"type": "string", "description": "Replacement text. Empty string deletes the target range."},
+                                "anchor_occurrence": {"type": "integer", "description": "Optional 1-based occurrence index if anchor appears multiple times"},
+                            },
+                        },
+                    },
+                },
+            },
+        ),
+        types.Tool(
+            name="write_file",
+            description=(
+                "Write (create or overwrite) a file in a CloverDX sandbox. "
+                "Use this to save a new or modified graph, metadata file, or parameter file."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "path", "filename", "content"],
+                "properties": {
+                    "sandbox":  {"type": "string", "description": "Sandbox code"},
+                    "path":     {"type": "string", "description": "Directory path within the sandbox (e.g. 'graph')"},
+                    "filename": {"type": "string", "description": "File name including extension (e.g. 'MyGraph.grf')"},
+                    "content":  {"type": "string", "description": "Full file content as a UTF-8 string"},
+                },
+            },
+        ),
+        types.Tool(
+            name="delete_file",
+            description=(
+                "Delete a file from a CloverDX sandbox. "
+                "Use with caution — this is irreversible."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "path"],
+                "properties": {
+                    "sandbox": {"type": "string", "description": "Sandbox code"},
+                    "path":    {"type": "string", "description": "Full file path to delete (e.g. 'graph/OldGraph.grf')"},
+                },
+            },
+        ),
+
+        # ── Resource tools ─────────────────────────────────────────────────
+        types.Tool(
+            name="list_resources",
+            description=(
+                "List all resource URIs exposed by this MCP server, with their name, "
+                "description, and MIME type. "
+                "Use this to discover what reference material is available before "
+                "calling read_resource."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="read_resource",
+            description=(
+                "Fetch the full content of a resource by its URI. "
+                "Call list_resources first to see available URIs. "
+                "Examples: 'cloverdx://reference/graph-xml', "
+                "'cloverdx://reference/ctl2', 'cloverdx://reference/components'."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["uri"],
+                "properties": {
+                    "uri": {"type": "string", "description": "Resource URI (e.g. 'cloverdx://reference/graph-xml')"},
+                },
+            },
+        ),
+        types.Tool(
+            name="get_workflow_guide",
+            description=(
+                "Returns the authoritative step-by-step workflow guide for a given CloverDX task. "
+                "Always call this at the start of any CloverDX task before doing any work. "
+                "The guide contains mandatory phases, component selection rules, common error fixes, "
+                "and a checklist to verify the task is complete. "
+                "Available task types:\n"
+                "  - 'create_graph'      — Full guide for designing and creating a new graph from scratch. "
+                "Covers component selection, get_component_info/get_component_details usage, metadata design, "
+                "XML authoring rules (including nested CDATA escaping), and validation.\n"
+                "  - 'edit_graph'        — Guide for modifying an existing graph. "
+                "Covers read-before-edit discipline, patch vs rewrite decisions, re-read-between-patches rule, "
+                "and validation after every write.\n"
+                "  - 'validate_and_run'  — Guide for validating, executing, and verifying a graph. "
+                "Covers interpreting Stage 1/Stage 2 validation results, fixing common errors, "
+                "running the graph, and verifying results via tracking and execution log.\n"
+                "If no task is specified, returns the guide most appropriate for general graph work ('create_graph')."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "enum": ["create_graph", "edit_graph", "validate_and_run"],
+                        "description": (
+                            "The type of task being performed. "
+                            "'create_graph' for building a new graph from scratch; "
+                            "'edit_graph' for modifying an existing graph; "
+                            "'validate_and_run' for validating, executing, and verifying an existing graph. "
+                            "Defaults to 'create_graph' if omitted."
+                        ),
+                    }
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        ),
+
+        # ── Graph tools ────────────────────────────────────────────────────
+        types.Tool(
+            name="validate_graph",
+            description=(
+                "Validate a CloverDX graph in two stages:\n"
+                "  Stage 1 — Local XML structure + metadata check (fast, no extra server round-trip)\n"
+                "  Stage 2 — Server-side checkConfig (deep component check; only runs if Stage 1 passes)\n"
+                "The graph must already exist on the server — write it first with write_file.\n"
+                "IMPORTANT: The returned error list may not be exhaustive. Some errors block further "
+                "validation, so fixing reported issues and calling validate_graph again may reveal "
+                "additional problems. Repeat until validation returns no errors."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "graph_path"],
+                "properties": {
+                    "sandbox":    {"type": "string", "description": "Sandbox code"},
+                    "graph_path": {"type": "string", "description": "Path to the .grf file (e.g. 'graph/MyGraph.grf')"},
+                    "timeout_seconds": {"type": "integer", "description": "Max seconds to wait for checkConfig (default: 120)"},
+                },
+            },
+        ),
+        types.Tool(
+            name="execute_graph",
+            description=(
+                "Execute a CloverDX transformation graph on the server and wait for it to complete. "
+                "Returns the final status and elapsed time. "
+                "Use get_graph_execution_log to fetch detailed logs. "
+                "Use get_graph_tracking to see per-component record/byte counts. "
+                "Set debug=true to enable edge debug data capture (required for get_edge_debug_data)."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "graph_path"],
+                "properties": {
+                    "sandbox":    {"type": "string", "description": "Sandbox code"},
+                    "graph_path": {"type": "string", "description": "Path to the .grf file"},
+                    "params": {
+                        "type": "object",
+                        "description": "Optional graph parameter overrides as key-value pairs",
+                        "additionalProperties": {"type": "string"},
+                    },
+                    "debug":    {"type": "boolean", "description": "Enable edge debug data capture (default: false). Required to use get_edge_debug_data afterwards."},
+                    "timeout_seconds": {"type": "integer", "description": "Max seconds to wait for completion (default: 120)"},
+                },
+            },
+        ),
+        types.Tool(
+            name="list_graph_runs",
+            description=(
+                "List recent graph/jobflow executions from CloverDX Server. "
+                "Filter by sandbox, job_file (substring), or status. "
+                "Returns run_id, status, submit/start/stop times, duration, and error details. "
+                "Use this to find run IDs for get_graph_run_status, get_graph_execution_log, "
+                "or get_graph_tracking. "
+                "Statuses: N_A, ENQUEUED, READY, RUNNING, WAITING, FINISHED_OK, ERROR, ABORTED, TIMEOUT."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "sandbox": {
+                        "type": "string",
+                        "description": "Filter by sandbox code (exact match).",
+                    },
+                    "job_file": {
+                        "type": "string",
+                        "description": "Filter by job file path substring (e.g. 'GenerateData.grf').",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by execution status (e.g. 'FINISHED_OK', 'ERROR', 'RUNNING').",
+                        "enum": ["N_A", "ENQUEUED", "READY", "RUNNING", "WAITING",
+                                 "FINISHED_OK", "ERROR", "ABORTED", "TIMEOUT"],
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default: 25).",
+                        "default": 25,
+                    },
+                    "start_index": {
+                        "type": "integer",
+                        "description": "Zero-based offset for paging (default: 0).",
+                        "default": 0,
+                    },
+                },
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="get_graph_run_status",
+            description=(
+                "Returns the current status of a graph run by its run ID — without fetching "
+                "the full execution log. "
+                "Possible statuses: RUNNING, SUCCESS, FAILED, ABORTED, WAITING. "
+                "Use this to poll the status of a long-running graph, or to quickly check "
+                "whether a specific run succeeded before deciding whether to fetch logs or "
+                "tracking data. "
+                "When status is RUNNING, also returns elapsed time and current phase number "
+                "so progress can be assessed. "
+                "For completed runs, use get_graph_tracking for record counts and "
+                "get_graph_execution_log for detailed diagnostics."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "description": "Run ID as returned by execute_graph or list_graph_runs.",
+                    },
+                },
+                "required": ["run_id"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="get_graph_execution_log",
+            description="Fetch the execution log for a graph run by its run ID.",
+            inputSchema={
+                "type": "object",
+                "required": ["run_id"],
+                "properties": {
+                    "run_id": {"type": "string", "description": "Run ID returned by execute_graph"},
+                },
+            },
+        ),
+
+        # ── Component reference tools ──────────────────────────────────────
+        types.Tool(
+            name="list_components",
+            description=(
+                "List available CloverDX component types. "
+                "Optionally filter by category: readers, writers, transformers, joiners, others, jobControl."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Optional category filter",
+                        "enum": ["readers", "writers", "transformers", "joiners", "others", "jobControl"],
+                    },
+                },
+            },
+        ),
+        types.Tool(
+            name="get_component_info",
+            description=(
+                "Look up a CloverDX component's input/output ports and configurable properties. "
+                "Search by component type (e.g. 'EXT_HASH_JOIN') or display name (e.g. 'Map'). "
+                "Case-insensitive, partial match supported."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string", "description": "Component type or name to search for"},
+                    "include_deprecated": {"type": "boolean", "description": "Include deprecated components (default: false)"},
+                },
+            },
+        ),
+        types.Tool(
+            name="get_component_details",
+            description=(
+                "Fetch extended documentation for a complex CloverDX component. "
+                "Currently available: XML_EXTRACT. "
+                "Returns full markdown with mapping syntax, configuration examples, and usage notes."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["component_type"],
+                "properties": {
+                    "component_type": {"type": "string", "description": "Component type string (e.g. 'XML_EXTRACT')"},
+                },
+            },
+        ),
+
+        # ── Tracking + edge debug tools ────────────────────────────────────
+        types.Tool(
+            name="get_graph_tracking",
+            description=(
+                "Get execution metrics for a completed graph run: phases, component timings, "
+                "and record/byte counts per input and output port. "
+                "Available for any run — no debug mode required. "
+                "Use this to verify data flowed correctly (e.g. check that a filter passed the expected number of records)."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["run_id"],
+                "properties": {
+                    "run_id": {"type": "string", "description": "Run ID returned by execute_graph"},
+                },
+            },
+        ),
+        types.Tool(
+            name="get_edge_debug_info",
+            description=(
+                "List edge debug data locations available for a specific edge of a completed graph run. "
+                "The graph must have been executed with debug=true. "
+                "Returns whether data is available for the edge, and writer/reader node IDs."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "graph_path", "run_id", "edge_id"],
+                "properties": {
+                    "sandbox":    {"type": "string", "description": "Sandbox code"},
+                    "graph_path": {"type": "string", "description": "Path to the .grf file"},
+                    "run_id":     {"type": "string", "description": "Run ID returned by execute_graph"},
+                    "edge_id":    {"type": "string", "description": "Edge ID as defined in the graph XML (the 'id' attribute of an <Edge> element)"},
+                },
+            },
+        ),
+        types.Tool(
+            name="get_edge_debug_metadata",
+            description=(
+                "Get the field schema (names and types) for data flowing through a specific edge. "
+                "The graph must have been executed with debug=true. "
+                "Returns the metadata XML for the edge."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "graph_path", "run_id", "edge_id"],
+                "properties": {
+                    "sandbox":    {"type": "string", "description": "Sandbox code"},
+                    "graph_path": {"type": "string", "description": "Path to the .grf file"},
+                    "run_id":     {"type": "string", "description": "Run ID returned by execute_graph"},
+                    "edge_id":    {"type": "string", "description": "Edge ID as defined in the graph XML"},
+                },
+            },
+        ),
+        types.Tool(
+            name="get_edge_debug_data",
+            description=(
+                "Fetch summary information about data records that flowed through a specific graph edge during a debug run. "
+                "Returns the record count captured on the edge and whether more pages are available. "
+                "The payload itself is CloverDX binary (CLVI format) and is not returned as text — "
+                "use get_edge_debug_metadata to inspect the field schema instead. "
+                "The graph must have been executed with debug=true. "
+                "Use get_edge_debug_info first to confirm data is available and obtain writerRunId/readerRunId. "
+                "filter_expression must be a CTL2 boolean expression (e.g. '$in.amount > 100'). "
+                "It is automatically prefixed with //#CTL2 — do NOT include the language marker yourself. "
+                "Omit or leave blank for no filtering (all records)."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "graph_path", "run_id", "edge_id"],
+                "properties": {
+                    "sandbox":          {"type": "string",  "description": "Sandbox code"},
+                    "graph_path":       {"type": "string",  "description": "Path to the .grf file"},
+                    "run_id":           {"type": "string",  "description": "Run ID returned by execute_graph"},
+                    "edge_id":          {"type": "string",  "description": "Edge ID as defined in the graph XML"},
+                    "start_record":     {"type": "integer", "description": "Zero-based index of the first record to fetch (default: 0). Use for paging."},
+                    "record_count":     {"type": "integer", "description": "Max number of records to fetch per page (default: 100)"},
+                    "filter_expression":{"type": "string",  "description": "CTL2 boolean expression to filter records (e.g. '$in.amount > 100'). Omit for all records."},
+                    "field_selection":  {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of field names to include (default: all fields)",
+                    },
+                },
+            },
+        ),
+    ]
+
+
+# ── Tool implementations ───────────────────────────────────────────────────────
+
+def _text(content: str) -> List[types.TextContent]:
+    return [types.TextContent(type="text", text=content)]
+
+
+async def tool_list_sandboxes(_args: Dict) -> List[types.TextContent]:
+    try:
+        sandboxes = get_soap_client().get_sandboxes()
+        return _text(json.dumps(sandboxes, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_list_files(args: Dict) -> List[types.TextContent]:
+    try:
+        files = get_soap_client().list_files(
+            sandbox=args["sandbox"],
+            path=args["path"],
+            folder_only=args.get("folder_only", False),
+        )
+        return _text(json.dumps(files, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_find_file(args: Dict) -> List[types.TextContent]:
+    try:
+        files = get_soap_client().find_files(
+            sandbox=args["sandbox"],
+            pattern=args["pattern"],
+            path=args.get("path", ""),
+        )
+        return _text(json.dumps(files, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_list_linked_assets(args: Dict) -> List[types.TextContent]:
+    try:
+        sandbox = args["sandbox"]
+        asset_type = str(args.get("asset_type", "all")).strip().lower() or "all"
+
+        asset_patterns: Dict[str, str] = {
+            "metadata": "*.fmt",
+            "connection": "*.cfg",
+            "lookup": "*.lkp",
+            "ctl": "*.ctl",
+            "sequence": "*.seq",
+            "parameters": "*.prm",
+        }
+
+        if asset_type != "all" and asset_type not in asset_patterns:
+            allowed = ", ".join([*asset_patterns.keys(), "all"])
+            return _text(f"ERROR: Unknown asset_type '{asset_type}'. Allowed values: {allowed}")
+
+        selected_types = list(asset_patterns.keys()) if asset_type == "all" else [asset_type]
+        client = get_soap_client()
+
+        by_type: Dict[str, List[str]] = {}
+        all_assets: List[str] = []
+
+        for kind in selected_types:
+            pattern = asset_patterns[kind]
+            found = client.find_files(sandbox=sandbox, pattern=pattern, path="")
+
+            paths: List[str] = []
+            for item in found:
+                if not isinstance(item, dict):
+                    continue
+                path = str(item.get("path") or item.get("filePath") or item.get("name") or item.get("fileName") or "").strip()
+                if path:
+                    paths.append(path.lstrip("/"))
+
+            deduped = sorted(set(paths))
+            by_type[kind] = deduped
+            all_assets.extend(deduped)
+
+        payload = {
+            "sandbox": sandbox,
+            "asset_type": asset_type,
+            "count": len(set(all_assets)),
+            "assets": by_type if asset_type == "all" else by_type[selected_types[0]],
+        }
+        return _text(json.dumps(payload, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_get_sandbox_parameters(args: Dict) -> List[types.TextContent]:
+    try:
+        sandbox = args["sandbox"]
+        workspace_param_path = str(args.get("workspace_param_path") or "workspace.prm").strip() or "workspace.prm"
+        include_defaults = bool(args.get("include_defaults", True))
+        include_system_properties = bool(args.get("include_system_properties", True))
+        include_all_server_properties = bool(args.get("include_all_server_properties", False))
+
+        client = get_soap_client()
+
+        workspace_prm_content = client.download_file(sandbox, workspace_param_path)
+        workspace_params, descriptions = _parse_workspace_prm_xml(workspace_prm_content)
+
+        merged = dict(workspace_params)
+        sources: Dict[str, str] = {k: "workspace_prm" for k in workspace_params.keys()}
+        applied_overrides: Dict[str, Dict[str, str]] = {}
+
+        server_defaults: Dict[str, str] = {}
+        if include_defaults:
+            server_defaults = client.get_defaults()
+            for key, value in server_defaults.items():
+                if not include_all_server_properties and key not in merged:
+                    continue
+                old_value = merged.get(key)
+                merged[key] = value
+                sources[key] = "server_defaults"
+                if old_value is not None and old_value != value:
+                    applied_overrides[key] = {
+                        "from": old_value,
+                        "to": value,
+                        "source": "server_defaults",
+                    }
+
+        system_properties: Dict[str, str] = {}
+        if include_system_properties:
+            system_properties = client.get_system_properties()
+            for key, value in system_properties.items():
+                if not include_all_server_properties and key not in merged:
+                    continue
+                old_value = merged.get(key)
+                merged[key] = value
+                sources[key] = "system_properties"
+                if old_value is not None and old_value != value:
+                    applied_overrides[key] = {
+                        "from": old_value,
+                        "to": value,
+                        "source": "system_properties",
+                    }
+
+        resolved, unresolved_refs = _resolve_parameter_references(merged)
+
+        payload = {
+            "sandbox": sandbox,
+            "workspace_param_path": workspace_param_path,
+            "resolution_scope": "best_effort",
+            "counts": {
+                "workspace_params": len(workspace_params),
+                "server_defaults": len(server_defaults),
+                "system_properties": len(system_properties),
+                "merged": len(merged),
+                "resolved": len(resolved),
+                "unresolved": len(unresolved_refs),
+                "applied_overrides": len(applied_overrides),
+            },
+            "resolved_parameters": resolved,
+            "parameter_sources": sources,
+            "workspace_descriptions": descriptions,
+            "applied_overrides": applied_overrides,
+            "unresolved_references": unresolved_refs,
+        }
+        return _text(json.dumps(payload, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_read_file(args: Dict) -> List[types.TextContent]:
+    try:
+        content = get_soap_client().download_file(args["sandbox"], args["path"])
+        return _text(content)
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_rename_file(args: Dict) -> List[types.TextContent]:
+    try:
+        get_soap_client().rename_file(
+            sandbox=args["sandbox"],
+            path=args["path"],
+            new_name=args["new_name"],
+        )
+        dir_part = os.path.dirname(args["path"])
+        new_path = os.path.join(dir_part, args["new_name"]) if dir_part else args["new_name"]
+        return _text(f"OK: '{args['path']}' renamed to '{new_path}' in sandbox '{args['sandbox']}'.")
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_copy_file(args: Dict) -> List[types.TextContent]:
+    source_sandbox = args["source_sandbox"]
+    source_path = args["source_path"]
+    dest_sandbox = args.get("dest_sandbox") or source_sandbox
+    dest_path = args["dest_path"]
+
+    try:
+        get_soap_client().copy_file(
+            source_sandbox=source_sandbox,
+            source_path=source_path,
+            dest_sandbox=dest_sandbox,
+            dest_path=dest_path,
+        )
+        return _text(
+            f"OK: File copied from '{source_sandbox}:{source_path}' to '{dest_sandbox}:{dest_path}'."
+        )
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_patch_file(args: Dict) -> List[types.TextContent]:
+    sandbox = args["sandbox"]
+    path = args["path"]
+    patch_specs = args.get("patches") or []
+    dry_run = bool(args.get("dry_run", False))
+
+    def _json_result(payload: Dict[str, Any]) -> List[types.TextContent]:
+        return _text(json.dumps(payload, indent=2))
+
+    def _is_file_not_found_error(exc: Exception) -> bool:
+        err = str(exc).lower()
+        return any(token in err for token in ("not found", "does not exist", "no such"))
+
+    def _anchor_matches(line: str, anchor: str) -> bool:
+        if not anchor:
+            return False
+        return anchor in line or anchor.strip() in line.strip()
+
+    try:
+        original_content = get_soap_client().download_file(sandbox, path)
+    except Exception as e:
+        if _is_file_not_found_error(e):
+            return _json_result({
+                "status": "error",
+                "patches_applied": 0,
+                "errors": [
+                    {
+                        "error": "file_not_found",
+                        "path": path,
+                    }
+                ],
+            })
+        return _text(f"ERROR: {e}")
+
+    line_sep = "\r\n" if "\r\n" in original_content else "\n"
+    had_trailing_newline = original_content.endswith("\n") or original_content.endswith("\r")
+    lines = original_content.splitlines()
+
+    resolved_patches: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+
+    for patch_index, patch in enumerate(patch_specs, start=1):
+        anchor = str(patch["anchor"])
+        matches = [idx for idx, line in enumerate(lines) if _anchor_matches(line, anchor)]
+
+        if not matches:
+            errors.append({
+                "patch_index": patch_index,
+                "anchor": anchor,
+                "error": "anchor_not_found",
+            })
+            continue
+
+        occurrence = patch.get("anchor_occurrence")
+        if occurrence is None:
+            if len(matches) > 1:
+                errors.append({
+                    "patch_index": patch_index,
+                    "anchor": anchor,
+                    "error": "anchor_ambiguous",
+                    "match_count": len(matches),
+                    "hint": "Set anchor_occurrence to select a specific match, or use a longer anchor string",
+                })
+                continue
+            anchor_index = matches[0]
+        else:
+            occurrence_int = int(occurrence)
+            if occurrence_int < 1 or occurrence_int > len(matches):
+                errors.append({
+                    "patch_index": patch_index,
+                    "anchor": anchor,
+                    "error": "anchor_occurrence_out_of_range",
+                    "match_count": len(matches),
+                })
+                continue
+            anchor_index = matches[occurrence_int - 1]
+
+        from_offset = int(patch["from_offset"])
+        to_offset = int(patch["to_offset"])
+        start = anchor_index + from_offset
+        end = anchor_index + to_offset
+
+        if start < 0 or start > len(lines) or end < -1 or end >= len(lines) or start > end + 1:
+            errors.append({
+                "patch_index": patch_index,
+                "anchor": anchor,
+                "error": "offset_out_of_bounds",
+            })
+            continue
+
+        insert_lines = [] if patch["new_content"] == "" else str(patch["new_content"]).splitlines()
+        replaced_lines = lines[start:end + 1] if start <= end else []
+
+        resolved_patches.append({
+            "patch_index": patch_index,
+            "anchor": anchor,
+            "anchor_line": anchor_index + 1,
+            "start": start,
+            "end": end,
+            "end_exclusive": end + 1 if start <= end else start,
+            "new_content": str(patch["new_content"]),
+            "insert_lines": insert_lines,
+            "replaced_lines": replaced_lines,
+        })
+
+    if not errors:
+        sorted_ranges = sorted(resolved_patches, key=lambda patch: (patch["start"], patch["end_exclusive"], patch["patch_index"]))
+        for idx in range(1, len(sorted_ranges)):
+            prev = sorted_ranges[idx - 1]
+            curr = sorted_ranges[idx]
+            if curr["start"] < prev["end_exclusive"]:
+                errors.append({
+                    "patch_index": curr["patch_index"],
+                    "anchor": curr["anchor"],
+                    "error": "patch_conflict",
+                    "conflicts_with_patch_index": prev["patch_index"],
+                })
+
+    if errors:
+        return _json_result({
+            "status": "error",
+            "patches_applied": 0,
+            "errors": errors,
+        })
+
+    updated_lines = list(lines)
+    for patch in sorted(resolved_patches, key=lambda item: (item["start"], item["patch_index"]), reverse=True):
+        if patch["start"] <= patch["end"]:
+            updated_lines[patch["start"]:patch["end"] + 1] = patch["insert_lines"]
+        else:
+            updated_lines[patch["start"]:patch["start"]] = patch["insert_lines"]
+
+    result: Dict[str, Any] = {
+        "patches_applied": len(resolved_patches),
+        "lines_before": len(lines),
+        "lines_after": len(updated_lines),
+    }
+
+    if dry_run:
+        result["status"] = "dry_run"
+        result["preview"] = [
+            {
+                "anchor": patch["anchor"],
+                "anchor_line": patch["anchor_line"],
+                "lines_replaced": patch["replaced_lines"],
+                "lines_inserted": patch["insert_lines"],
+            }
+            for patch in resolved_patches
+        ]
+        return _json_result(result)
+
+    updated_content = line_sep.join(updated_lines)
+    if had_trailing_newline:
+        updated_content += line_sep
+
+    dir_path, filename = os.path.split(path)
+    try:
+        get_soap_client().upload_file(
+            sandbox=sandbox,
+            dir_path=dir_path,
+            filename=filename,
+            content=updated_content,
+        )
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+    result["status"] = "ok"
+    return _json_result(result)
+
+
+async def tool_write_file(args: Dict) -> List[types.TextContent]:
+    try:
+        get_soap_client().upload_file(
+            sandbox=args["sandbox"],
+            dir_path=args["path"],
+            filename=args["filename"],
+            content=args["content"],
+        )
+        return _text(f"OK: File '{args['path']}/{args['filename']}' written to sandbox '{args['sandbox']}'.")
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_delete_file(args: Dict) -> List[types.TextContent]:
+    try:
+        get_soap_client().delete_file(args["sandbox"], args["path"])
+        return _text(f"OK: File '{args['path']}' deleted from sandbox '{args['sandbox']}'.")
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_validate_graph(args: Dict) -> List[types.TextContent]:
+    sandbox    = args["sandbox"]
+    graph_path = args["graph_path"]
+    timeout_s  = int(args.get("timeout_seconds", POLL_TIMEOUT_S))
+
+    try:
+        xml_text = get_soap_client().download_file(sandbox, graph_path)
+    except Exception as e:
+        return _text(f"ERROR: Could not download graph — {e}")
+
+    # Stage 1
+    validator          = GraphValidator(xml_text)
+    s1_errors, s1_warns = validator.validate()
+
+    result: Dict[str, Any] = {
+        "stage1": {"errors": s1_errors, "warnings": s1_warns},
+        "stage2": {"ran": False, "problems": []},
+    }
+
+    if s1_errors:
+        result["overall"] = "FAIL"
+        return _text(json.dumps(result, indent=2))
+
+    # Stage 2
+    try:
+        handle     = get_soap_client().start_check_config(sandbox, graph_path)
+        poll_result = get_soap_client().poll_check_config(handle, timeout_s)
+        problems    = get_soap_client().extract_problems(poll_result)
+        result["stage2"] = {"ran": True, "problems": problems}
+        result["overall"] = "FAIL" if problems else "PASS"
+    except TimeoutError as e:
+        result["stage2"] = {"ran": True, "error": f"TIMEOUT: {e}", "problems": []}
+        result["overall"] = "FAIL"
+    except Exception as e:
+        result["stage2"] = {"ran": True, "error": str(e), "problems": []}
+        result["overall"] = "FAIL"
+
+    return _text(json.dumps(result, indent=2))
+
+
+async def tool_execute_graph(args: Dict) -> List[types.TextContent]:
+    sandbox    = args["sandbox"]
+    graph_path = args["graph_path"]
+    user_params: Dict[str, str] = args.get("params") or {}
+    timeout_s  = int(args.get("timeout_seconds", POLL_TIMEOUT_S))
+
+    # ── Pre-flight: extract graph parameters ───────────────────────────────
+    xml_defaults: Dict[str, str] = {}
+    required_missing: List[str]  = []
+    try:
+        graph_xml = get_soap_client().download_file(sandbox, graph_path)
+        xml_defaults, no_value_params = _parse_graph_params(graph_xml)
+        # Required params: those with no default that the caller also didn't supply
+        required_missing = [p for p in no_value_params if p not in user_params]
+    except Exception:
+        pass  # non-fatal; proceed without param pre-check
+
+    if required_missing:
+        # Tell the LLM exactly what's missing and what parameters the graph has
+        param_table = []
+        for name, val in xml_defaults.items():
+            param_table.append(f"  {name} = {val!r}  (has default)")
+        for name in (no_value_params if 'no_value_params' in dir() else []):
+            supplied = "(supplied by caller)" if name in user_params else "(NO DEFAULT — must be supplied)"
+            param_table.append(f"  {name}  {supplied}")
+        return _text(
+            f"ERROR: Cannot execute graph — {len(required_missing)} required parameter(s) have no value:\n"
+            + "\n".join(f"  - {p}" for p in required_missing)
+            + "\n\nAll graph parameters:\n"
+            + "\n".join(param_table)
+            + "\n\nRe-call execute_graph with a 'params' dict supplying the missing values."
+        )
+
+    # Merge: XML defaults first, then caller overrides on top
+    exec_params = {**xml_defaults, **user_params} if (xml_defaults or user_params) else None
+
+    try:
+        run_id = get_soap_client().execute_graph(
+            sandbox=sandbox,
+            graph_path=graph_path,
+            params=exec_params,
+            debug=args.get("debug", False),
+        )
+        status = get_soap_client().poll_execution_status(run_id=run_id, timeout_s=timeout_s)
+        return _text(json.dumps(status, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_get_graph_execution_log(args: Dict) -> List[types.TextContent]:
+    try:
+        log = get_soap_client().get_execution_log(args["run_id"])
+        return _text(log)
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_get_graph_run_status(args: Dict) -> List[types.TextContent]:
+    try:
+        status = get_soap_client().get_graph_run_status(args["run_id"])
+        return _text(json.dumps(status, indent=2, default=str))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_list_graph_runs(args: Dict) -> List[types.TextContent]:
+    try:
+        result = get_soap_client().list_graph_runs(
+            sandbox=args.get("sandbox"),
+            job_file=args.get("job_file"),
+            status=args.get("status"),
+            limit=int(args.get("limit", 25)),
+            start_index=int(args.get("start_index", 0)),
+        )
+        return _text(json.dumps(result, indent=2, default=str))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_list_components(args: Dict) -> List[types.TextContent]:
+    try:
+        comps = get_catalog().list_by_category(args.get("category"))
+        return _text(ComponentCatalog.format_compact(comps))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_get_component_info(args: Dict) -> List[types.TextContent]:
+    try:
+        results = get_catalog().search(
+            args["query"],
+            include_deprecated=args.get("include_deprecated", False),
+        )
+        if not results:
+            return _text(f"No component found matching '{args['query']}'. "
+                         "Use list_components to browse all available types.")
+        if len(results) == 1:
+            return _text(ComponentCatalog.format_component(results[0]))
+        # Multiple matches — compact list
+        return _text(
+            f"Found {len(results)} components matching '{args['query']}':\n\n"
+            + ComponentCatalog.format_compact(results)
+            + "\n\nRe-query with an exact type or name to get full details."
+        )
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_get_component_details(args: Dict) -> List[types.TextContent]:
+    try:
+        key = args["component_type"].strip().upper()
+        if not _comp_details_map:
+            return _text("No detailed component documentation is available in the comp_details/ directory.")
+        if key not in _comp_details_map:
+            available = ", ".join(sorted(_comp_details_map.keys()))
+            return _text(
+                f"No detailed documentation found for '{key}'. "
+                f"Available: {available}."
+            )
+        with open(_comp_details_map[key], encoding="utf-8") as f:
+            return _text(f.read())
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+# ── Tool dispatcher ────────────────────────────────────────────────────────────
+
+async def tool_get_graph_tracking(args: Dict) -> List[types.TextContent]:
+    try:
+        text = get_soap_client().get_graph_tracking(args["run_id"])
+        return _text(text)
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_get_edge_debug_info(args: Dict) -> List[types.TextContent]:
+    try:
+        items = get_soap_client().get_edge_debug_info(
+            args["sandbox"], args["graph_path"], args["run_id"], args["edge_id"]
+        )
+        if not items:
+            return _text(
+                f"No edge debug data found for edge '{args['edge_id']}' in run {args['run_id']}.\n"
+                "Ensure the graph was executed with debug=true."
+            )
+        return _text(json.dumps(items, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_get_edge_debug_metadata(args: Dict) -> List[types.TextContent]:
+    try:
+        xml = get_soap_client().get_edge_debug_metadata(
+            args["sandbox"], args["graph_path"], args["run_id"], args["edge_id"]
+        )
+        return _text(xml)
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_list_resources(_args: Dict) -> List[types.TextContent]:
+    lines = []
+    for uri, meta in _RESOURCE_REGISTRY.items():
+        lines.append(f"{uri}")
+        lines.append(f"  Name:     {meta['name']}")
+        lines.append(f"  Desc:     {meta['description']}")
+        lines.append(f"  MimeType: {meta['mimeType']}")
+        lines.append("")
+    return _text("\n".join(lines).rstrip())
+
+
+async def tool_read_resource(args: Dict) -> List[types.TextContent]:
+    uri = (args.get("uri") or "").strip()
+    if not uri:
+        return _text("ERROR: 'uri' is required")
+    if uri not in _RESOURCE_REGISTRY:
+        known = "\n".join(f"  {u}" for u in _RESOURCE_REGISTRY)
+        return _text(f"ERROR: Unknown resource URI '{uri}'.\nAvailable URIs:\n{known}")
+    try:
+        content = await handle_read_resource(uri)
+        return _text(content)
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_get_workflow_guide(args: Dict) -> List[types.TextContent]:
+    task = str(args.get("task") or "create_graph").strip() or "create_graph"
+    guide_path = _WORKFLOW_GUIDE_FILES.get(task)
+    if guide_path is None:
+        allowed = ", ".join(_WORKFLOW_GUIDE_FILES.keys())
+        return _text(f"ERROR: Unknown task '{task}'. Allowed values: {allowed}")
+
+    cache_key = f"workflow:{task}"
+    return _text(_load_reference(cache_key, guide_path))
+
+
+async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
+    try:
+        data = get_soap_client().get_edge_debug_data(
+            sandbox=args["sandbox"],
+            graph_path=args["graph_path"],
+            run_id=args["run_id"],
+            edge_id=args["edge_id"],
+            start_record=int(args.get("start_record", 0)),
+            record_count=int(args.get("record_count", 100)),
+            filter_expression=args.get("filter_expression", ""),
+            field_selection=args.get("field_selection"),
+        )
+        return _text(data)
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+_TOOL_MAP = {
+    "list_sandboxes":          tool_list_sandboxes,
+    "list_files":              tool_list_files,
+    "find_file":               tool_find_file,
+    "list_linked_assets":      tool_list_linked_assets,
+    "get_sandbox_parameters":  tool_get_sandbox_parameters,
+    "read_file":               tool_read_file,
+    "rename_file":             tool_rename_file,
+    "copy_file":               tool_copy_file,
+    "patch_file":              tool_patch_file,
+    "write_file":              tool_write_file,
+    "delete_file":             tool_delete_file,
+    "validate_graph":          tool_validate_graph,
+    "execute_graph":           tool_execute_graph,
+    "get_graph_run_status":    tool_get_graph_run_status,
+    "list_graph_runs":         tool_list_graph_runs,
+    "get_graph_execution_log": tool_get_graph_execution_log,
+    "list_components":         tool_list_components,
+    "get_component_info":      tool_get_component_info,
+    "get_component_details":   tool_get_component_details,
+    "get_graph_tracking":      tool_get_graph_tracking,
+    "get_edge_debug_info":     tool_get_edge_debug_info,
+    "get_edge_debug_metadata": tool_get_edge_debug_metadata,
+    "get_edge_debug_data":     tool_get_edge_debug_data,
+    "list_resources":          tool_list_resources,
+    "read_resource":           tool_read_resource,
+    "get_workflow_guide":      tool_get_workflow_guide,
+}
+
+
+# Keys whose values should never appear in logs (secrets / bulk data).
+_LOG_MASKED_KEYS = frozenset({"password", "content", "new_content"})
+
+
+def _sanitize_log_value(value: Any, key: Optional[str] = None) -> Any:
+    if key is not None and key.lower() in _LOG_MASKED_KEYS:
+        return "***"
+    if isinstance(value, dict):
+        return {k: _sanitize_log_value(v, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_log_value(item) for item in value]
+    if isinstance(value, str) and len(value) > 300:
+        return value[:300] + f"…[{len(value)} chars total]"
+    return value
+
+
+def _sanitize_log_args(args: Optional[Dict]) -> Dict:
+    """Return a copy of args safe to write to logs."""
+    if not args:
+        return {}
+    return {k: _sanitize_log_value(v, k) for k, v in args.items()}
+
+
+@app.call_tool()
+async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+    handler = _TOOL_MAP.get(name)
+    if handler is None:
+        logger.error("Unknown tool '%s'", name)
+        return _text(f"ERROR: Unknown tool '{name}'")
+
+    logger.info("Tool call: %s", name)
+    logger.debug("Tool call: %s  args=%s", name, _sanitize_log_args(arguments))
+
+    try:
+        result = await handler(arguments or {})
+        total_chars = sum(len(c.text) for c in result if hasattr(c, "text"))
+        logger.debug("Tool result: %s  response_chars=%d", name, total_chars)
+        # Log ERROR-level if the tool itself returned an error string
+        if result and hasattr(result[0], "text") and result[0].text.startswith("ERROR:"):
+            logger.error("Tool %s returned error: %s", name, result[0].text[:200])
+        return result
+    except Exception as e:
+        logger.exception("Unexpected error in tool '%s'", name)
+        return _text(f"ERROR: Unexpected error — {e}")
+
+
+# ── Entry point ────────────────────────────────────────────────────────────────
+
+async def main():
+    global soap_client, component_catalog, _comp_details_map
+
+    load_dotenv()
+
+    # ── Configure log level ────────────────────────────────────────────────
+    _log_level_str = os.getenv("CLOVERDX_LOG_LEVEL", "INFO").upper()
+    _log_level = getattr(logging, _log_level_str, logging.INFO)
+    logging.getLogger().setLevel(_log_level)
+    for _h in logging.getLogger().handlers:
+        _h.setLevel(_log_level)
+    logger.info("Log level: %s", _log_level_str)
+
+    base_url   = os.getenv("CLOVERDX_BASE_URL")
+    username   = os.getenv("CLOVERDX_USERNAME")
+    password   = os.getenv("CLOVERDX_PASSWORD")
+    verify_ssl = os.getenv("CLOVERDX_VERIFY_SSL", "false").lower() == "true"
+
+    if not all([base_url, username, password]):
+        raise RuntimeError(
+            "Missing required environment variables: "
+            "CLOVERDX_BASE_URL, CLOVERDX_USERNAME, CLOVERDX_PASSWORD"
+        )
+
+    soap_client       = CloverDXSoapClient(str(base_url), str(username), str(password), verify_ssl)
+    component_catalog = ComponentCatalog(os.path.join(_SCRIPT_DIR, "resources", "components.json"))
+    component_catalog.load()
+    _comp_details_map = _scan_comp_details(os.path.join(_SCRIPT_DIR, "comp_details"))
+
+    logger.info(f"Component catalog loaded: {len(component_catalog._components)} components")
+    logger.info(f"Component detail docs: {list(_comp_details_map.keys())}")
+
+    try:
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            await app.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name=SERVER_NAME,
+                    server_version=SERVER_VERSION,
+                    capabilities=app.get_capabilities(
+                        notification_options=NotificationOptions(),
+                        experimental_capabilities={},
+                    ),
+                ),
+            )
+    finally:
+        if soap_client:
+            soap_client.logout()
+
+
+if __name__ == "__main__":
+    import sys
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    asyncio.run(main())
