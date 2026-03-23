@@ -1,20 +1,61 @@
 # MCP Client Setup (macOS)
 
-This guide shows how to configure this server for Claude Desktop and other MCP-compatible clients.
+This guide covers:
 
-## 1) Prepare values
+- creating a Python virtual environment (`venv`)
+- installing required Python modules
+- configuring Claude Desktop to use this MCP server
 
-- Server entrypoint: `/Users/david/git/mcpclover/cloverdx_mcp_server.py`
+## 1) Create and activate a virtual environment
+
+From the repo root (`mcpclover/`):
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+```
+
+## 2) Install required Python modules
+
+Install from the pinned dependency list:
+
+```bash
+pip install -r requirements.txt
+```
+
+Equivalent direct install command (same packages):
+
+```bash
+pip install mcp zeep requests python-dotenv urllib3
+```
+
+## 3) Confirm absolute paths you will use in Claude config
+
+From the repo root:
+
+```bash
+pwd
+which python
+```
+
+You will need:
+
+- Python executable: `<repo>/venv/bin/python`
+- Server script: `<repo>/cloverdx_mcp_server.py`
+
+Example for this workspace:
+
 - Python executable: `/Users/david/git/mcpclover/venv/bin/python`
-- Example config in this repo: `mcp_config.example.json`
+- Server script: `/Users/david/git/mcpclover/cloverdx_mcp_server.py`
 
-## 2) Claude Desktop (macOS)
+## 4) Add MCP config for Claude Desktop
 
-Claude Desktop reads MCP servers from:
+On macOS, Claude Desktop reads MCP servers from:
 
 `~/Library/Application Support/Claude/claude_desktop_config.json`
 
-Use this `mcpServers` block (or copy from `mcp_config.example.json`):
+If the file does not exist, create it. Add/merge this `mcpServers` block:
 
 ```json
 {
@@ -36,20 +77,46 @@ Use this `mcpServers` block (or copy from `mcp_config.example.json`):
 }
 ```
 
-Then restart Claude Desktop.
+Notes:
 
-## 3) Other MCP clients
+- If `claude_desktop_config.json` already has other MCP servers, keep them and only add `cloverdx-mcp-server` under `mcpServers`.
+- Keep paths absolute.
+- You can copy this from `mcp_config.example.json` and adjust paths/credentials.
 
-Most MCP clients use the same structure:
+Restart Claude Desktop after saving the file.
 
-- top-level key: `mcpServers`
-- each server has: `command`, `args`, optional `env`
+## 5) Quick local sanity check (optional)
 
-If your client uses a different config path, keep the same server block and place it in that client's config file.
+With your venv activated:
 
-## 4) Quick troubleshooting
+```bash
+python cloverdx_mcp_server.py
+```
 
-- If the server does not appear, verify Python path and script path are absolute.
-- If login fails, verify `CLOVERDX_BASE_URL`, `CLOVERDX_USERNAME`, and `CLOVERDX_PASSWORD`.
-- For HTTPS with self-signed certs, set `CLOVERDX_VERIFY_SSL` to `false`.
-- Increase verbosity with `CLOVERDX_LOG_LEVEL=DEBUG`.
+If it starts without import errors, dependencies are installed correctly.
+
+## 6) Troubleshooting
+
+- Server not listed in Claude: verify JSON is valid and the config path is exactly `~/Library/Application Support/Claude/claude_desktop_config.json`.
+- Import errors: make sure Claude `command` points to `venv/bin/python`, not system Python.
+- Authentication failures: re-check `CLOVERDX_BASE_URL`, `CLOVERDX_USERNAME`, `CLOVERDX_PASSWORD`.
+- Self-signed HTTPS certs: set `CLOVERDX_VERIFY_SSL` to `false`.
+- More logs: set `CLOVERDX_LOG_LEVEL` to `DEBUG`.
+
+## 7) Maintain `requirements.txt`
+
+When you add or upgrade Python packages in this venv, refresh `requirements.txt`:
+
+```bash
+source venv/bin/activate
+pip install <new-package>
+pip freeze > requirements.txt
+```
+
+To upgrade all currently listed dependencies, then re-freeze:
+
+```bash
+source venv/bin/activate
+pip install --upgrade -r requirements.txt
+pip freeze > requirements.txt
+```
