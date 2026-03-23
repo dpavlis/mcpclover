@@ -484,74 +484,175 @@ class CloverDXSoapClient:
                 return raw
         return str(raw)
 
-    def get_graph_tracking(self, run_id: str) -> str:
+    def get_graph_tracking(self, run_id: str, detailed: bool = True) -> Dict[str, Any]:
         resp = self._call("GetGraphTracking", runID=int(run_id))
         raw = zeep_helpers.serialize_object(resp, target_cls=dict)
 
-        lines = []
         hierarchy = raw.get("out") or raw
         if isinstance(hierarchy, dict):
-            root = hierarchy.get("rootTracking") or hierarchy
+            root = hierarchy.get("rootTracking") or hierarchy.get("graphTracking") or hierarchy
         else:
             root = raw
 
-        def _ms(val):
+        def _as_list(value):
+            """Normalize SOAP payloads where collections may appear as object or list."""
+            if value is None:
+                return []
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+            if isinstance(value, dict):
+                # Common wrappers from zeep/object serialization.
+                for key in (
+                    "phaseTracking", "nodeTracking", "portTracking",
+                    "phases", "nodes", "ports",
+                    "item", "items", "_value_1", "out",
+                ):
+                    if key in value and value[key] is not value:
+                        nested = _as_list(value.get(key))
+                        if nested:
+                            return nested
+                return [value]
+            return []
+
+        def _seconds(val):
             if val is None:
-                return ""
+                return None
             try:
-                return f"{int(val)/1000:.1f}s"
+                return round(int(val) / 1000.0, 3)
             except Exception:
-                return str(val)
+                try:
+                    return round(float(val) / 1000.0, 3)
+                except Exception:
+                    return None
 
-        def _fmt_bytes(val):
-            if not val:
-                return "0 B"
+        def _to_int(val, default: int = 0) -> int:
+            if val is None:
+                return default
             try:
-                v = int(val)
-                if v >= 1_048_576:
-                    return f"{v/1_048_576:.1f} MB"
-                if v >= 1024:
-                    return f"{v/1024:.1f} KB"
-                return f"{v} B"
+                return int(val)
             except Exception:
-                return str(val)
+                return default
 
-        def render_tracking(t, indent=0):
+        def _unwrap_container(value: Any, key: str) -> Any:
+            """Unwrap dict containers like {'phaseTracking': {...}}."""
+            if isinstance(value, dict) and isinstance(value.get(key), dict):
+                return value.get(key)
+            return value
+
+        def build_tracking(t):
             if not isinstance(t, dict):
-                return
-            pad = "  " * indent
+                return None
+
             status = t.get("finalStatus", "")
-            exec_ms = t.get("execTime")
-            run_id_ = t.get("runId") or t.get("runID") or ""
-            if run_id_:
-                lines.append(f"Graph run {run_id_}  status={status}  exec={_ms(exec_ms)}")
-            for phase in (t.get("phaseTracking") or []):
+            run_id_ = str(t.get("runId") or t.get("runID") or run_id)
+
+            result: Dict[str, Any] = {
+                "run_id": run_id_,
+                "status": status,
+                "exec_seconds": _seconds(t.get("execTime")),
+                "phases": [],
+                "summary": {
+                    "phase_count": 0,
+                    "node_count": 0,
+                    "port_count": 0,
+                    "total_records": 0,
+                    "total_bytes": 0,
+                },
+            }
+
+            phases = _as_list(t.get("phaseTracking") or t.get("phases") or t.get("_value_1"))
+            for phase_raw in phases:
+                phase = _unwrap_container(phase_raw, "phaseTracking")
                 if not isinstance(phase, dict):
                     continue
-                pn = phase.get("phaseNumber", "?")
-                pet = phase.get("execTime")
-                lines.append(f"{pad}  Phase {pn}  ({_ms(pet)})")
-                for node in (phase.get("nodeTracking") or []):
+                phase_entry: Dict[str, Any] = {
+                    "phase_number": phase.get("phaseNumber"),
+                    "exec_seconds": _seconds(phase.get("execTime")),
+                    "nodes": [],
+                }
+
+                nodes = _as_list(phase.get("nodeTracking") or phase.get("nodes") or phase.get("_value_1"))
+                for node_raw in nodes:
+                    node = _unwrap_container(node_raw, "nodeTracking")
                     if not isinstance(node, dict):
                         continue
-                    nid = node.get("nodeId", "")
-                    nname = node.get("nodeName", "")
-                    ntype = node.get("nodeType", "")
-                    nres = node.get("result", "")
-                    ncpu = node.get("totalCpuTime")
-                    label = nname or nid
-                    lines.append(f"{pad}    [{ntype}] {label}  cpu={_ms(ncpu)}  result={nres}")
-                    for port in (node.get("portTracking") or []):
+                    node_entry: Dict[str, Any] = {
+                        "node_id": node.get("nodeId"),
+                        "node_name": node.get("nodeName") or node.get("nodeId"),
+                        "node_type": node.get("nodeType"),
+                        "result": node.get("result"),
+                        "cpu_seconds": _seconds(node.get("totalCpuTime")),
+                        "ports": [],
+                    }
+
+                    ports = _as_list(node.get("portTracking") or node.get("ports") or node.get("_value_1"))
+                    for port_raw in ports:
+                        port = _unwrap_container(port_raw, "portTracking")
                         if not isinstance(port, dict):
                             continue
-                        ptype = port.get("portType", "")
-                        pidx = port.get("index", "?")
-                        recs = port.get("totalRecords") or port.get("recordFlow", 0)
-                        byts = port.get("totalBytes") or port.get("byteFlow", 0)
-                        lines.append(f"{pad}      {ptype}[{pidx}]: {recs} records  {_fmt_bytes(byts)}")
+                        records = port.get("totalRecords")
+                        if records is None:
+                            records = port.get("recordFlow", 0)
+                        bytes_value = port.get("totalBytes")
+                        if bytes_value is None:
+                            bytes_value = port.get("byteFlow", 0)
+                        node_entry["ports"].append(
+                            {
+                                "port_type": port.get("portType"),
+                                "index": port.get("index"),
+                                "records": _to_int(records, 0),
+                                "bytes": _to_int(bytes_value, 0),
+                            }
+                        )
 
-        render_tracking(root)
-        return "\n".join(lines) if lines else str(raw)
+                        result["summary"]["port_count"] += 1
+                        result["summary"]["total_records"] += _to_int(records, 0)
+                        result["summary"]["total_bytes"] += _to_int(bytes_value, 0)
+
+                    phase_entry["nodes"].append(node_entry)
+                    result["summary"]["node_count"] += 1
+
+                result["phases"].append(phase_entry)
+                result["summary"]["phase_count"] += 1
+
+            return result
+
+        parsed = build_tracking(root)
+        if parsed is not None:
+            if not detailed:
+                return {
+                    "run_id": parsed.get("run_id"),
+                    "status": parsed.get("status"),
+                    "exec_seconds": parsed.get("exec_seconds"),
+                    "summary": parsed.get("summary", {}),
+                }
+            return parsed
+
+        fallback = {
+            "run_id": str(run_id),
+            "status": "UNKNOWN",
+            "exec_seconds": None,
+            "phases": [],
+            "summary": {
+                "phase_count": 0,
+                "node_count": 0,
+                "port_count": 0,
+                "total_records": 0,
+                "total_bytes": 0,
+            },
+            "warning": "No phase/node metrics found in a recognized tracking payload shape.",
+            "raw_top_level_keys": sorted(raw.keys()) if isinstance(raw, dict) else [type(raw).__name__],
+        }
+        if not detailed:
+            return {
+                "run_id": fallback["run_id"],
+                "status": fallback["status"],
+                "exec_seconds": fallback["exec_seconds"],
+                "summary": fallback["summary"],
+                "warning": fallback["warning"],
+                "raw_top_level_keys": fallback["raw_top_level_keys"],
+            }
+        return fallback
 
     def get_edge_debug_info(self, sandbox: str, graph_path: str,
                             run_id: str, edge_id: str,

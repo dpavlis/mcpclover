@@ -947,6 +947,7 @@ async def handle_list_tools() -> List[types.Tool]:
             description=(
                 "Get execution metrics for a completed graph run: phases, component timings, "
                 "and record/byte counts per input and output port. "
+                "Set detailed=false for summary-only output. "
                 "Available for any run — no debug mode required. "
                 "Use this to verify data flowed correctly (e.g. check that a filter passed the expected number of records)."
             ),
@@ -955,6 +956,10 @@ async def handle_list_tools() -> List[types.Tool]:
                 "required": ["run_id"],
                 "properties": {
                     "run_id": {"type": "string", "description": "Run ID returned by execute_graph"},
+                    "detailed": {
+                        "type": "boolean",
+                        "description": "If true (default), include per-phase/node/port details. If false, return summary-only payload.",
+                    },
                 },
             },
         ),
@@ -1595,8 +1600,11 @@ async def tool_get_component_details(args: Dict) -> List[types.TextContent]:
 
 async def tool_get_graph_tracking(args: Dict) -> List[types.TextContent]:
     try:
-        text = get_soap_client().get_graph_tracking(args["run_id"])
-        return _text(text)
+        payload = get_soap_client().get_graph_tracking(
+            args["run_id"],
+            detailed=bool(args.get("detailed", True)),
+        )
+        return _text(json.dumps(payload, indent=2, default=str))
     except Exception as e:
         return _text(f"ERROR: {e}")
 
