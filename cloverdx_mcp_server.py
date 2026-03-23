@@ -2068,8 +2068,7 @@ async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent
             _target.append(_new_record)
             if _metadata_inner_indent is not None:
                 _target.text = _metadata_inner_indent
-            if _metadata_closing_indent is not None:
-                _new_record.tail = _metadata_closing_indent
+            _new_record.tail = _metadata_closing_indent if _metadata_closing_indent else "\n"
 
         elif attribute_name.startswith("attr:"):
             _attr_name = attribute_name[len("attr:"):]
@@ -2135,8 +2134,7 @@ async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent
             _target_et.append(_new_rec_et)
             if _metadata_inner_indent_et is not None:
                 _target_et.text = _metadata_inner_indent_et
-            if _metadata_closing_indent_et is not None:
-                _new_rec_et.tail = _metadata_closing_indent_et
+            _new_rec_et.tail = _metadata_closing_indent_et if _metadata_closing_indent_et else "\n"
 
         elif attribute_name.startswith("attr:"):
             _attr_name_et = attribute_name[len("attr:"):]
