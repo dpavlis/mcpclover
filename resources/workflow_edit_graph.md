@@ -45,6 +45,14 @@ Before touching the file, enumerate precisely:
 - Does the change require adding new components? New metadata fields? New edges?
 - Does removing or changing a component break any existing edge or metadata dependency?
 
+If new components may be introduced, first orient on available component types via `list_components` (optionally by category):
+
+```
+list_components()
+list_components("transformers")
+list_components("readers")
+```
+
 ### 1.2 Look up any components being added or modified
 Call `get_component_info` for any component type you are adding or significantly reconfiguring — even if it already exists in the graph:
 
@@ -179,6 +187,7 @@ If validation fails, fix all errors and re-validate before proceeding. Do not pr
 - [ ] Fetched reference resources relevant to the change
 - [ ] Checked sandbox for reference/example graphs if adding a new pattern
 - [ ] Confirmed sandbox is not `wrangler_shared_home`
+- [ ] Called `list_components` to orient on available component types/categories when introducing new components
 - [ ] Called `get_component_info` for any component being added or modified
 - [ ] Called `get_component_details` for any complex component being added or modified
 - [ ] No new non-existent components introduced (no ROUTER, no FILTER)

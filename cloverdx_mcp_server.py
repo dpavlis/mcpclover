@@ -211,11 +211,13 @@ class ComponentCatalog:
     @staticmethod
     def format_compact(comps: List[Dict]) -> str:
         """Compact listing for multiple results."""
-        rows = ["Type                         | Name                        | Category    | Short Description"]
-        rows.append("-" * 100)
+        rows = ["Type | Name | Category | Description"]
+        rows.append("-" * 80)
         for c in comps:
-            rows.append(f"{c.get('type',''):<29}| {c.get('name',''):<29}| {c.get('category',''):<12}| "
-                        f"{(c.get('shortDescription') or '')[:50]}")
+            desc = c.get("description") or c.get("shortDescription") or ""
+            rows.append(
+                f"{c.get('type', '')} | {c.get('name', '')} | {c.get('category', '')} | {desc}"
+            )
         return "\n".join(rows)
 
 

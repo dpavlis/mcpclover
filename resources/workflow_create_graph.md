@@ -34,6 +34,14 @@ A working reference graph is the most reliable source of truth. Read it. Follow 
 ## PHASE 1 — Plan the graph
 
 ### 1.1 Identify candidate components for each processing step
+Start by orienting on available components using `list_components` (optionally by category), then identify candidates.
+
+```
+list_components()
+list_components("transformers")
+list_components("readers")
+```
+
 For each step, identify **at least two candidate component types**, then select the most appropriate one.
 
 **General rule: prefer specialized components over generic ones.**
@@ -178,6 +186,7 @@ validate_graph("graph/MyGraph.grf", sandbox)
 - [ ] Fetched relevant reference resources
 - [ ] Checked sandbox for reference/example graphs
 - [ ] Confirmed sandbox is not `wrangler_shared_home`
+- [ ] Called `list_components` to orient on available component types/categories
 - [ ] Identified at least two candidate components per processing step
 - [ ] Called `get_component_info` for every component type used
 - [ ] Called `get_component_details` for complex components
