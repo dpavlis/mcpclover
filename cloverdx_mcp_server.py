@@ -2087,7 +2087,7 @@ async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent
 
         output = _lxml.tostring(
             _root,
-            pretty_print=True,
+            pretty_print=False,
             xml_declaration=True,
             encoding="UTF-8",
         ).decode("UTF-8")
@@ -2167,6 +2167,9 @@ async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent
         '<?xml version="1.0" encoding="UTF-8"?>',
         1,
     )
+    # Preserve original trailing newline (lxml/ET never emit root-element tail).
+    if xml_text.endswith("\n") and not output.endswith("\n"):
+        output += "\n"
     _dir_path, _filename = os.path.split(graph_path)
     try:
         get_soap_client().upload_file(
