@@ -49,6 +49,7 @@ Resources exposed
 ─────────────────
   cloverdx://reference/graph-xml   – cloverdx-llm-reference.md
   cloverdx://reference/ctl2        – CTL2_Reference_for_LLM_compact.md
+    cloverdx://reference/subgraphs   – CLOVERDX_SUBGRAPHS.md
   cloverdx://reference/components  – components.json (non-deprecated)
 
 Configuration (.env)
@@ -385,6 +386,11 @@ _RESOURCE_REGISTRY: Dict[str, Dict[str, str]] = {
         "description": "Authoritative reference for CTL2, the scripting language used inside CloverDX transformations",
         "mimeType":    "text/markdown",
     },
+    "cloverdx://reference/subgraphs": {
+        "name":        "CloverDX Subgraphs Reference",
+        "description": "Authoritative reference for CloverDX subgraphs.",
+        "mimeType":    "text/markdown",
+    },
     # "cloverdx://reference/components": {
     #     "name":        "CloverDX Component Catalog",
     #     "description": "All available CloverDX component types with their ports and properties (non-deprecated)",
@@ -428,6 +434,12 @@ async def handle_read_resource(uri) -> str:
         return _load_reference(
             "ctl2",
             os.path.join(_SCRIPT_DIR, "resources/CTL2_Reference_for_LLM_compact.md")
+        )
+
+    if uri_str.endswith("subgraphs"):
+        return _load_reference(
+            "subgraphs",
+            os.path.join(_SCRIPT_DIR, "resources/CLOVERDX_SUBGRAPHS.md")
         )
 
     if uri_str.endswith("components"):
@@ -810,7 +822,8 @@ async def handle_list_tools() -> List[types.Tool]:
                 "Fetch the full content of a resource by its URI. "
                 "Call list_resources first to see available URIs. "
                 "Examples: 'cloverdx://reference/graph-xml', "
-                "'cloverdx://reference/ctl2', 'cloverdx://reference/components'."
+                "'cloverdx://reference/ctl2', 'cloverdx://reference/subgraphs', "
+                "'cloverdx://reference/components'."
             ),
             inputSchema={
                 "type": "object",

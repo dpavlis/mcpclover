@@ -1,6 +1,6 @@
 # CloverDX MCP Tools Reference
 
-This document describes all 25 tools exposed by the CloverDX Graph Builder MCP server.
+This document describes all 26 tools exposed by the CloverDX Graph Builder MCP server.
 Each tool maps to one or more CloverDX Server operations (SOAP WebService or REST API).
 
 ---
@@ -98,6 +98,7 @@ Fetches the full content of a reference resource by its URI.
 **Available resources:**
 - `cloverdx://reference/graph-xml` — Authoritative guide for CloverDX graph XML (`.grf` format)
 - `cloverdx://reference/ctl2` — CloverDX CTL2 transformation language reference
+- `cloverdx://reference/subgraphs` — Authoritative reference for CloverDX subgraphs (`.sgrf` format)
 
 **Why:** Gives the LLM access to CloverDX-specific domain knowledge (XML structure rules, CTL2 syntax) at any point during a task.  
 **Backend:** Local file read from `resources/` directory
@@ -113,6 +114,25 @@ Returns the authoritative step-by-step workflow guide for a CloverDX task type.
 ---
 
 ## Graph Operations
+
+### `set_graph_element_attribute`
+Sets or replaces a value on a specific element within a CloverDX graph XML file (`.grf`). Operates on the parsed DOM — no text anchoring, no line numbers, no regex. Loads the file, finds the target element, modifies it, and writes it back.
+
+**Element types:** `Node`, `Edge`, `Metadata`, `GraphParameter`, `Connection`
+
+**Two modification modes (selected via `attribute_name`):**
+- **Plain XML attribute** — e.g. `attribute_name='recordsNumber'`, `value='50'`. Sets the attribute directly on the element tag. Use for `recordsNumber`, `joinType`, `enabled`, `guiX`, `guiY`, `fileURL`, `metadata`, `value`, etc.
+- **`attr:X` child element** — e.g. `attribute_name='attr:transform'`. Finds or creates an `<attr name='X'>` child element and stores the value as CDATA (wrapping applied automatically). Use for CTL2 transforms, SQL queries, `joinKey`, mapping XML, `rules`, `errorMapping`, etc.
+
+**Metadata elements:** supply the full replacement `<Record>...</Record>` XML as `value`; set `attribute_name='record'` by convention. The entire child content of `<Metadata id='X'>` is replaced. External metadata (`fileURL`-style) cannot be modified here — edit the `.fmt` file directly with `write_file`.
+
+**GraphParameter:** matched by `name` attribute (not `id`). Only plain XML attributes are supported — no `attr:` prefix.
+
+**Why:** More reliable than `patch_file` for graph element modifications — immune to whitespace/formatting differences, works on any element regardless of how the XML is laid out. Always follow with `validate_graph`.
+
+**Backend:** SOAP `GetSandboxFile` + `UploadSandboxFile`; DOM manipulation via lxml (preferred) or stdlib `xml.etree.ElementTree` fallback
+
+---
 
 ### `validate_graph`
 Validates a graph in two stages:

@@ -38,6 +38,40 @@ All attributes go as `<attr name="..."><![CDATA[...]]></attr>` children.
 | `incrementalKey` | — | Field name tracking last read position |
 | `verbose` | false | More detailed error messages (lower performance) |
 
+## METADATA DESIGN FOR DATA_READER
+
+Parsing in DATA_READER is always a **combination** of the node's own attributes (delimiter overrides, `skipRows`, `quotedStrings`, etc.) and the metadata defined on its **output port 0**. Getting the metadata right is a prerequisite — misconfigured metadata is the most common cause of parse failures.
+
+### Set delimiters on `<Record>`, not on individual fields
+
+Set `fieldDelimiter` and `recordDelimiter` on the `<Record>` element. Only override per-field when a specific field truly uses a different delimiter (rare — typically only the last field might need `eofAsDelimiter="true"`).
+
+```xml
+<!-- WRONG — verbose, redundant, brittle -->
+<Record name="data" type="delimited">
+  <Field name="col1" type="string" delimiter=";"/>
+  <Field name="col2" type="string" delimiter=";"/>
+  <Field name="col3" type="string" delimiter="\n"/>
+</Record>
+
+<!-- CORRECT — clean and idiomatic -->
+<Record fieldDelimiter=";" name="data" recordDelimiter="\n" type="delimited">
+  <Field name="col1" type="string"/>
+  <Field name="col2" type="string"/>
+  <Field name="col3" type="string"/>
+</Record>
+```
+
+Putting explicit `delimiter="..."` on every field is not how CloverDX delimited metadata is idiomatically written. It is redundant, increases the chance of inconsistency, and is fragile when fields are reordered.
+
+### Always verify the actual delimiter before defining metadata
+
+Read a sample of the source file before writing metadata. Do not assume `,` — many real-world CSV exports use `;`, `|`, or `\t`. A mismatch between the declared `fieldDelimiter` and the file's actual separator causes the parser to treat each entire row as a single field, producing single-field records with no error (if `lenient`) or an immediate parse failure (if `strict`).
+
+Check the file with `read_file` first, confirm the delimiter and record terminator, then write the `<Record>` accordingly.
+
+---
+
 ## DATA POLICY
 
 `dataPolicy` controls what happens when a record cannot be parsed according to the metadata.
