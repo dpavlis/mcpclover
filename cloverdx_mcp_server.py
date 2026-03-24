@@ -107,6 +107,122 @@ EXEC_POLL_S     = 2      # seconds between execution status polls
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+ATTR_CDATA_PROPERTY_TYPES = {
+    "aggregationMapping",
+    "attachments",
+    "barrierFilter",
+    "beanWriterMapping",
+    "copyFilesErrorOutputMapping",
+    "copyFilesInputMapping",
+    "copyFilesStandardOutputMapping",
+    "createFilesErrorOutputMapping",
+    "createFilesInputMapping",
+    "createFilesStandardOutputMapping",
+    "dataSetReaderOutputMapping",
+    "dataSetWriterErrorMapping",
+    "dataSetWriterInputMapping",
+    "dataSetWriterOutputMapping",
+    "dbCloverMapping",
+    "dbJoinTransform",
+    "deleteFilesErrorOutputMapping",
+    "deleteFilesInputMapping",
+    "deleteFilesStandardOutputMapping",
+    "ediReaderMapping",
+    "ediVersion",
+    "ediWriterMapping",
+    "emailMapping",
+    "environment",
+    "errorActions",
+    "executeGraphInputMapping",
+    "executeGraphOutputMapping",
+    "executeScriptInputMapping",
+    "executeScriptOutputMapping",
+    "executeWranglerJobInputMapping",
+    "executeWranglerJobOutputMapping",
+    "failMapping",
+    "filter",
+    "genericComponentMultiline",
+    "getJobInputMapping",
+    "hadoopJobSenderErrorOutputMapping",
+    "hadoopJobSenderInputMapping",
+    "hadoopJobSenderStandardOutputMapping",
+    "hl7ReaderErrorMapping",
+    "httpConnectorErrorMapping",
+    "httpConnectorInputMapping",
+    "httpConnectorOutputMapping",
+    "insert",
+    "javaBeanReaderMapping",
+    "jsonMapping",
+    "jsonReaderMapping",
+    "jsonWriterMapping",
+    "kafkaCommitInputMapping",
+    "kafkaReaderOutputMapping",
+    "kafkaWriterErrorMapping",
+    "kafkaWriterInputMapping",
+    "kafkaWriterOutputMapping",
+    "killGraphInputMapping",
+    "killGraphOutputMapping",
+    "listFilesErrorOutputMapping",
+    "listFilesInputMapping",
+    "listFilesStandardOutputMapping",
+    "loopWhileCondition",
+    "mapWriterMapping",
+    "monitorGraphInputMapping",
+    "moveFilesErrorOutputMapping",
+    "moveFilesInputMapping",
+    "moveFilesStandardOutputMapping",
+    "multiline",
+    "multilineEditableJava",
+    "multilineEditableXML",
+    "oauth2Connection",
+    "objectIntrospector",
+    "properties",
+    "propertiesAdv",
+    "queryParameters",
+    "restApiConnectorDefaultOutputMapping",
+    "restApiConnectorHeaderParameters",
+    "restApiConnectorInputMapping",
+    "restApiConnectorRequestMapping",
+    "restApiConnectorRequestParameters",
+    "restApiConnectorResponseMapping",
+    "restJobErrorMapping",
+    "salesforceEinsteinMetadata",
+    "salesforceObject",
+    "salesforceReaderOutputMapping",
+    "salesforceReaderSOQLQuery",
+    "salesforceWriterErrorMapping",
+    "salesforceWriterInputMapping",
+    "salesforceWriterOutputMapping",
+    "select",
+    "setJobOutputMapping",
+    "sleepInputMapping",
+    "sql",
+    "statefulTransform",
+    "statefulTransformMetadata",
+    "statefulTransformSelectorProperties",
+    "stringList",
+    "successMapping",
+    "transform",
+    "transformDenormalize",
+    "transformGenerator",
+    "transformNormalize",
+    "transformPartition",
+    "transformPivot",
+    "transformRollup",
+    "validatorErrorMapping",
+    "validatorRules",
+    "wsFaultMapping",
+    "wsRequestHeaderStructure",
+    "wsRequestStructure",
+    "wsResponseMapping",
+    "xml",
+    "xmlFeatures",
+    "xmlMapping",
+    "xmlReaderMapping",
+    "xmlWriterMapping",
+    "xsltMapping",
+}
+
 # ── Stage 1 validator (copied from validate_graph.py) ─────────────────────────
 
 
@@ -241,8 +357,16 @@ class ComponentCatalog:
             f"Name:        {comp.get('name', '')}",
             f"Category:    {comp.get('category', '')}",
             f"Description: {comp.get('description') or comp.get('shortDescription', '')}",
-            "",
         ]
+
+        usage = (comp.get("usage") or "").strip()
+        if usage:
+            usage_lines = usage.splitlines()
+            lines.append(f"Usage:       {usage_lines[0]}")
+            for usage_line in usage_lines[1:]:
+                lines.append(f"             {usage_line}")
+
+        lines.append("")
 
         in_ports  = comp.get("inputPorts",  []) or []
         out_ports = comp.get("outputPorts", []) or []
@@ -294,16 +418,19 @@ class ComponentCatalog:
                 req = ""
                 req_expr = prop.get("required")
                 prop_name = prop.get("name", "")
+                prop_type = prop.get("type", "")
                 if req_expr is True:
                     req = " *required*"
                 elif isinstance(req_expr, str) and prop_name not in grouped_members:
                     cond = ComponentCatalog._format_conditional_required(req_expr)
                     req = f" *required when {cond}*" if cond else ""
 
+                attr_cdata = " [attr-cdata]" if prop_type in ATTR_CDATA_PROPERTY_TYPES else ""
+
                 dval = f"  (default: {prop['defaultValue']})" if prop.get("defaultValue") else ""
                 desc = (prop.get("description") or "")[:100]
-                lines.append(f"  {prop_name}{req}: [{prop.get('type', '')}]{dval}  {desc}")
-                if prop.get("type") == "enum" and prop.get("values"):
+                lines.append(f"  {prop_name}{attr_cdata}{req}: [{prop_type}]{dval}  {desc}")
+                if prop_type == "enum" and prop.get("values"):
                     vals = ", ".join(v.get("value", "") for v in prop["values"] if isinstance(v, dict))
                     lines.append(f"    values: {vals}")
 
@@ -315,7 +442,7 @@ class ComponentCatalog:
         rows = ["Type | Name | Category | Description"]
         rows.append("-" * 80)
         for c in comps:
-            desc = c.get("description") or c.get("shortDescription") or ""
+            desc = c.get("shortDescription") or c.get("description") or ""
             rows.append(
                 f"{c.get('type', '')} | {c.get('name', '')} | {c.get('category', '')} | {desc}"
             )

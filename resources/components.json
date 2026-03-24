@@ -1256,6 +1256,7 @@
     "passThrough": true,
     "shortDescription": "Concatenates data flows.",
     "description": "Receives data through all connected input ports in turn. Gets all records from each input port, sends them to output port and continues with the next input port. Skips ports without incoming data. Terminates when all incoming records are received and sent to connected output port.",
+    "usage":"When to use: Merge N streams where output must preserve port order — all records from port 0 first, then all from port 1, etc. Order within each stream is preserved.\nConstraints: Slower than SIMPLE_GATHER — waits for each port to finish before moving to the next. Input does NOT need to be sorted.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -1278,6 +1279,7 @@
     "passThrough": true,
     "shortDescription": "Gathers data flows.",
     "description": "Receives data incoming through all connected input ports in the order so that all records are gathered and send out through output port as soon as possible.",
+    "usage":"When to use: Merge N streams where output order doesn't matter. Fastest option — emits records from whichever port has data ready.\nConstraints: Output order is non-deterministic. Do NOT use if downstream requires sorted or port-ordered output.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -1298,6 +1300,7 @@
     "type": "REFORMAT",
     "shortDescription": "Maps (transforms) data from one input to one or multiple outputs. Replaces Reformat component.",
     "description": "Receives data through connected input port, transforms them in a user specified way, and sends such new outgoing data records to all connected output ports. Implements org.jetel.component.RecordTransform interface.",
+    "usage":"When to use: 1->1 transformation where each input record produces one (modified, enriched, or restructured) output record. Primary use is to transform data structure or content between input and output metadata. Optionally, can produce records on different output ports to support routing or different output structures; return a port number (or ALL) to control routing.\nConstraints: Not intended for data-driven record expansion or aggregation across multiple input records. Use NORMALIZER when multiple output records per input are required. Use DENORMALIZER when a single output record should be created from a group of multiple input records.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2171,6 +2174,7 @@
     "passThrough": true,
     "shortDescription": "Merges data flows.",
     "description": "Receives sorted data through all connected input ports in turn. Gets all incoming records and sends them to connected output port sorted in the same way. Terminates when all incoming records are received and sent to connected output port.",
+    "usage": "When to use: Merge N pre-sorted streams into a single sorted output stream. Equivalent to a sorted merge in database terms.\nConstraints: ALL inputs MUST be pre-sorted on mergeKey. Add sorting upstream if not sorted. Use CONCATENATE if sort order doesn't matter.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -2204,6 +2208,7 @@
     "type": "CROSS_JOIN",
     "shortDescription": "Performs cartesian product.",
     "description": "Receives data records through all connected input ports and performs cartesian product on them. Each connected input port represents one set of records. Results are sent to the connected output port.",
+    "usage" : "When to use: Cartesian product — every record from port 0 combined with every record from port 1. Use for combinatorial generation or when explicit all-pairs combination is needed.\nConstraints: Output size = |port0| × |port1|. Dangerous for large inputs. Only use when cartesian product is intentional.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2423,6 +2428,7 @@
     "type": "EXT_MERGE_JOIN",
     "shortDescription": "Joins sorted data flows.",
     "description": "Receives sorted data through all connected input ports, for each join key value contained in data records incoming through the first input port (drivers) searches corresponding data records incoming through the other port(s) (slaves) with the same key value. Every combination of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port.",
+    "usage": "When to use: Equality join. Both driver and slave are already sorted on the join key (or you're adding EXT_SORT upstream anyway). More memory-efficient than EXT_HASH_JOIN for large slaves.\nConstraints: BOTH inputs MUST be pre-sorted on join key — add EXT_SORT or FAST_SORT upstream if not.\nUse EXT_HASH_JOIN if inputs are unsorted and slave fits in memory.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2990,6 +2996,7 @@
     "type": "EXT_HASH_JOIN",
     "shortDescription": "Joins unsorted data flows.",
     "description": "Receives data through all connected input ports, for every connected slave input port (all input ports except the first) creates hash table from data records incoming through such slave input port (for this reason, number of incoming slave data records must be sufficiently small), for each join key value contained in data records incoming through the first input port (drivers) looks up every hash table and searches corresponding slave data records with the same key value. Every tuple of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port.",
+    "usage": "When to use: Equality join. Input does NOT need to be sorted. Slave side loaded entirely into memory as a hash table — slave must fit in RAM. Best for large driver + small-to-medium slave.\nConstraints: Slave size limited by available memory.\nUse EXT_MERGE_JOIN instead if both streams are already sorted or if slave is large.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3549,6 +3556,7 @@
     "passThrough": true,
     "shortDescription": "Filters incoming data.",
     "description": "Receives data records through connected input port, removes some of them depending on defined filter expression and sends the rest to the connected first output port. Rejected records are sent to the optional second output port if connected.",
+    "usage": "When to use: Split stream into two: records matching a condition (port 0) and records not matching (port 1). Boolean keep/reject.\nConstraints: Exactly two outputs. Use PARTITION if you need more than two destination ports or content-based routing beyond boolean.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3600,6 +3608,7 @@
     "passThrough": true,
     "shortDescription": "Sorts incoming data.",
     "description": "Receives data records through connected input port, sorts them according to specified sort key and sends them to all connected output ports. Sort key is name or combination of names of field(s) of incoming records. Sort order can be either Ascending (default) or Descending. Any number of records can be sorted. If internal buffer is full, external sorting is performed.",
+    "usage":"When to use: Dataset may be larger than available RAM. Spills to disk if buffer exhausted. Use when data size is unknown or large. When sort stability is required.\nConstraints: Slower than FAST_SORT due to potential disk I/O.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3751,6 +3760,7 @@
     "passThrough": true,
     "shortDescription": "Splits incoming data flow.",
     "description": "Receives data through connected input port, splits incoming data flow into more flows and sends each of them to different connected output port.",
+    "usage": "When to use: Route each record to a specific output port based on content — value ranges, hash of a key field, or CTL2 logic returning a port number. Content-aware routing.\nConstraints: Record goes to exactly one port. Define routing via ranges, partitionKey (hash-based), or partitionSource (CTL2).",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3979,6 +3989,7 @@
     "type": "AGGREGATE",
     "shortDescription": "Aggregates information about data.",
     "description": "Receives data through connected input port, aggregates information about groups of adjacent records with the same aggregate key value, creates outgoing records from this information along with other input fields according to output metadata and sends these resulting records to all connected output ports. Can by used similarly as GROUP BY in SQL.",
+    "usage":"When to use: Standard GROUP BY — sum, avg, count, min, max, first, last on groups. No custom logic needed. Fastest option for standard aggregations.\nConstraints: Only built-in aggregation functions. Input sorted=true (default) requires pre-sorted input; sorted=false handles unsorted but uses more memory.\nPrefer over ROLLUP when built-in functions are sufficient.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -5467,6 +5478,7 @@
     "type": "DBJOIN",
     "shortDescription": "Joins incoming data flow with records from database table.",
     "description": "Receives data through connected input port (drivers), connects to database, for each join key value contained in driver data records searches corresponding data records with the same key value in database table (slaves). Every pair of driver and slave records is sent to transformation class that joins them to form outgoing data flow. Resulting data records are sent to the first output port. Driver records without slave are sent to the second output port if connected and if inner join (default) is performed.",
+    "usage":"When to use: Join driver stream against a database table via SQL query per record. Slave data lives in DB, not in memory. Use when slave is in a DB and too large for a lookup table, or when slave data must be current (real-time DB lookup per record).\nConstraints: One DB query per driver record (or per cache miss) — slow for large driver streams. maxCached (default 100) caches recent results. For bulk joins, prefer loading DB data with DB_INPUT_TABLE then joining with EXT_HASH_JOIN.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6159,6 +6171,7 @@
     "type": "NORMALIZER",
     "shortDescription": "Normalizes data.",
     "description": "Receives data through connected input port, splits each data record into more records and sends all resulting records to all connected output ports.",
+    "usage":"When to use: Split ONE input record into a variable number of output records determined at runtime (e.g. expand a list field, unpack a delimited string into individual rows). CTL entry: count() returns how many records to produce, transform(integer idx) produces record at index idx.\nConstraints: Purpose-built for 1→N. Prefer over REFORMAT for this pattern — cleaner CTL, explicit count/transform separation.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6235,6 +6248,7 @@
     "type": "DENORMALIZER",
     "shortDescription": "Denormalizes data.",
     "description": "Denormalizes input records - ie composes one output record from several input records using user-specified transformation. One group is defined with the same value on the given field(s) or has the fixed size. The transformation is supposed to implement interface RecordDenormalize.\nSends all resulting records to all connected output ports.",
+    "usage":"When to use: Collapse N consecutive input records into exactly 1 output record per group. Simpler than ROLLUP for the pure N→1 case.\nConstraints: Input MUST be sorted on key. Exactly one output record per group (unlike ROLLUP which can emit multiple). Use ROLLUP if you need to emit multiple output records per group or need more complex state.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6378,6 +6392,7 @@
     "type": "ROLLUP",
     "shortDescription": "Executes a rollup transform.",
     "description": "Receives data through connected input port, groups incoming records by their key values and lets user transformation arbitrarily create new data records from the group by aggregating, composing or splitting. Sends these new data records through the connected output port(s) as specified by the transformation. Rollup function is superset for (De)Normalizer components.",
+    "usage": "When to use: Custom group processing logic that AGGREGATE can't express — e.g. conditional aggregation, producing multiple output records per group, or accumulating complex state. Full CTL2 control via initGroup/updateGroup/finishGroup/transform functions.\nConstraints: Requires CTL2 code. Input must be sorted on groupKeyFields by default.\nMore complex to write than AGGREGATE. Use AGGREGATE if built-in aggregation functions cover the need.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6650,6 +6665,7 @@
     "type": "LOOKUP_JOIN",
     "shortDescription": "Joins incoming data flow with records from lookup table.",
     "description": "Receives data through connected input port (drivers), for each join key value contained in driver data records searches corresponding data records with the same key value in lookup table (slaves). Every pair of driver and slave records is sent to transformation class that joins them to form outgoing data flow. Resulting data records are sent to the first output port. Driver records without slave are sent to the second output port if connected and if inner join (default) is performed.",
+    "usage": "When to use: Join driver stream against a static lookup table already loaded into memory (defined in <Global>). Eliminates second input port. Best for small reference tables reused across multiple components in the same graph (lookup table loaded once, used many times).\nConstraints: Lookup table must be defined in graph Global section. Not suitable for large or frequently-changing slave data.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7108,6 +7124,7 @@
     "type": "XML_EXTRACT",
     "shortDescription": "Reads data from XML files.",
     "description": "Reads data from XML files, converts elements matched by mapping along with their children to data records and sends them to different connected output ports as defined by mapping.",
+    "usage":"When to use: Large files (streaming SAX parser — low memory). Hierarchical extraction to multiple output ports using parentKey/generatedKey to propagate parent keys to child records. Best for XML/JSON→DB pipelines with parent-child relationships.\nConstraints: CloverDX Mappings XML syntax (not XPath). Less expressive than XPath for complex path conditions.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7372,6 +7389,7 @@
     "defaultVisibility": "etlGraph",
     "shortDescription": "Reads data from XML.",
     "description": "Reads data from XML, converts properties matched by XPath defined in mapping along with their direct children to data records and sends them into different connected output ports as defined by mapping.",
+    "usage":"When to use: Smaller/medium files where entire document fits in memory (DOM).Complex or irregular structure better expressed with XPath.\nConstraints: Loads entire document into RAM — avoid for large (>>5M) files.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9191,6 +9209,7 @@
     "type": "FAST_SORT",
     "shortDescription": "Sorts incoming data. This commercial version uses an improved version of external sort and is up to 2.5 times faster than ExtSort.",
     "description": "Receives data records through connected input port, sorts them according to specified sort key and sends them to output port. Sort key is name or combination of names of field(s) of incoming records. Sort order can be either ascending (default) or descending. Any number of records can be sorted. If internal buffer is full, external sorting is performed. FastSort can be up to 2.5 times faster than ExtSort. Can work well with international characters.",
+    "usage" : "When to use: Dataset fits comfortably in memory. Significantly faster than EXT_SORT for in-memory data.\nConstraints: No disk spill — will fail or degrade if data exceeds available RAM. Does not guarantee sort stability. Use EXT_SORT if size is of concern or sort stability is required.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9485,6 +9504,7 @@
     "type": "RELATIONAL_JOIN",
     "shortDescription": "Joins data records that are not equal with respect to a given join key and operator.",
     "description": "Receives sorted data through both connected input ports, for each join key value contained in data records incoming through the first input port (drivers) searches corresponding data records incoming through the second input port (slaves) with the key values specified by one of the five possible join relation operators (e.g., non-equal, greater than, etc.). Thus, joining is performed based on these relations instead the exact matching required in the other joiners. For each join relation, sort order is strictly defined and must be the same for both inputs. Every combination of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port.",
+    "usage" : "When to use: Non-equality join conditions (range, inequality, BETWEEN-style). e.g. join records where date falls within an interval.\nConstraints: Both inputs must be sorted. Very specialized — use equality joiners for standard key-based joins.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13398,6 +13418,7 @@
     "type": "LOAD_BALANCING_PARTITION",
     "shortDescription": "Splits incoming data flow to available output ports.",
     "description": "Receives data through connected input port, splits incoming data flow into more flows to ensure all output ports are balanced employed.",
+    "usage":"When to use: Distribute records evenly across N parallel processing branches where content doesn't determine destination — pure throughput scaling. Round-robin distribution.\nConstraints: No content awareness — do NOT use when record destination must depend on field values. Use PARTITION for content-based routing.",
     "inputPorts": [
       {
         "type": "singlePort",
