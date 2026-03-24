@@ -10,3 +10,4 @@ server.crt
 server.key
 misc/
 
+test_component_catalog_format.py

@@ -174,6 +174,66 @@ class ComponentCatalog:
         return [c for c in self._components if not self._is_deprecated(c)]
 
     @staticmethod
+    def _split_expr(expr: str, separators: str = r",|") -> List[str]:
+        return [part.strip() for part in re.split(f"[{separators}]", expr) if part and part.strip()]
+
+    @staticmethod
+    def _build_exclusive_required_groups(properties: List[Dict]) -> List[List[str]]:
+        """
+        Build groups such as transform|transformURL|transformClass from conditional
+        required/redundant expressions.
+        """
+        groups: Dict[tuple, set] = {}
+
+        for prop in properties:
+            name = prop.get("name")
+            req_expr = prop.get("required")
+            if not name or not isinstance(req_expr, str):
+                continue
+
+            req_tokens = ComponentCatalog._split_expr(req_expr, separators=r",")
+            if not req_tokens or not all(token.startswith("!") and len(token) > 1 for token in req_tokens):
+                continue
+
+            members = {name}
+            members.update(token[1:] for token in req_tokens)
+
+            red_expr = prop.get("redundant")
+            if isinstance(red_expr, str):
+                members.update(ComponentCatalog._split_expr(red_expr, separators=r"\|"))
+
+            key = tuple(sorted(members))
+            groups.setdefault(key, set()).add(name)
+
+        ordered: List[List[str]] = []
+        for key in sorted(groups.keys()):
+            ordered.append(list(key))
+        return ordered
+
+    @staticmethod
+    def _format_conditional_required(req_expr: str) -> str:
+        tokens = ComponentCatalog._split_expr(req_expr, separators=r",")
+        if not tokens:
+            return ""
+        clauses = []
+        for token in tokens:
+            if token.startswith("!") and len(token) > 1:
+                clauses.append(f"{token[1:]} is not set")
+            else:
+                clauses.append(f"{token} is set")
+        return " and ".join(clauses)
+
+    @staticmethod
+    def _format_port_name(port: Dict, index: int, is_output: bool) -> str:
+        name = (port.get("name") or "").strip()
+        if name:
+            return name
+        ptype = (port.get("type") or "").strip()
+        if ptype == "multiplePort":
+            return "*"
+        return str(index)
+
+    @staticmethod
     def format_component(comp: Dict) -> str:
         """Format a single component for display."""
         lines = [
@@ -188,24 +248,61 @@ class ComponentCatalog:
         out_ports = comp.get("outputPorts", []) or []
         if in_ports:
             lines.append("Input Ports:")
-            for p in in_ports:
-                req = "required" if p.get("required") else "optional"
-                lines.append(f"  [{p.get('name', '')}] {p.get('label', '')} ({req})")
+            for index, p in enumerate(in_ports):
+                ptype = (p.get("type") or "").strip()
+                if ptype == "multiplePort" and p.get("required"):
+                    req = "min 1 required"
+                else:
+                    req = "required" if p.get("required") else "optional"
+                port_name = ComponentCatalog._format_port_name(p, index, is_output=False)
+                label = (p.get("label") or "").strip()
+                label_part = f" {label}" if label else ""
+                lines.append(f"  [{port_name}]{label_part} ({req})")
         if out_ports:
             lines.append("Output Ports:")
-            for p in out_ports:
-                req = "required" if p.get("required") else "optional"
-                lines.append(f"  [{p.get('name', '')}] {p.get('label', '')} ({req})")
+            for index, p in enumerate(out_ports):
+                ptype = (p.get("type") or "").strip()
+                if ptype == "multiplePort" and p.get("required"):
+                    req = "min 1 required"
+                elif ptype == "multiplePort":
+                    req = "optional"
+                else:
+                    req = "required" if p.get("required") else "optional"
+                port_name = ComponentCatalog._format_port_name(p, index, is_output=True)
+                label = (p.get("label") or "").strip()
+                label_part = f" {label}" if label else ""
+                lines.append(f"  [{port_name}]{label_part} ({req})")
 
         properties = comp.get("properties", []) or []
         if properties:
             lines.append("")
             lines.append("Properties:")
+
+            exclusive_groups = ComponentCatalog._build_exclusive_required_groups(properties)
+            grouped_members = {name for group in exclusive_groups for name in group}
+            if exclusive_groups:
+                lines.append("  Conditional required groups:")
+                for group in exclusive_groups:
+                    lines.append(
+                        "    "
+                        + " | ".join(group)
+                        + " (at least one is required; mutually exclusive)"
+                    )
+                lines.append("")
+
             for prop in properties:
-                req  = " *required*" if prop.get("required") else ""
+                req = ""
+                req_expr = prop.get("required")
+                prop_name = prop.get("name", "")
+                if req_expr is True:
+                    req = " *required*"
+                elif isinstance(req_expr, str) and prop_name not in grouped_members:
+                    cond = ComponentCatalog._format_conditional_required(req_expr)
+                    req = f" *required when {cond}*" if cond else ""
+
                 dval = f"  (default: {prop['defaultValue']})" if prop.get("defaultValue") else ""
                 desc = (prop.get("description") or "")[:100]
-                lines.append(f"  {prop.get('name', '')}{req}: [{prop.get('type', '')}]{dval}  {desc}")
+                lines.append(f"  {prop_name}{req}: [{prop.get('type', '')}]{dval}  {desc}")
                 if prop.get("type") == "enum" and prop.get("values"):
                     vals = ", ".join(v.get("value", "") for v in prop["values"] if isinstance(v, dict))
                     lines.append(f"    values: {vals}")
