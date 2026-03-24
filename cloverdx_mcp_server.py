@@ -66,6 +66,7 @@ Dependencies
 """
 
 import asyncio
+import bisect
 import glob as _glob
 import json
 import logging
@@ -501,7 +502,7 @@ async def handle_list_tools() -> List[types.Tool]:
                 "Returns the path, size, and last-modified date of each matching file. "
                 "Optionally also returns the matching lines with line numbers (like grep -n). "
                 "Supports plain-string search by default, with optional regex mode via is_regex=true. "
-                "Matching is line-based (no multi-line regex across line breaks). "
+                "Regex mode searches full file text and supports cross-line matches. "
                 "\n\n"
                 "Primary use cases:\n"
                 "- Find all graphs that use a specific component type: "
@@ -541,7 +542,7 @@ async def handle_list_tools() -> List[types.Tool]:
                         "description": (
                             "If true, treat search_string as a Python regular expression. "
                             "If false (default), treat search_string as plain text. "
-                            "Matching is line-based."
+                            "Regex mode searches full file text and can match across line breaks."
                         ),
                     },
                     "path": {
@@ -569,6 +570,8 @@ async def handle_list_tools() -> List[types.Tool]:
                         "description": (
                             "If true, each result includes the matching lines with line numbers. "
                             "If false, returns only file paths and metadata. "
+                            "In regex mode, also includes matching_ranges plus matching_samples "
+                            "(full text snippet for each regex hit with start_line/end_line). "
                             "Default: false. "
                             "Set true when you need to understand how the string is used "
                             "(e.g. verifying which component ID uses a given attribute), "
@@ -666,7 +669,8 @@ async def handle_list_tools() -> List[types.Tool]:
             description=(
                 "Read the content of a file from a CloverDX sandbox. "
                 "Use this to fetch .grf graph files, .fmt metadata files, .prm parameter files, etc. "
-                "Optionally read only a byte range by specifying both offset and byte_count."
+                "Optionally read a line range by specifying both start_line and line_count. "
+                "start_line is 1-based; negative values count from the end (-1 is last line)."
             ),
             inputSchema={
                 "type": "object",
@@ -674,13 +678,13 @@ async def handle_list_tools() -> List[types.Tool]:
                 "properties": {
                     "sandbox": {"type": "string", "description": "Sandbox code"},
                     "path":    {"type": "string", "description": "Full file path within the sandbox (e.g. 'graph/MyGraph.grf')"},
-                    "offset": {
+                    "start_line": {
                         "type": "integer",
-                        "description": "Optional zero-based byte offset from which to start reading. Must be provided together with byte_count.",
+                        "description": "Optional starting line number. 1-based for positive values; negative values count from end (-1 is last line). Must be provided together with line_count.",
                     },
-                    "byte_count": {
+                    "line_count": {
                         "type": "integer",
-                        "description": "Optional number of bytes to read. Must be provided together with offset.",
+                        "description": "Optional number of lines to read. Must be provided together with start_line.",
                     },
                 },
                 "additionalProperties": False,
@@ -1303,7 +1307,7 @@ async def tool_grep_files(args: Dict) -> List[types.TextContent]:
         )
 
         needle = search_string if case_sensitive else search_string.lower()
-        regex_flags = 0 if case_sensitive else re.IGNORECASE
+        regex_flags = re.DOTALL if case_sensitive else (re.DOTALL | re.IGNORECASE)
         compiled_pattern = None
         if is_regex:
             try:
@@ -1327,18 +1331,73 @@ async def tool_grep_files(args: Dict) -> List[types.TextContent]:
             except Exception:
                 continue
 
-            lines = content.splitlines()
-            matching_lines = []
-            for lineno, line in enumerate(lines, start=1):
-                if is_regex:
-                    if compiled_pattern and compiled_pattern.search(line):
-                        matching_lines.append((lineno, line))
-                else:
+            matching_lines: List[tuple[int, str]] = []
+            matching_ranges: List[Dict[str, int]] = []
+            matching_samples: List[Dict[str, Any]] = []
+
+            if is_regex:
+                if not compiled_pattern:
+                    continue
+
+                matches = list(compiled_pattern.finditer(content))
+                if not matches:
+                    continue
+
+                line_starts: List[int] = []
+                line_values: List[str] = []
+                pos = 0
+                for line in content.splitlines(keepends=True):
+                    line_starts.append(pos)
+                    line_values.append(line.rstrip("\r\n"))
+                    pos += len(line)
+
+                if not line_starts and content == "":
+                    line_starts = [0]
+                    line_values = [""]
+
+                def _line_for_pos(char_pos: int) -> int:
+                    idx = bisect.bisect_right(line_starts, char_pos) - 1
+                    idx = max(0, min(idx, len(line_starts) - 1))
+                    return idx + 1
+
+                matched_line_numbers: set[int] = set()
+                for m in matches:
+                    start_pos, end_pos = m.span()
+                    end_lookup_pos = end_pos - 1 if end_pos > start_pos else end_pos
+                    start_line_no = _line_for_pos(start_pos)
+                    end_line_no = _line_for_pos(end_lookup_pos)
+                    matching_ranges.append({"start_line": start_line_no, "end_line": end_line_no})
+
+                    sample_lines = line_values[start_line_no - 1:end_line_no]
+                    matching_samples.append({
+                        "start_line": start_line_no,
+                        "end_line": end_line_no,
+                        "content": "\n".join(sample_lines),
+                    })
+
+                    if include_lines:
+                        for line_no in range(start_line_no, end_line_no + 1):
+                            matched_line_numbers.add(line_no)
+
+                if include_lines:
+                    for line_no in sorted(matched_line_numbers):
+                        if 1 <= line_no <= len(line_values):
+                            matching_lines.append((line_no, line_values[line_no - 1]))
+
+                match_count = len(matches)
+            else:
+                lines = content.splitlines()
+                for lineno, line in enumerate(lines, start=1):
                     haystack = line if case_sensitive else line.lower()
                     if needle in haystack:
                         matching_lines.append((lineno, line))
 
-            if not matching_lines:
+                if not matching_lines:
+                    continue
+
+                match_count = len(matching_lines)
+
+            if match_count == 0:
                 continue
 
             entry: Dict[str, Any] = {
@@ -1348,7 +1407,12 @@ async def tool_grep_files(args: Dict) -> List[types.TextContent]:
             for meta_key in ("size", "lastModified", "isFolder"):
                 if meta_key in item:
                     entry[meta_key] = item[meta_key]
-            entry["match_count"] = len(matching_lines)
+            entry["match_count"] = match_count
+
+            if is_regex:
+                entry["matching_ranges"] = matching_ranges
+                if include_lines:
+                    entry["matching_samples"] = matching_samples
 
             if include_lines:
                 entry["matching_lines"] = [
@@ -1507,23 +1571,34 @@ async def tool_read_file(args: Dict) -> List[types.TextContent]:
     try:
         content = get_soap_client().download_file(args["sandbox"], args["path"])
 
-        offset = args.get("offset")
-        byte_count = args.get("byte_count")
-        partial_requested = offset is not None or byte_count is not None
+        start_line = args.get("start_line")
+        line_count = args.get("line_count")
+        partial_requested = start_line is not None or line_count is not None
 
         if partial_requested:
-            if offset is None or byte_count is None:
-                return _text("ERROR: offset and byte_count must both be provided when requesting a partial read.")
+            if start_line is None or line_count is None:
+                return _text("ERROR: start_line and line_count must both be provided when requesting a partial read.")
 
-            offset = int(offset)
-            byte_count = int(byte_count)
+            start_line = int(start_line)
+            line_count = int(line_count)
 
-            if offset < 0 or byte_count < 0:
-                return _text("ERROR: offset and byte_count must be non-negative integers.")
+            if start_line == 0:
+                return _text("ERROR: start_line cannot be 0. Use 1-based values or negative values to count from end.")
+            if line_count < 0:
+                return _text("ERROR: line_count must be a non-negative integer.")
 
-            content_bytes = content.encode("utf-8")
-            sliced_bytes = content_bytes[offset:offset + byte_count]
-            return _text(sliced_bytes.decode("utf-8", errors="replace"))
+            lines = content.splitlines(keepends=True)
+            total_lines = len(lines)
+
+            if start_line > 0:
+                start_index = start_line - 1
+            else:
+                start_index = total_lines + start_line
+
+            start_index = max(0, min(start_index, total_lines))
+            end_index = min(start_index + line_count, total_lines)
+
+            return _text("".join(lines[start_index:end_index]))
 
         return _text(content)
     except Exception as e:

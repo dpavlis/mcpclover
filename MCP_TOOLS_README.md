@@ -32,7 +32,7 @@ Finds files in a sandbox using shell-style wildcards (`*`, `?`). Searches recurs
 #### TODO:
 - *Implement server-side content search to avoid downloading large files for client-side filtering. This would require a new SOAP method that accepts a search string and optional filename pattern, and returns matching file metadata and lines. The current client-side approach is inefficient for large sandboxes with many files.*
 
-Searches files in a sandbox whose **content** matches a given query. By default, `search_string` is treated as plain text; set `is_regex=true` to treat it as a regex. Matching is line-based (no multi-line regex across line breaks). Returns the path, size, and last-modified date of each matching file. Optionally returns matching lines with line numbers (like `grep -n`). Supports optional filename pattern filter (`file_pattern`) and case-insensitive mode.  
+Searches files in a sandbox whose **content** matches a given query. By default, `search_string` is treated as plain text; set `is_regex=true` to treat it as a regex. In regex mode, matching is performed against the full file text and supports cross-line matches; results include `matching_ranges` with `start_line`/`end_line` for each regex hit. When `include_matching_lines=true`, regex results also include `matching_samples` where each sample contains the full multi-line matched snippet (`start_line`, `end_line`, `content`). Returns the path, size, and last-modified date of each matching file. Optionally returns matching lines with line numbers (like `grep -n`). Supports optional filename pattern filter (`file_pattern`) and case-insensitive mode.  
 **Why:** Lets the LLM find all graphs that use a specific component type, reference a particular subgraph or connection, call a named CTL function, or define a particular metadata ID — without reading every file manually. Much faster than individually reading files when the target string could appear in many places.  
 **Key use cases:**
 - Find all graphs using a component: `search_string='type="VALIDATOR"'`, `path='graph'`
@@ -41,6 +41,7 @@ Searches files in a sandbox whose **content** matches a given query. By default,
 - Find example graphs for a component: `file_pattern='*.grf'`, `search_string='type="DENORMALIZER"'`
 - Regex search for multiple component types: `search_string='type="(VALIDATOR|DENORMALIZER)"'`, `is_regex=true`
 - Regex search for metadata IDs by prefix: `search_string='metadata="Meta[A-Za-z0-9_]+"'`, `is_regex=true`
+- Regex across line breaks: `search_string='ORDER_VALIDATOR.*?type="VALIDATOR"'`, `is_regex=true`
 
 Combine with `find_file` when both name pattern and content filtering are needed.  
 **Backend:** SOAP `ListFiles` (file discovery) + `GetSandboxFile` (content read); filtering runs client-side
@@ -62,11 +63,8 @@ Reads and resolves graph parameters for a sandbox from `workspace.prm` (CloverDX
 ---
 
 ### `read_file`
-#### TODO:
-*Add partial read-support to SOAP `GetSandboxFile` to allow fetching only a byte range from large files. This would require extending the SOAP method to accept `offset` and `byte_count` parameters, and modifying the server to read and return only the specified range. The client would then use these parameters to implement efficient partial reads when needed.*
-
-Downloads the text content of any file from a sandbox (`.grf`, `.fmt`, `.prm`, `.ctl`, etc.). Optionally supports partial reads via `offset` + `byte_count`, allowing the LLM to fetch only a byte range from large files. If partial read is requested, both parameters must be provided.  
-**Why:** The LLM must read a file before modifying it, but large files do not always need to be fetched in full. Partial reads reduce token usage when only a section of the file is needed.  
+Downloads the text content of any file from a sandbox (`.grf`, `.fmt`, `.prm`, `.ctl`, etc.). Optionally supports line-based partial reads via `start_line` + `line_count`. `start_line` is 1-based for positive values; negative values count from the end (`-1` is the last line). If partial read is requested, both parameters must be provided.  
+**Why:** The LLM must read a file before modifying it, but large files do not always need to be fetched in full. Line-based partial reads reduce token usage when only a specific section is needed.  
 **Backend:** SOAP `GetSandboxFile`
 
 ---
@@ -251,3 +249,20 @@ Returns the input/output port definitions and configurable properties for a comp
 Returns extended markdown documentation for complex components that require deeper explanation (e.g. `XML_EXTRACT`, `VALIDATOR`).  
 **Why:** `get_component_info` covers ports and property names, but complex components like `XML_EXTRACT` have non-obvious mapping syntax, mode options, and edge cases that require a full reference document.  
 **Backend:** Local `.md` files from `comp_details/` directory
+
+---
+## TO BE IMPLEMENTED (suggestions)
+### `validate_ctl`
+
+These are genuinely different tools with different use cases, not one tool with a mode flag:
+
+**Standalone** — "I'm assembling a CTL snippet and want fast syntax + type checking before I even have a graph. I know my metadata, I'll supply it."
+
+### `in_graph_validate_ctl`
+**In-graph** — "I have a working graph. I want to iterate on just the CTL of one component without running validate_graph on the whole thing every time. The graph provides all context."
+
+
+### Other potential tools:
+- ?? list_subgraphs 
+- ?? get_subgraph_info
+
