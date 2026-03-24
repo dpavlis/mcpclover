@@ -30,15 +30,17 @@ Finds files in a sandbox using shell-style wildcards (`*`, `?`). Searches recurs
 
 ### `grep_files`
 #### TODO:
-*Implement server-side content search to avoid downloading large files for client-side filtering. This would require a new SOAP method that accepts a search string and optional filename pattern, and returns matching file metadata and lines. The current client-side approach is inefficient for large sandboxes with many files.*
+- *Implement server-side content search to avoid downloading large files for client-side filtering. This would require a new SOAP method that accepts a search string and optional filename pattern, and returns matching file metadata and lines. The current client-side approach is inefficient for large sandboxes with many files.*
 
-Searches files in a sandbox whose **content** contains a given string. Returns the path, size, and last-modified date of each matching file. Optionally returns matching lines with line numbers (like `grep -n`). Supports optional filename pattern filter (`file_pattern`) and case-insensitive mode.  
+Searches files in a sandbox whose **content** matches a given query. By default, `search_string` is treated as plain text; set `is_regex=true` to treat it as a regex. Matching is line-based (no multi-line regex across line breaks). Returns the path, size, and last-modified date of each matching file. Optionally returns matching lines with line numbers (like `grep -n`). Supports optional filename pattern filter (`file_pattern`) and case-insensitive mode.  
 **Why:** Lets the LLM find all graphs that use a specific component type, reference a particular subgraph or connection, call a named CTL function, or define a particular metadata ID — without reading every file manually. Much faster than individually reading files when the target string could appear in many places.  
 **Key use cases:**
 - Find all graphs using a component: `search_string='type="VALIDATOR"'`, `path='graph'`
 - Find all graphs referencing a subgraph: `search_string='OrderFileReader.sgrf'`
 - Find graphs referencing a metadata ID: `search_string='metadata="MetaOrder"'`
 - Find example graphs for a component: `file_pattern='*.grf'`, `search_string='type="DENORMALIZER"'`
+- Regex search for multiple component types: `search_string='type="(VALIDATOR|DENORMALIZER)"'`, `is_regex=true`
+- Regex search for metadata IDs by prefix: `search_string='metadata="Meta[A-Za-z0-9_]+"'`, `is_regex=true`
 
 Combine with `find_file` when both name pattern and content filtering are needed.  
 **Backend:** SOAP `ListFiles` (file discovery) + `GetSandboxFile` (content read); filtering runs client-side

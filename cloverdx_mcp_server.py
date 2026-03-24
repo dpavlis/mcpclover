@@ -11,7 +11,7 @@ WebServices and exposes the following tools:
   list_sandboxes          – List all available sandboxes on the server
   list_files              – List files/folders inside a sandbox directory
   find_file               – Find files in a sandbox using * and ? wildcards
-  grep_files              – Search file contents in a sandbox for a string (like grep -r)
+    grep_files              – Search file contents in a sandbox by plain string or regex (like grep -r)
   list_linked_assets      – List externalized/linkable assets by known file types
   get_sandbox_parameters  – Read/resolve sandbox parameters from workspace.prm (+ optional server overlays)
     read_file               – Download a file or byte range (graph, metadata, params, …)
@@ -497,9 +497,11 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="grep_files",
             description=(
-                "Search for files in a CloverDX sandbox whose content contains a given string. "
+                "Search for files in a CloverDX sandbox whose content matches a given query. "
                 "Returns the path, size, and last-modified date of each matching file. "
                 "Optionally also returns the matching lines with line numbers (like grep -n). "
+                "Supports plain-string search by default, with optional regex mode via is_regex=true. "
+                "Matching is line-based (no multi-line regex across line breaks). "
                 "\n\n"
                 "Primary use cases:\n"
                 "- Find all graphs that use a specific component type: "
@@ -529,8 +531,17 @@ async def handle_list_tools() -> List[types.Tool]:
                     "search_string": {
                         "type": "string",
                         "description": (
-                            "The string to search for in file contents. "
-                            "Plain string — not a regex. Case-sensitive by default."
+                            "The query to search for in file contents. "
+                            "Interpreted as plain text by default; interpreted as regex when is_regex=true. "
+                            "Case-sensitive by default."
+                        ),
+                    },
+                    "is_regex": {
+                        "type": "boolean",
+                        "description": (
+                            "If true, treat search_string as a Python regular expression. "
+                            "If false (default), treat search_string as plain text. "
+                            "Matching is line-based."
                         ),
                     },
                     "path": {
@@ -1272,10 +1283,10 @@ async def tool_find_file(args: Dict) -> List[types.TextContent]:
 
 
 async def tool_grep_files(args: Dict) -> List[types.TextContent]:
-    import fnmatch as _fnmatch
     try:
         sandbox         = args["sandbox"]
         search_string   = args["search_string"]
+        is_regex        = bool(args.get("is_regex", False))
         path            = str(args.get("path") or "").strip()
         file_pattern    = str(args.get("file_pattern") or "*").strip() or "*"
         case_sensitive  = bool(args.get("case_sensitive", True))
@@ -1292,6 +1303,13 @@ async def tool_grep_files(args: Dict) -> List[types.TextContent]:
         )
 
         needle = search_string if case_sensitive else search_string.lower()
+        regex_flags = 0 if case_sensitive else re.IGNORECASE
+        compiled_pattern = None
+        if is_regex:
+            try:
+                compiled_pattern = re.compile(search_string, regex_flags)
+            except re.error as rx:
+                return _text(f"ERROR: Invalid regex in search_string: {rx}")
 
         results = []
         for item in candidate_files:
@@ -1312,9 +1330,13 @@ async def tool_grep_files(args: Dict) -> List[types.TextContent]:
             lines = content.splitlines()
             matching_lines = []
             for lineno, line in enumerate(lines, start=1):
-                haystack = line if case_sensitive else line.lower()
-                if needle in haystack:
-                    matching_lines.append((lineno, line))
+                if is_regex:
+                    if compiled_pattern and compiled_pattern.search(line):
+                        matching_lines.append((lineno, line))
+                else:
+                    haystack = line if case_sensitive else line.lower()
+                    if needle in haystack:
+                        matching_lines.append((lineno, line))
 
             if not matching_lines:
                 continue
@@ -1341,6 +1363,7 @@ async def tool_grep_files(args: Dict) -> List[types.TextContent]:
         payload = {
             "sandbox": sandbox,
             "search_string": search_string,
+            "is_regex": is_regex,
             "path": path or "/",
             "file_pattern": file_pattern,
             "case_sensitive": case_sensitive,
