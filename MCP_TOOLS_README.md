@@ -1,6 +1,6 @@
 # CloverDX MCP Tools Reference
 
-This document describes all 26 tools exposed by the CloverDX Graph Builder MCP server.
+This document describes all 28 tools exposed by the CloverDX Graph Builder MCP server.
 Each tool maps to one or more CloverDX Server operations (SOAP WebService or REST API).
 
 ---
@@ -28,6 +28,23 @@ Finds files in a sandbox using shell-style wildcards (`*`, `?`). Searches recurs
 
 ---
 
+### `grep_files`
+#### TODO:
+*Implement server-side content search to avoid downloading large files for client-side filtering. This would require a new SOAP method that accepts a search string and optional filename pattern, and returns matching file metadata and lines. The current client-side approach is inefficient for large sandboxes with many files.*
+
+Searches files in a sandbox whose **content** contains a given string. Returns the path, size, and last-modified date of each matching file. Optionally returns matching lines with line numbers (like `grep -n`). Supports optional filename pattern filter (`file_pattern`) and case-insensitive mode.  
+**Why:** Lets the LLM find all graphs that use a specific component type, reference a particular subgraph or connection, call a named CTL function, or define a particular metadata ID — without reading every file manually. Much faster than individually reading files when the target string could appear in many places.  
+**Key use cases:**
+- Find all graphs using a component: `search_string='type="VALIDATOR"'`, `path='graph'`
+- Find all graphs referencing a subgraph: `search_string='OrderFileReader.sgrf'`
+- Find graphs referencing a metadata ID: `search_string='metadata="MetaOrder"'`
+- Find example graphs for a component: `file_pattern='*.grf'`, `search_string='type="DENORMALIZER"'`
+
+Combine with `find_file` when both name pattern and content filtering are needed.  
+**Backend:** SOAP `ListFiles` (file discovery) + `GetSandboxFile` (content read); filtering runs client-side
+
+---
+
 ### `list_linked_assets`
 Lists all externalisable/linkable assets in a sandbox: metadata definitions (`.fmt`), connection definitions (`.cfg`), lookup tables (`.lkp`), CTL2 transforms (`.ctl`), sequences (`.seq`), and parameter files (`.prm`). Optional `asset_type` filter.  
 **Why:** CloverDX graphs reference shared assets by `fileURL`. Before writing a graph, the LLM must know what assets already exist to use their correct paths rather than redefining them inline.  
@@ -43,6 +60,9 @@ Reads and resolves graph parameters for a sandbox from `workspace.prm` (CloverDX
 ---
 
 ### `read_file`
+#### TODO:
+*Add partial read-support to SOAP `GetSandboxFile` to allow fetching only a byte range from large files. This would require extending the SOAP method to accept `offset` and `byte_count` parameters, and modifying the server to read and return only the specified range. The client would then use these parameters to implement efficient partial reads when needed.*
+
 Downloads the text content of any file from a sandbox (`.grf`, `.fmt`, `.prm`, `.ctl`, etc.). Optionally supports partial reads via `offset` + `byte_count`, allowing the LLM to fetch only a byte range from large files. If partial read is requested, both parameters must be provided.  
 **Why:** The LLM must read a file before modifying it, but large files do not always need to be fetched in full. Partial reads reduce token usage when only a section of the file is needed.  
 **Backend:** SOAP `GetSandboxFile`
@@ -153,6 +173,9 @@ Executes a graph on the server and polls until completion. Returns final status 
 ---
 
 ### `list_graph_runs`
+#### TODO:
+*Add SOAP 'ListExecutions' to avoid REST API dependency*
+
 Lists recent graph and jobflow executions, with optional filters for sandbox, job file path substring, and status. Supports paging.  
 **Why:** Lets the LLM look up execution history without needing a run ID in advance — useful for checking if a graph ran successfully recently, or finding a failed run to diagnose.  
 **Backend:** REST `GET /api/rest/v1/executions`
@@ -195,6 +218,9 @@ Returns the field schema (names and types) for data flowing through a specific e
 ---
 
 ### `get_edge_debug_data`
+#### TODO:
+*consider merging `get_edge_debug_info` + `get_edge_debug_metadata` into this single call, since they are always used together and both require retry logic. Instead of binary CLVI, return the debug data as JSON with an array of records (up to a reasonable max, e.g. 100) and their field values as strings. This would simplify LLM usage and remove the need for separate metadata fetching.*
+
 Fetches a paginated summary of records that flowed through an edge during a debug run. Supports optional CTL2 `filter_expression` and `field_selection`.  
 **Why:** Allows the LLM to inspect mid-graph data to diagnose transformation logic errors — e.g. checking what values reached a Lookup component's reject port.  
 **Backend:** SOAP `GetEdgeDebugData`
