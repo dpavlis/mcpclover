@@ -208,19 +208,11 @@ check field types match what CTL code expects).
 
 **Step 3 — fetch record count and summary:**
 ```
-get_edge_debug_data(edge_id="Edge2", graph_path, sandbox, run_id,
-    field_selection=["Order_Id", "rejectReason"],
-    filter_expression="$in.rejectReason != null",
-    record_count=20)
+get_edge_debug_data(run_id=run_id, edge_id="Edge2", record_count=20)
 ```
 
-Note: `get_edge_debug_data` returns a record count and page availability
-summary — the actual record payload is CloverDX binary (CLVI format) and
-is not human-readable. Use it to confirm **how many** records matched a
-filter condition, not to read actual values. For reading actual values,
-check the output files the graph wrote (via `read_file` on the output CSV/JSON)
-or add a `TRASH` component with `debugPrint=true` to the edge of interest
-and re-run.
+`get_edge_debug_data` calls `/data-service/debugRead` using `runID` and `edgeID`
+and returns the JSON output from that endpoint.
 
 **When to use edge debug vs other approaches:**
 
@@ -229,8 +221,8 @@ and re-run.
 | How many records flowed through each component | `get_graph_tracking` |
 | Why the graph failed | `get_graph_execution_log` |
 | What fields exist on a specific edge | `get_edge_debug_metadata` |
-| How many records match a condition on an edge | `get_edge_debug_data` with `filter_expression` |
-| What the actual field values are | Read output file, or re-run with `TRASH debugPrint=true` on the edge |
+| Read sample values from a specific edge | `get_edge_debug_data` |
+| Debug output file inspection fallback | Read output file, or re-run with `TRASH debugPrint=true` on the edge |
 
 ### 3.4 Common execution problems and diagnosis paths
 
@@ -262,5 +254,5 @@ and re-run.
 - [ ] If run status not `FINISHED_OK`: `get_graph_execution_log` consulted and root cause identified
 - [ ] Used `think` to reason through unexpected counts before attempting fixes
 - [ ] If edge debug used: `get_edge_debug_info` confirmed data available first
-- [ ] Understood that `get_edge_debug_data` returns count summary only — not readable record values
+- [ ] Used `get_edge_debug_data` to inspect edge records decoded by `debugRead`
 - [ ] Run status is `FINISHED_OK`

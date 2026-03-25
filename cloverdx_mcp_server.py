@@ -1944,32 +1944,18 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_edge_debug_data",
             description=(
-                "Fetch summary information about data records that flowed through a specific graph edge during a debug run. "
-                "Returns the record count captured on the edge and whether more pages are available. "
-                "The payload itself is CloverDX binary (CLVI format) and is not returned as text — "
-                "use get_edge_debug_metadata to inspect the field schema instead. "
-                "The graph must have been executed with debug=true. "
-                "Use get_edge_debug_info first to confirm data is available and obtain writerRunId/readerRunId. "
-                "filter_expression must be a CTL2 boolean expression (e.g. '$in.amount > 100'). "
-                "It is automatically prefixed with //#CTL2 — do NOT include the language marker yourself. "
-                "Omit or leave blank for no filtering (all records)."
+                "Fetch edge debug records for a specific edge of a completed debug run. "
+                "Returns the debug data as JSON array of records."
+                "The graph run must have been executed with debug=true. "
+                
             ),
             inputSchema={
                 "type": "object",
-                "required": ["sandbox", "graph_path", "run_id", "edge_id"],
+                "required": ["run_id", "edge_id"],
                 "properties": {
-                    "sandbox":          {"type": "string",  "description": "Sandbox code"},
-                    "graph_path":       {"type": "string",  "description": "Path to the .grf file"},
                     "run_id":           {"type": "string",  "description": "Run ID returned by execute_graph"},
                     "edge_id":          {"type": "string",  "description": "Edge ID as defined in the graph XML"},
-                    "start_record":     {"type": "integer", "description": "Zero-based index of the first record to fetch (default: 0). Use for paging."},
-                    "record_count":     {"type": "integer", "description": "Max number of records to fetch per page (default: 100)"},
-                    "filter_expression":{"type": "string",  "description": "CTL2 boolean expression to filter records (e.g. '$in.amount > 100'). Omit for all records."},
-                    "field_selection":  {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional list of field names to include (default: all fields)",
-                    },
+                    "record_count":     {"type": "integer", "description": "Max number of records to return (default: 100)."},
                 },
             },
         ),
@@ -2817,14 +2803,9 @@ async def tool_get_workflow_guide(args: Dict) -> List[types.TextContent]:
 async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
     try:
         data = get_soap_client().get_edge_debug_data(
-            sandbox=args["sandbox"],
-            graph_path=args["graph_path"],
             run_id=args["run_id"],
             edge_id=args["edge_id"],
-            start_record=int(args.get("start_record", 0)),
             record_count=int(args.get("record_count", 100)),
-            filter_expression=args.get("filter_expression", ""),
-            field_selection=args.get("field_selection"),
         )
         return _text(data)
     except Exception as e:

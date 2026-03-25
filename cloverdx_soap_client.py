@@ -4,6 +4,7 @@
 import base64
 from datetime import datetime
 import fnmatch
+import json
 import logging
 import os
 import struct
@@ -37,6 +38,7 @@ class CloverDXSoapClient:
         port = parsed.port or (443 if scheme == "https" else 8083)
         self._wsdl_url = f"{scheme}://{host}:{port}/clover/webservice?wsdl"
         self._rest_base = f"{scheme}://{host}:{port}/clover/api/rest/v1"
+        self._debug_read_url = f"{scheme}://{host}:{port}/clover/data-service/debugRead"
         self._username = username
         self._password = password
         self._verify_ssl = verify_ssl
@@ -685,6 +687,27 @@ class CloverDXSoapClient:
             return raw
         return raw.get("metadata") or str(raw)
 
+    def _rest_debug_read(self, run_id: str, edge_id: str, num_rec: int) -> Any:
+        self._init_client()
+        resp = self._client.transport.session.get(
+            self._debug_read_url,
+            params={"runID": str(run_id), "edgeID": str(edge_id), "numRec": int(num_rec)},
+            headers={
+                "X-Requested-By": "mcp",
+                "Accept": "application/json",
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        content_type = (resp.headers.get("Content-Type") or "").lower()
+        if "json" in content_type:
+            return resp.json()
+        text = resp.text
+        try:
+            return json.loads(text)
+        except Exception:
+            return text
+
     @staticmethod
     def _clvi_record_count(data: bytes) -> Optional[int]:
         idx = data.find(b"CLVI")
@@ -693,51 +716,18 @@ class CloverDXSoapClient:
         count = struct.unpack_from(">I", data, idx + 4)[0]
         return count if count >= 0 else None
 
-    def get_edge_debug_data(self, sandbox: str, graph_path: str,
+    def get_edge_debug_data(self,
                             run_id: str, edge_id: str,
-                            start_record: int = 0,
-                            record_count: int = 100,
-                            filter_expression: str = "",
-                            field_selection: Optional[List[str]] = None) -> str:
-        expr = filter_expression.strip() if filter_expression else ""
-        if not expr:
-            expr = "//#CTL2\ntrue"
-        elif not expr.startswith("//#CTL2"):
-            expr = "//#CTL2\n" + expr
-        resp = self._call(
-            "GetEdgeDebugData",
-            sandboxCode=sandbox,
-            graphPath=graph_path,
-            writerRunId=int(run_id),
-            readerRunId=int(run_id),
-            edgeID=edge_id,
-            startRecord=start_record,
-            recordCount=record_count,
-            filterExpression=expr,
-            fieldSelection=field_selection or [],
-        )
-        raw = getattr(resp, "out", None) or getattr(resp, "return_", None) or resp
+                            record_count: int = 100) -> str:
+        effective_record_count = max(1, int(record_count))
+        parsed = self._rest_debug_read(run_id=run_id, edge_id=edge_id, num_rec=effective_record_count)
+        if isinstance(parsed, str):
+            return parsed
 
-        if isinstance(raw, (bytes, bytearray)):
-            data = bytes(raw)
-        elif isinstance(raw, str):
-            try:
-                data = base64.b64decode(raw)
-            except Exception:
-                return raw
+        response: Dict[str, Any]
+        if isinstance(parsed, dict):
+            response = dict(parsed)
         else:
-            return str(raw)
+            response = {"records": parsed}
 
-        n_returned = self._clvi_record_count(data)
-        count_info = f"{n_returned:,} record(s) returned" if n_returned is not None else "record count unavailable"
-        has_more = (n_returned is not None and n_returned >= record_count)
-        more_info = (
-            f" (there may be more — re-call with start_record={start_record + n_returned})"
-            if has_more else " (all captured records returned)"
-        )
-
-        return (
-            f"Edge debug data for '{edge_id}' (run {run_id}): {count_info}{more_info}.\n"
-            f"Payload is CloverDX binary (CLVI format, {len(data):,} bytes) — "
-            f"not human-readable directly. Use get_edge_debug_metadata to inspect the field schema."
-        )
+        return json.dumps(response, indent=2, default=str)

@@ -218,12 +218,9 @@ Returns the field schema (names and types) for data flowing through a specific e
 ---
 
 ### `get_edge_debug_data`
-#### TODO:
-*consider merging `get_edge_debug_info` + `get_edge_debug_metadata` into this single call, since they are always used together and both require retry logic. Instead of binary CLVI, return the debug data as JSON with an array of records (up to a reasonable max, e.g. 100) and their field values as strings. This would simplify LLM usage and remove the need for separate metadata fetching.*
-
-Fetches a paginated summary of records that flowed through an edge during a debug run. Supports optional CTL2 `filter_expression` and `field_selection`.  
+Fetches decoded debug records for a run edge as JSON using `run_id` + `edge_id` (optional `record_count` maps to REST `numRec`).  
 **Why:** Allows the LLM to inspect mid-graph data to diagnose transformation logic errors — e.g. checking what values reached a Lookup component's reject port.  
-**Backend:** SOAP `GetEdgeDebugData`
+**Backend:** REST `GET /data-service/debugRead?runID=...&edgeID=...&numRec=...`
 
 ---
 

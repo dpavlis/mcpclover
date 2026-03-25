@@ -344,9 +344,7 @@ Debug mode workflow:
 run = execute_graph("graph/MyGraph.grf", sandbox, debug=True)
 get_edge_debug_info(edge_id="Edge2", graph_path, sandbox, run_id)
 get_edge_debug_metadata(edge_id="Edge2", ...)   -- confirm field schema
-get_edge_debug_data(edge_id="Edge2", ...,
-    field_selection=["Order_Id", "Store_Id"],   -- limit to relevant fields
-    filter_expression="$in.Store_Id == 0")      -- filter to problem records
+get_edge_debug_data(run_id=run_id, edge_id="Edge2", record_count=50)
 ```
 
 ### 3.6 Use `set_graph_element_attribute` for targeted changes

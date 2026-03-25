@@ -270,9 +270,7 @@ Enable debug mode when you need to inspect actual record values, not just counts
 run = execute_graph("graph/MyGraph.grf", sandbox, debug=True)
 get_edge_debug_info(edge_id="Edge2", graph_path, sandbox, run.run_id)
 get_edge_debug_metadata(edge_id="Edge2", ...)
-get_edge_debug_data(edge_id="Edge2", ...,
-    field_selection=["Order_Id", "rejectReason"],
-    filter_expression="$in.rejectReason != null")
+get_edge_debug_data(run_id=run.run_id, edge_id="Edge2", record_count=50)
 ```
 
 Use debug mode when:
