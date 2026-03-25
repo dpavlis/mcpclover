@@ -1,6 +1,6 @@
 # CloverDX MCP Tools Reference
 
-This document describes all 28 tools exposed by the CloverDX Graph Builder MCP server.
+This document describes all 30 tools exposed by the CloverDX Graph Builder MCP server.
 Each tool maps to one or more CloverDX Server operations (SOAP WebService or REST API).
 
 ---
@@ -251,6 +251,23 @@ Returns extended markdown documentation for complex components that require deep
 **Backend:** Local `.md` files from `comp_details/` directory
 
 ---
+
+## Reasoning Helper
+
+### `think`
+Accepts a single `thought` string and returns acknowledgement only (the thought is logged, not executed).  
+**Why:** Encourages explicit reasoning before action for CloverDX workflows — especially before component selection, graph authoring/editing strategy decisions, and root-cause diagnosis after validation failures.  
+**Backend:** Local acknowledgement response + server log entry (no CloverDX SOAP/REST call)
+
+---
+
+### `plan_graph`
+Accepts a structured graph-design plan payload (graph identity, phases, components, metadata, edges, global assets, risks, references) and returns acknowledgement only.  
+**Why:** Forces explicit, reviewable design before writing graph XML so inconsistencies are surfaced early and planning context is recorded. Intended to be called after workflow/reference/component lookups and before `write_file` or `set_graph_element_attribute`.  
+**Backend:** Local acknowledgement response + server log entry (no CloverDX SOAP/REST call)
+
+---
+
 ## TO BE IMPLEMENTED (suggestions)
 ### `validate_ctl`
 

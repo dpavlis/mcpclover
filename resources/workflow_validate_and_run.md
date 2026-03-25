@@ -1,6 +1,8 @@
 # CloverDX Workflow Guide — `validate_and_run`
 
-> Use this guide when the graph already exists and the task is to validate it, run it, and confirm correct results. Never run a graph that has not first passed validation.
+> Use this guide when the graph already exists and the task is to validate it,
+> run it, and confirm correct results. Never run a graph that has not first
+> passed validation.
 
 ---
 
@@ -16,42 +18,82 @@ Validation runs in two stages:
 - **Stage 1** — local XML structure check (fast)
 - **Stage 2** — server-side checkConfig (deep component check; only runs if Stage 1 passes)
 
+**Validation may not be exhaustive.** Some errors block further checking,
+so fixing reported issues and re-validating may reveal additional problems.
+Repeat until `overall: PASS` with no problems.
+
 ### 1.2 Interpret the result
 
 | Result | Meaning | Action |
 |---|---|---|
 | `overall: PASS`, no problems | Graph is fully valid | Proceed to execution |
-| Stage 1 errors | XML is structurally broken — graph won't even open | Fix before anything else |
-| Stage 2 ERROR | A component's configuration is invalid | Fix all errors — do not run |
-| Stage 2 WARNING | Minor issue (CTL warning, metadata mismatch, etc.) | Investigate before running |
+| Stage 1 errors | XML structurally broken — graph won't open | Fix before anything else |
+| Stage 2 ERROR | Component configuration invalid | Fix all errors — do not run |
+| Stage 2 WARNING | CTL warning, metadata mismatch, etc. | Investigate — do not ignore |
 
 **Do not proceed to execution if any errors or warnings are present.**
 
-### 1.3 Diagnose and fix validation errors
+### 1.3 Diagnose validation errors using `think`
+Before attempting a fix, always reason through the root cause:
+
+```
+think("Stage 2 error: 'Attribute customRejectMessage not allowed on expression'.
+      This means an <expression> rule element has customRejectMessage which the
+      schema doesn't allow. Fix: remove it and use the name attribute as the
+      human-readable label instead.")
+```
+
+```
+think("Stage 1 error at line 176: element type 'attr' must be terminated by
+      matching end-tag. This is almost certainly a nested CDATA escaping problem
+      in a VALIDATOR rules block — ]]> inside the outer CDATA must be escaped
+      as ]]]]><![CDATA[>.")
+```
 
 #### Stage 1 — XML errors
-These are structural XML problems. Common causes and fixes:
 
 | Error | Cause | Fix |
 |---|---|---|
-| `element type "X" must be terminated by matching end-tag` | Malformed XML | Check nested CDATA escaping — inner `]]>` must be written as `]]]]><![CDATA[>` |
-| `Can't deserialize validation rules` | Invalid XML inside VALIDATOR `rules` CDATA | Check nested CDATA escaping; check for invalid attributes on `<expression>` elements |
-| General XML parse error at line N | Malformed XML | Read the file, find line N, inspect surrounding context |
+| `element type "X" must be terminated by matching end-tag` | Malformed XML | Check nested CDATA — inner `]]>` must be `]]]]><![CDATA[>` |
+| `Can't deserialize validation rules` | Invalid XML inside VALIDATOR `rules` CDATA | Check nested CDATA escaping; check for invalid attributes on `<expression>` |
+| General XML parse error at line N | Malformed XML | `read_file(..., start_line=N-5, line_count=15)` to inspect surrounding context |
 
 #### Stage 2 — checkConfig errors
 
 | Error | Fix |
 |---|---|
-| `Attribute 'X' is not allowed to appear in element 'Y'` | Remove that attribute (e.g. `customRejectMessage` is not valid on `<expression>` elements) |
-| `Syntax error on token 'function'` | CTL user-defined function declared as `returnType function name()` — flip to `function returnType name()` |
-| `Syntax error on token '('` | Same as above, partially fixed |
-| `CTL code compilation finished with N errors` | CTL syntax error — read the full error, find the line, fix the code |
-| Port or metadata mismatch | Edge connects incompatible ports or mismatched metadata — check edge declarations and metadata definitions |
+| `Attribute 'X' is not allowed to appear in element 'Y'` | Remove that attribute (e.g. `customRejectMessage` not valid on `<expression>`) |
+| `Syntax error on token 'function'` | CTL declared as `returnType function name()` — flip to `function returnType name()` |
+| `Syntax error on token '('` | Same as above, partially corrected |
+| `CTL code compilation finished with N errors` | Read full message, find the line, fix it |
+| Port or metadata mismatch | Check edge `inPort`/`outPort` strings against `get_component_info` output |
 
-### 1.4 After fixing — always re-validate
-After every `write_file` or `patch_file` fix, call `validate_graph` again. Repeat until `overall: PASS` with no problems.
+### 1.4 Apply fixes safely
+Back up before any significant fix:
+```
+copy_file("graph/MyGraph.grf", sandbox, "graph/MyGraph.bak.grf", sandbox)
+```
 
-If patching has corrupted the file further, switch to a clean `write_file` rather than continuing to patch.
+Use `set_graph_element_attribute` for targeted attribute and CTL changes:
+```
+set_graph_element_attribute(graph_path, sandbox,
+    element_type="Node", element_id="ORDER_VALIDATOR",
+    attribute_name="attr:rules", value="...corrected rules XML...")
+
+set_graph_element_attribute(graph_path, sandbox,
+    element_type="Node", element_id="TRANSFORM",
+    attribute_name="attr:transform", value="//#CTL2\n...")
+```
+
+Use `patch_file` (with `dry_run=true` first) for structural additions.
+Use `write_file` for large rewrites or when the file is already malformed.
+
+After every fix, re-read the file before the next change, then re-validate:
+```
+validate_graph("graph/MyGraph.grf", sandbox)
+```
+
+Repeat until `overall: PASS`.
 
 ---
 
@@ -60,13 +102,44 @@ If patching has corrupted the file further, switch to a clean `write_file` rathe
 ### 2.1 Only run after a clean validation
 Never call `execute_graph` while any validation error or warning is unresolved.
 
-### 2.2 Execute the graph
+### 2.2 Find recent runs before executing (optional)
+If you want to check whether the graph was already run recently or find a
+previous `run_id` without executing again:
 
 ```
-execute_graph("graph/MyGraph.grf", sandbox)
+list_graph_runs(sandbox="DWHExample", job_file="MyGraph.grf")
+list_graph_runs(sandbox="DWHExample", status="ERROR")   -- find recent failures
 ```
 
-Note the `run_id` returned — it is needed for tracking and log retrieval.
+### 2.3 Execute the graph
+
+```
+result = execute_graph("graph/MyGraph.grf", sandbox)
+```
+
+Note the `run_id` — needed for tracking, log retrieval, and debug data.
+
+For long-running graphs, poll status without fetching the full log:
+```
+get_graph_run_status(run_id)
+```
+Returns status (`RUNNING`, `FINISHED_OK`, `ERROR`, `ABORTED`) plus elapsed time
+and current phase when running. Use to assess progress before committing to a
+full log fetch.
+
+### 2.4 When to use debug mode
+Enable debug mode when you anticipate needing to inspect actual record values
+at specific edges — not just counts:
+
+```
+result = execute_graph("graph/MyGraph.grf", sandbox, debug=True)
+```
+
+Debug mode must be enabled at execution time — it cannot be added retroactively.
+Enable it proactively when:
+- The graph has complex filtering or routing logic you want to verify
+- A previous run produced unexpected counts and you want to inspect the records
+- You're running a new or recently edited graph for the first time
 
 ---
 
@@ -78,58 +151,116 @@ Note the `run_id` returned — it is needed for tracking and log retrieval.
 get_graph_tracking(run_id)
 ```
 
-Review record and byte counts on every port. Check:
-- Input record count matches the expected source size
-- For VALIDATOR graphs: valid count + rejected count = input count (no records lost)
-- No component shows 0 input or output records unexpectedly
-- No component shows significantly fewer records than expected without explanation
+Check for every component:
+- **Input record count** matches expected source volume
+- **Output record count** is reasonable relative to input
+- **No component shows 0 records unexpectedly** — a join producing 0 matched
+  records or a filter dropping everything is almost always a logic error
+- **Port split ratios are correct:**
+  - VALIDATOR: valid + invalid = total input
+  - EXT_FILTER: accepted + rejected = total input
+  - PARTITION: sum of all output ports = total input
 
-### 3.2 Check the execution log if anything looks wrong
+Use `think` to reason through unexpected counts before acting:
+```
+think("VALIDATOR shows 1000 input, 0 valid, 1000 invalid. That means every
+      record is failing validation. Possible causes: wrong date format in
+      the interval rule, wrong field name in a comparison rule, or an
+      Order_Date field that arrives as string rather than date type.
+      I should check the errorMapping output for the first few rejection
+      reasons to understand which rule is failing.")
+```
+
+### 3.2 Check the execution log when something is wrong
 
 ```
 get_graph_execution_log(run_id)
 ```
 
 Read the log when:
-- Run status is not SUCCESS
-- Record counts are unexpected (e.g. more rejections than expected, 0 records somewhere)
-- Any component reported an error or warning in the tracking output
+- Run status is not `FINISHED_OK`
+- Record counts are unexpected
+- Any component reported an error or warning in tracking
+- A runtime exception occurred (null dereference, type error, division by zero,
+  file not found, DB connection failure)
 
-The log contains per-component messages, error stack traces, and timing. Identify the failing component and the root cause before attempting a fix.
+The log contains per-component messages, full error stack traces, and timing.
+Always identify the failing component and root cause before attempting a fix.
 
-### 3.3 Edge-debug diagnostics (use with caution)
+### 3.3 Edge debug diagnostics — when and how
+When tracking counts and the execution log don't pinpoint the problem and you
+need to inspect actual record values at a specific edge:
 
-If tracking and execution log are not enough, you may inspect edge-debug metadata:
-
+**Step 1 — confirm debug data is available:**
 ```
-get_edge_debug_info(...)
-get_edge_debug_metadata(...)
+get_edge_debug_info(edge_id="Edge2", graph_path, sandbox, run_id)
+```
+Returns whether data was captured and the writer/reader node IDs.
+Requires the graph was executed with `debug=True`.
+
+**Step 2 — check the field schema on the edge:**
+```
+get_edge_debug_metadata(edge_id="Edge2", graph_path, sandbox, run_id)
+```
+Returns the metadata XML — field names and types. Use this to confirm the
+record structure is what you expected (e.g. verify `rejectReason` is present,
+check field types match what CTL code expects).
+
+**Step 3 — fetch record count and summary:**
+```
+get_edge_debug_data(edge_id="Edge2", graph_path, sandbox, run_id,
+    field_selection=["Order_Id", "rejectReason"],
+    filter_expression="$in.rejectReason != null",
+    record_count=20)
 ```
 
-**Avoid `get_edge_debug_data` for now.** It returns CloverDX binary payload (CLVI format), which is not currently readable/interpretable by the LLM.
-Prefer `get_graph_tracking` + `get_graph_execution_log` as the primary diagnostics path until a readable decoder is available.
+Note: `get_edge_debug_data` returns a record count and page availability
+summary — the actual record payload is CloverDX binary (CLVI format) and
+is not human-readable. Use it to confirm **how many** records matched a
+filter condition, not to read actual values. For reading actual values,
+check the output files the graph wrote (via `read_file` on the output CSV/JSON)
+or add a `TRASH` component with `debugPrint=true` to the edge of interest
+and re-run.
 
-### 3.4 Common execution problems and where to look
+**When to use edge debug vs other approaches:**
 
-| Symptom | Where to investigate |
+| Need | Best tool |
 |---|---|
-| Run status FAILED | Execution log — find the first ERROR entry |
-| 0 records on a port that should have data | Check the upstream component's output count in tracking; check edge connectivity |
-| More rejections than expected (VALIDATOR) | Check `rejectReason` field in the rejected output file; review VALIDATOR rules |
-| Fewer records than expected at output | Check for unexpected filtering — review PARTITION logic, VALIDATOR rules, or REFORMAT return values |
-| Records lost between components | Tracking will show where the count drops — inspect that component's configuration |
+| How many records flowed through each component | `get_graph_tracking` |
+| Why the graph failed | `get_graph_execution_log` |
+| What fields exist on a specific edge | `get_edge_debug_metadata` |
+| How many records match a condition on an edge | `get_edge_debug_data` with `filter_expression` |
+| What the actual field values are | Read output file, or re-run with `TRASH debugPrint=true` on the edge |
+
+### 3.4 Common execution problems and diagnosis paths
+
+| Symptom | Think / investigate |
+|---|---|
+| `FAILED` status | Log — find first ERROR entry; identify component and exception |
+| 0 records on port that should have data | Check upstream component output count in tracking; check edge connectivity; check reader fileURL resolves to an existing file |
+| 100% rejection rate (VALIDATOR) | Check errorMapping output file for rejection reasons; verify rule field names match metadata field names; verify field types (date vs string) |
+| Join produces 0 matched records | Check joinKey field names on both ports; check that key field types match; verify sample values actually overlap between streams |
+| More/fewer records than expected | Check filter conditions; check PARTITION routing logic; check REFORMAT return values |
+| Records lost between two components | Tracking shows where count drops — inspect that component's configuration and CTL logic |
+| Runtime error mid-stream | Log stack trace identifies component and record; check for null fields, type mismatches, missing sequence/lookup declarations |
 
 ---
 
 ## CHECKLIST — validate and run complete
 
-- [ ] `validate_graph` called and result is `overall: PASS` with no errors or warnings
-- [ ] All Stage 1 and Stage 2 errors resolved before running
+- [ ] `validate_graph` called — result is `overall: PASS` with no errors or warnings
+- [ ] Used `think` to diagnose any validation errors before fixing
+- [ ] All fixes used `set_graph_element_attribute` for attribute/CTL changes
+- [ ] Backed up graph before significant fixes (`copy_file`)
+- [ ] Re-read file between multiple fixes — never edited from stale state
+- [ ] Re-validated after every fix — repeated until clean PASS
 - [ ] `execute_graph` called only after clean validation
 - [ ] `get_graph_tracking` called after execution
 - [ ] Input record count matches expected source size
-- [ ] Record counts across all ports are consistent and sensible
-- [ ] If VALIDATOR is present: valid + rejected = total input
-- [ ] If any counts are unexpected: `get_graph_execution_log` consulted and root cause identified
-- [ ] `get_edge_debug_data` avoided for now (binary CLVI payload not LLM-readable)
-- [ ] Run status is SUCCESS
+- [ ] All port split ratios correct (valid + invalid = total, etc.)
+- [ ] No component shows 0 records unexpectedly
+- [ ] If run status not `FINISHED_OK`: `get_graph_execution_log` consulted and root cause identified
+- [ ] Used `think` to reason through unexpected counts before attempting fixes
+- [ ] If edge debug used: `get_edge_debug_info` confirmed data available first
+- [ ] Understood that `get_edge_debug_data` returns count summary only — not readable record values
+- [ ] Run status is `FINISHED_OK`

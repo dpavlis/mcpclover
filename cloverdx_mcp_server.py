@@ -11,10 +11,10 @@ WebServices and exposes the following tools:
   list_sandboxes          – List all available sandboxes on the server
   list_files              – List files/folders inside a sandbox directory
   find_file               – Find files in a sandbox using * and ? wildcards
-    grep_files              – Search file contents in a sandbox by plain string or regex (like grep -r)
+  grep_files              – Search file contents in a sandbox by plain string or regex (like grep -r)
   list_linked_assets      – List externalized/linkable assets by known file types
   get_sandbox_parameters  – Read/resolve sandbox parameters from workspace.prm (+ optional server overlays)
-    read_file               – Download a file or byte range (graph, metadata, params, …)
+  read_file               – Download a file or byte range (graph, metadata, params, …)
   rename_file             – Rename a file within a sandbox (RenameSandboxFile)
   copy_file               – Copy a file within/across sandboxes
   patch_file              – Patch a sandbox file using anchor-based line ranges
@@ -45,6 +45,11 @@ WebServices and exposes the following tools:
   list_components         – List available component types (by category)
   get_component_info      – Get ports & properties for a component type/name
   get_component_details   – Fetch detailed markdown docs for a complex component
+
+  Reasoning helper
+  ────────────────
+  think                   – Log a reasoning thought and return acknowledgement
+  plan_graph              – Record graph plan input and return acknowledgement
 
 Resources exposed
 ─────────────────
@@ -987,6 +992,7 @@ async def handle_list_tools() -> List[types.Tool]:
                 "Each patch locates an anchor string, computes a line range from from_offset/to_offset, "
                 "checks for conflicts, and applies all replacements bottom-up. "
                 "Supports dry_run preview mode."
+                "Hint: for graph XML files, use tool `set_graph_element_attribute`."
             ),
             inputSchema={
                 "type": "object",
@@ -1376,6 +1382,504 @@ async def handle_list_tools() -> List[types.Tool]:
                 "properties": {
                     "component_type": {"type": "string", "description": "Component type string (e.g. 'XML_EXTRACT')"},
                 },
+            },
+        ),
+        types.Tool(
+            name="think",
+            description=(
+                "Use this tool to reason explicitly before taking action. "
+                "Call it when you need to plan, evaluate alternatives, or diagnose a problem. "
+                "\n\n"
+                "Mandatory use cases for CloverDX work:\n"
+                "- Before choosing between candidate components — reason through "
+                "selection criteria before calling get_component_info\n"
+                "- Before writing a graph — produce a complete component/edge/metadata "
+                "plan before calling write_file\n"
+                "- Before editing a graph — decide patch vs write_file and identify "
+                "exactly which elements change\n"
+                "- After validation fails — diagnose root cause before attempting a fix\n"
+                "- When a reference graph exists — reason about what pattern it uses "
+                "before deciding whether to follow it\n"
+                "\n"
+                "Input: a single 'thought' string containing your reasoning.\n"
+                "Output: acknowledgement only — the thought is logged, not acted upon."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thought": {
+                        "type": "string",
+                        "description": "Your reasoning, plan, hypothesis, or decision rationale.",
+                    }
+                },
+                "required": ["thought"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="plan_graph",
+            description=(
+                "Produce and record a structured design plan for a CloverDX graph "
+                "before writing any XML. Forces explicit upfront design decisions and "
+                "surfaces problems before implementation begins. "
+                "\n\n"
+                "WHEN TO CALL: After get_workflow_guide and all reference/component "
+                "lookups, but BEFORE write_file or set_graph_element_attribute. "
+                "Also call list_linked_assets() before filling global_assets — "
+                "discover what .fmt/.cfg/.lkp/.ctl/.seq files already exist in the "
+                "sandbox before deciding to define anything new inline. "
+                "\n\n"
+                "The plan is validated for internal consistency:\n"
+                "- Every edge references source/target component IDs that exist in components[]\n"
+                "- Every component with a CTL transform has ctl_entry_points declared\n"
+                "- DENORMALIZER, MERGE, DEDUP, EXT_MERGE_JOIN components have an upstream "
+                "sort component on their input (or sort requirement explicitly waived)\n"
+                "- Every metadata_id referenced on an edge exists in metadata[]\n"
+                "- Every connection/lookup/sequence referenced by a component exists in global_assets\n"
+                "- Required subgraph parameters are listed in param_values\n"
+                "\n"
+                "Returns the plan with any consistency warnings highlighted so they "
+                "can be resolved before writing."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "graph_name": {
+                        "type": "string",
+                        "description": "Name of the graph being designed (becomes the 'name' attribute on <Graph>).",
+                    },
+                    "sandbox": {
+                        "type": "string",
+                        "description": "Target sandbox code.",
+                    },
+                    "graph_path": {
+                        "type": "string",
+                        "description": "Intended file path within the sandbox (e.g. 'graph/MyGraph.grf').",
+                    },
+                    "purpose": {
+                        "type": "string",
+                        "description": (
+                            "One or two sentences describing what this graph does — "
+                            "source, transformation, and target. Used as the graph description."
+                        ),
+                    },
+                    "phases": {
+                        "type": "array",
+                        "description": (
+                            "List of execution phases. Most graphs have a single phase (number 0). "
+                            "Add additional phases only when operations must complete sequentially — "
+                            "e.g. phase 0 truncates target, phase 1 loads data."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "number": {
+                                    "type": "integer",
+                                    "description": "Phase number (0-based, must be non-decreasing).",
+                                },
+                                "purpose": {
+                                    "type": "string",
+                                    "description": "Why this phase is separate from the previous one.",
+                                },
+                            },
+                            "required": ["number"],
+                        },
+                    },
+                    "components": {
+                        "type": "array",
+                        "description": (
+                            "Every component node in the graph. "
+                            "Call get_component_info for each type before filling this section — "
+                            "do not rely on memory for port names or attribute names."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Node ID — unique within the graph, ALLCAPS_N convention (e.g. 'ORDER_VALIDATOR').",
+                                },
+                                "type": {
+                                    "type": "string",
+                                    "description": "Canonical component type string (e.g. 'REFORMAT', 'VALIDATOR', 'EXT_HASH_JOIN').",
+                                },
+                                "phase": {
+                                    "type": "integer",
+                                    "description": "Phase number this component belongs to (default 0).",
+                                },
+                                "purpose": {
+                                    "type": "string",
+                                    "description": "What this component does in this specific graph.",
+                                },
+                                "key_config": {
+                                    "type": "string",
+                                    "description": (
+                                        "The most important configuration note for this component — "
+                                        "e.g. 'joinType=leftOuter, joinKey=$0.orderId=$1.id', "
+                                        "'sortKey=recordNo(a)', "
+                                        "'errorMapping captures $in.1.validationMessage + recordNo'."
+                                    ),
+                                },
+                                "ctl_entry_points": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "CTL functions this component requires. "
+                                        "Must be declared for any component with a CTL transform. "
+                                        "Examples: ['transform()'], ['append()', 'transform()', 'clean()'], "
+                                        "['generate()'], ['count()', 'transform(idx)']."
+                                    ),
+                                },
+                                "debug_input": {
+                                    "type": "boolean",
+                                    "description": (
+                                        "Set true for test-data source nodes in subgraphs "
+                                        "(debugInput='true' — disabled when run from parent graph)."
+                                    ),
+                                },
+                                "debug_output": {
+                                    "type": "boolean",
+                                    "description": (
+                                        "Set true for test-data sink nodes in subgraphs "
+                                        "(debugOutput='true' — disabled when run from parent graph)."
+                                    ),
+                                },
+                            },
+                            "required": ["id", "type", "purpose"],
+                        },
+                    },
+                    "metadata": {
+                        "type": "array",
+                        "description": (
+                            "All metadata record definitions used in the graph. "
+                            "Every edge must reference a metadata ID from this list. "
+                            "Check list_linked_assets() for existing .fmt files before "
+                            "defining new metadata inline."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Metadata ID referenced on edges (e.g. 'MetaOrder').",
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "What records this metadata describes.",
+                                },
+                                "source": {
+                                    "type": "string",
+                                    "enum": ["inline", "external", "propagated"],
+                                    "description": (
+                                        "'inline' — <Record> defined inside the graph. "
+                                        "'external' — fileURL reference to existing .fmt file (preferred for shared metadata). "
+                                        "'propagated' — auto-propagated from connected component; no explicit definition needed."
+                                    ),
+                                },
+                                "file_url": {
+                                    "type": "string",
+                                    "description": "Path to .fmt file when source='external' (e.g. 'meta/dwh-loader/input/OrderFileInput.fmt').",
+                                },
+                                "key_fields": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "Most important field names and types for planning purposes "
+                                        "(e.g. ['Order_Id:long', 'rejectReason:string', 'recordNo:long']). "
+                                        "Not exhaustive — just enough to verify edge compatibility."
+                                    ),
+                                },
+                            },
+                            "required": ["id", "description", "source"],
+                        },
+                    },
+                    "edges": {
+                        "type": "array",
+                        "description": (
+                            "Every edge connecting components. "
+                            "Use exact outPort/inPort strings as returned by get_component_info — "
+                            "wrong port names cause Stage 1 validation failures."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Edge ID — unique within the graph (e.g. 'Edge0').",
+                                },
+                                "from_node": {
+                                    "type": "string",
+                                    "description": "Source component ID.",
+                                },
+                                "from_port": {
+                                    "type": "string",
+                                    "description": "outPort string from get_component_info (e.g. 'Port 0 (out)', 'Port 0 (valid)', 'Port 1 (invalid)').",
+                                },
+                                "to_node": {
+                                    "type": "string",
+                                    "description": "Target component ID.",
+                                },
+                                "to_port": {
+                                    "type": "string",
+                                    "description": "inPort string from get_component_info (e.g. 'Port 0 (in)').",
+                                },
+                                "metadata_id": {
+                                    "type": "string",
+                                    "description": "ID of the metadata record flowing on this edge. Must exist in metadata[].",
+                                },
+                            },
+                            "required": ["id", "from_node", "to_node"],
+                        },
+                    },
+                    "global_assets": {
+                        "type": "object",
+                        "description": (
+                            "All elements that will appear in the <Global> section of the graph "
+                            "beyond metadata. Plan these explicitly — a missing declaration causes "
+                            "a Stage 2 validation failure or a silent runtime error. "
+                            "Call list_linked_assets() first to discover what already exists."
+                        ),
+                        "properties": {
+                            "connections": {
+                                "type": "array",
+                                "description": "Database or service connections referenced by component dbConnection attributes.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Connection ID as used in component dbConnection attribute (e.g. 'DWHConn').",
+                                        },
+                                        "source": {
+                                            "type": "string",
+                                            "enum": ["external", "inline"],
+                                            "description": (
+                                                "'external' — fileURL reference to existing .cfg file (preferred for shared connections). "
+                                                "'inline' — full connection definition embedded in graph."
+                                            ),
+                                        },
+                                        "file_url": {
+                                            "type": "string",
+                                            "description": "Path to .cfg file when source='external' (e.g. 'conn/DWHConnection.cfg').",
+                                        },
+                                        "used_by": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Component IDs that reference this connection.",
+                                        },
+                                    },
+                                    "required": ["id", "source"],
+                                },
+                            },
+                            "lookup_tables": {
+                                "type": "array",
+                                "description": (
+                                    "Lookup tables declared in <Global> and referenced by "
+                                    "LOOKUP_JOIN components or CTL code via lookup('id').get(...)."
+                                ),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Lookup table ID as referenced in CTL and LOOKUP_JOIN (e.g. 'ProductLookup').",
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "enum": ["simpleLookup", "dbLookup", "rangeLookup", "persistentLookup"],
+                                            "description": "Lookup table type.",
+                                        },
+                                        "source": {
+                                            "type": "string",
+                                            "enum": ["external", "inline"],
+                                            "description": "'external' = fileURL to .lkp file; 'inline' = defined in graph.",
+                                        },
+                                        "file_url": {
+                                            "type": "string",
+                                            "description": "Path to .lkp file when source='external'.",
+                                        },
+                                        "used_by": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Component IDs or CTL locations referencing this lookup.",
+                                        },
+                                    },
+                                    "required": ["id", "type", "source"],
+                                },
+                            },
+                            "sequences": {
+                                "type": "array",
+                                "description": (
+                                    "Sequences declared in <Global> and referenced in CTL via "
+                                    "sequence('id').next(). A missing declaration fails at runtime "
+                                    "even if validate_graph passes."
+                                ),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Sequence ID as referenced in CTL (e.g. 'RecordSeq').",
+                                        },
+                                        "source": {
+                                            "type": "string",
+                                            "enum": ["external", "inline"],
+                                            "description": "'external' = fileURL to .seq file; 'inline' = defined in graph.",
+                                        },
+                                        "file_url": {
+                                            "type": "string",
+                                            "description": "Path to .seq file when source='external'.",
+                                        },
+                                        "start": {
+                                            "type": "integer",
+                                            "description": "Start value when source='inline' (default 1).",
+                                        },
+                                        "step": {
+                                            "type": "integer",
+                                            "description": "Step when source='inline' (default 1).",
+                                        },
+                                        "used_by": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Component IDs whose CTL calls this sequence.",
+                                        },
+                                    },
+                                    "required": ["id", "source"],
+                                },
+                            },
+                            "ctl_imports": {
+                                "type": "array",
+                                "description": (
+                                    "External .ctl files imported into component transforms via "
+                                    "import statement or transformURL. "
+                                    "Always check list_linked_assets(asset_type='ctl') before writing "
+                                    "CTL logic inline — the function may already exist in trans/."
+                                ),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file_url": {
+                                            "type": "string",
+                                            "description": "Path to .ctl file (e.g. '${TRANS_DIR}/orderValidationRules.ctl').",
+                                        },
+                                        "provides": {
+                                            "type": "string",
+                                            "description": "Brief note on what functions this file provides (e.g. 'checkTotalPrice(), campaignChronology()').",
+                                        },
+                                        "used_by": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Component IDs whose CTL imports this file.",
+                                        },
+                                    },
+                                    "required": ["file_url"],
+                                },
+                            },
+                            "subgraphs": {
+                                "type": "array",
+                                "description": (
+                                    "Subgraphs used as SUBGRAPH components in this graph. "
+                                    "Call get_subgraph_info (when available) before filling this section "
+                                    "to confirm port counts and required parameters."
+                                ),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "component_id": {
+                                            "type": "string",
+                                            "description": "Node ID of the SUBGRAPH component (e.g. 'EXTRACT').",
+                                        },
+                                        "job_url": {
+                                            "type": "string",
+                                            "description": "Path to the .sgrf file (e.g. '${SUBGRAPH_DIR}/readers/OrderFileReader.sgrf').",
+                                        },
+                                        "input_ports": {
+                                            "type": "integer",
+                                            "description": "Number of input ports this subgraph exposes (0 for Reader pattern).",
+                                        },
+                                        "output_ports": {
+                                            "type": "integer",
+                                            "description": "Number of output ports this subgraph exposes (0 for Writer pattern).",
+                                        },
+                                        "param_values": {
+                                            "type": "object",
+                                            "additionalProperties": {"type": "string"},
+                                            "description": (
+                                                "All __PARAM overrides to set on the Node element. "
+                                                "Required public parameters must appear here. "
+                                                "Keys use the __ prefix (e.g. {'__FILE_URL': '${INPUT_FILE_URL}'})."
+                                            ),
+                                        },
+                                    },
+                                    "required": ["component_id", "job_url"],
+                                },
+                            },
+                            "parameters": {
+                                "type": "array",
+                                "description": (
+                                    "Graph parameters declared in <GraphParameters> beyond "
+                                    "the standard workspace.prm entries. "
+                                    "workspace.prm is always linked — only list additional parameters here."
+                                ),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Parameter name (e.g. 'INPUT_FILE').",
+                                        },
+                                        "default_value": {
+                                            "type": "string",
+                                            "description": "Default value (e.g. '${DATAIN_DIR}/input.xlsx').",
+                                        },
+                                        "public": {
+                                            "type": "boolean",
+                                            "description": "Whether exposed as a public parameter (visible in Server UI / parent graph).",
+                                        },
+                                        "required": {
+                                            "type": "boolean",
+                                            "description": "Whether a value must be supplied at runtime.",
+                                        },
+                                        "component_reference": {
+                                            "type": "string",
+                                            "description": (
+                                                "If this parameter drives a component property, "
+                                                "note it here (e.g. 'READER.fileURL'). "
+                                                "Generates a <ComponentReference> element in XML."
+                                            ),
+                                        },
+                                    },
+                                    "required": ["name"],
+                                },
+                            },
+                        },
+                        "additionalProperties": False,
+                    },
+                    "risks": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Known risks or things to verify before writing. "
+                            "Examples: "
+                            "'DENORMALIZER requires sorted input — FAST_SORT added upstream on recordNo', "
+                            "'CDATA nesting in VALIDATOR rules requires ]]]]><![CDATA[> escaping', "
+                            "'orderValidationRules.ctl exists in trans/ — import instead of duplicating inline', "
+                            "'DWHConnection.cfg covers both phases — no second connection needed'."
+                        ),
+                    },
+                    "reference_graphs": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Paths to existing graphs consulted as reference patterns "
+                            "(e.g. 'graph/ValidateOrderInput_withErrors.grf'). "
+                            "Documenting this confirms the canonical pattern was checked "
+                            "before designing from scratch."
+                        ),
+                    },
+                },
+                "required": ["graph_name", "sandbox", "graph_path", "purpose", "components", "edges"],
+                "additionalProperties": False,
             },
         ),
 
@@ -2219,6 +2723,23 @@ async def tool_get_component_details(args: Dict) -> List[types.TextContent]:
         return _text(f"ERROR: {e}")
 
 
+async def tool_think(args: Dict) -> List[types.TextContent]:
+    thought = str(args.get("thought") or "").strip()
+    if not thought:
+        return _text("ERROR: 'thought' is required")
+    logger.info("think tool received thought (%d chars)", len(thought))
+    return _text("Acknowledged. Thought received.")
+
+
+async def tool_plan_graph(args: Dict) -> List[types.TextContent]:
+    graph_name = str(args.get("graph_name") or "").strip()
+    if not graph_name:
+        return _text("ERROR: 'graph_name' is required")
+    logger.info("plan_graph tool received plan for graph '%s'", graph_name)
+    #TODO: implement actual validation of the graph plan structure and content
+    return _text("Graph plan received. No obvious issues detected.")
+
+
 # ── Tool dispatcher ────────────────────────────────────────────────────────────
 
 async def tool_get_graph_tracking(args: Dict) -> List[types.TextContent]:
@@ -2534,6 +3055,8 @@ _TOOL_MAP = {
     "list_components":         tool_list_components,
     "get_component_info":      tool_get_component_info,
     "get_component_details":   tool_get_component_details,
+    "think":                   tool_think,
+    "plan_graph":              tool_plan_graph,
     "get_graph_tracking":      tool_get_graph_tracking,
     "get_edge_debug_info":     tool_get_edge_debug_info,
     "get_edge_debug_metadata": tool_get_edge_debug_metadata,
