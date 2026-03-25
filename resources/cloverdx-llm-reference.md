@@ -55,7 +55,7 @@ CloverDX graphs are XML documents. The root element is `<Graph>`. File extension
 
 ### `<Global>` Section
 
-Contains graph-wide elements: `<GraphParameters>`, `<Metadata>`, `<Connection>`, `<LookupTable>`, `<Sequence>`, `<Dictionary>`.
+Contains graph-wide elements: `<GraphParameters>`, `<Metadata>`, `<Connection>`, `<LookupTable>`, `<Sequence>`, `<Dictionary>`, `<RichTextNote>`.
 
 ### `<Phase>` Element
 
@@ -119,7 +119,83 @@ Port numbering starts at `0`. Format: `NODE_ID:0`, `NODE_ID:1`, etc.
 
 ---
 
-## 3. Metadata
+## 3. Layout and Notes
+
+### Node layout (`guiX` / `guiY`)
+
+Required for Designer rendering; ignored at runtime. Origin = top-left (x increases right, y increases down). Negative y is valid (used for notes above pipeline).
+
+**Single-lane horizontal pipeline** — same `guiY` for all nodes, stride `guiX` by 200–220 px:
+```xml
+<Node guiX="60"  guiY="160" id="DATA_READER0" .../>
+<Node guiX="280" guiY="160" id="EXT_FILTER0"  .../>
+<Node guiX="500" guiY="160" id="REFORMAT0"    .../>
+<Node guiX="720" guiY="160" id="AGGREGATE0"   .../>
+<Node guiX="940" guiY="160" id="DATA_WRITER0" .../>
+```
+
+**Multi-lane** — separate Y bands per lane, 140–180 px apart; converge at join node centred between input Y values:
+```xml
+<Node guiX="60"  guiY="80"  id="DATA_READER0"   .../>  <!-- lane 1 -->
+<Node guiX="60"  guiY="240" id="DB_INPUT_TABLE0" .../>  <!-- lane 2 -->
+<Node guiX="280" guiY="160" id="EXT_HASH_JOIN0"  .../>  <!-- convergence -->
+```
+
+### `<RichTextNote>`
+
+Visual annotation only; no runtime effect. Declared inside `<Global>` (not inside `<Phase>`).
+
+```xml
+<RichTextNote
+    id="Note0"
+    x="60"    y="20"
+    width="1200"  height="80"
+    backgroundColor="FAF6D6"
+    textColor="444444"
+    fontSize="medium"
+    folded="false">
+  <attr name="text"><![CDATA[h3. Graph Title
+One-line description.
+*Input:* ${DATAIN_DIR}/source.csv  |  *Output:* ${DATAOUT_DIR}/result.csv]]></attr>
+</RichTextNote>
+```
+
+**All 8 attributes are required.** Omitting any causes Designer to reject or misrender the note.
+
+| Attribute | Values / notes |
+|---|---|
+| `id` | Unique; convention `Note0`, `Note1`, … |
+| `x`, `y` | Same coordinate space as `guiX`/`guiY` |
+| `width`, `height` | px; width should span the annotated pipeline; ~60 px per text line |
+| `backgroundColor` | 6-digit hex, **no `#`** — e.g. `FAF6D6` |
+| `textColor` | 6-digit hex, no `#` — e.g. `444444` |
+| `fontSize` | `small` \| `medium` \| `large` |
+| `folded` | `false` = expanded; `true` = collapsed to title bar |
+
+**Text markup (Confluence-style wiki, inside CDATA):**
+
+| Markup | Output |
+|---|---|
+| `h3. Title` | Heading (h1/h2/h3 supported) |
+| `*text*` | Bold |
+| `_text_` | Italic |
+| `{{text}}` | Monospace |
+| literal newline | Line break |
+
+**Common background colours:**
+
+| Hex | Use |
+|---|---|
+| `FAF6D6` | General annotation (pale yellow) |
+| `96C42D` | Phase header / environment notice (CloverDX green) |
+| `D6EAF8` | Reference/lookup data (light blue) |
+| `FADBD8` | Warning / known issue (light red) |
+
+**Note placement rule:** set `note_y + note_height + 20 ≤ pipeline_guiY` so the note does not overlap component labels.
+
+---
+
+## 4. Metadata
 
 Metadata describes the record structure flowing through an edge.
 
@@ -252,7 +328,7 @@ function integer transform() {
 
 ---
 
-## 4. Graph Parameters
+## 5. Graph Parameters
 
 Two distinct XML elements are used inside `<GraphParameters>`:
 
@@ -278,7 +354,7 @@ Usage in attributes: `${PARAM_NAME}` — resolved before graph execution.
 
 ---
 
-## 5. Connections
+## 6. Connections
 
 ### Database Connection
 
@@ -312,7 +388,7 @@ External connection file reference:
 
 ---
 
-## 6. Lookup Tables
+## 7. Lookup Tables
 
 ```xml
 <!-- Simple (in-memory) lookup table -->
@@ -340,7 +416,7 @@ External connection file reference:
 
 ---
 
-## 7. Sequences
+## 8. Sequences
 
 ```xml
 <!-- Non-persistent (resets each run) -->
@@ -355,7 +431,7 @@ Usage in CTL: `nextval("Sequence0")`, `currentval("Sequence0")`, `resetval("Sequ
 
 ---
 
-## 8. CTL2 Transformation Language
+## 9. CTL2 Transformation Language
 
 Used in component `transform`, `filterExpression`, `aggregationMapping`, and other code attributes.
 
@@ -437,7 +513,7 @@ lookup("LookupId").get("keyValue").fieldName
 
 ---
 
-## 9. Component Reference
+## 10. Component Reference
 
 ### Component Type String Conventions
 
@@ -1193,7 +1269,7 @@ Executes arbitrary SQL (DDL, stored procedures, etc.) 0-1 input, 0-1 output.
 
 ---
 
-## 10. Complete Example: CSV to DB with Join and Filter
+## 11. Complete Example: CSV to DB with Join and Filter
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1294,7 +1370,7 @@ values ($orderId:=order_id, $customerName:=customer_name, $amount:=amount, $tier
 
 ---
 
-## 11. Example: DB to CSV Export
+## 12. Example: DB to CSV Export
 
 Reads from a database, transforms/formats fields, writes to a delimited CSV file.
 
@@ -1388,7 +1464,7 @@ function integer transform() {
 
 ---
 
-## 12. Example: XML Hierarchy to DB (Preserving Relationships)
+## 13. Example: XML Hierarchy to DB (Preserving Relationships)
 
 Reads a multi-level XML file, extracts records at each hierarchy level, propagates parent keys to child records, then writes each level to its own database table.
 
@@ -1532,7 +1608,7 @@ VALUES ($orderId:=order_id, $lineNo:=line_no, $productCode:=product_code,
 
 ---
 
-## 13. Multi-Phase Example
+## 14. Multi-Phase Example
 
 ```xml
 <!-- Phase 0: truncate target, load lookup -->
@@ -1556,7 +1632,7 @@ VALUES ($orderId:=order_id, $lineNo:=line_no, $productCode:=product_code,
 
 ---
 
-## 14. Subgraphs (.sgrf)
+## 15. Subgraphs (.sgrf)
 
 A **subgraph** is a reusable, user-defined component with its logic in a separate `.sgrf` file. It appears as a regular component (`SUBGRAPH`) in a parent graph, automatically exposing input/output ports.
 
@@ -1689,7 +1765,7 @@ Each `SUBGRAPH_INPUT` node with a different `inputPortIndex` creates an addition
 
 ---
 
-## 15. Key Rules and Constraints
+## 16. Key Rules and Constraints
 
 1. **Every edge must have metadata assigned** — `metadata` attribute references a `<Metadata id>`.
 2. **Port numbers are 0-indexed.** Edge format: `NODE_ID:portNumber`.
@@ -1709,7 +1785,7 @@ Each `SUBGRAPH_INPUT` node with a different `inputPortIndex` creates an addition
 
 ---
 
-## 16. Quick Component Type Reference
+## 17. Quick Component Type Reference
 
 | Component Name | `type` attribute | Category |
 |---------------|-----------------|----------|
@@ -1784,7 +1860,7 @@ Each `SUBGRAPH_INPUT` node with a different `inputPortIndex` creates an addition
 
 ---
 
-## 17. File URL Formats
+## 18. File URL Formats
 
 ```
 # Local file
@@ -1819,7 +1895,7 @@ sandbox://SandboxCode/path/to/file.csv
 
 ---
 
-## 18. Project Directory Structure (Standard)
+## 19. Project Directory Structure (Standard)
 
 ```
 project/
@@ -1858,7 +1934,7 @@ Standard parameters (from `workspace.prm`):
 
 ---
 
-## 19. External Graph Elements
+## 20. External Graph Elements
 
 Graph elements (metadata, connections, lookup tables, sequences, parameters) can be **internal** (embedded in the graph XML) or **external** (stored in a separate file and referenced by `fileURL`).
 
@@ -1951,7 +2027,7 @@ Both forms produce `id="EmpMeta"` that edges can reference with `metadata="EmpMe
 
 ---
 
-## 20. workspace.prm
+## 21. workspace.prm
 
 `workspace.prm` is the standard shared parameter file at the project root, linked by nearly every graph. It centralises all standard directory path parameters so they can be changed in one place.
 
@@ -2018,7 +2094,7 @@ Both forms produce `id="EmpMeta"` that edges can reference with `metadata="EmpMe
 
 ---
 
-## 21. CTL2 Data Types (vs Metadata Types)
+## 22. CTL2 Data Types (vs Metadata Types)
 
 | Metadata type | CTL2 type | Notes |
 |---------------|-----------|-------|
@@ -2039,7 +2115,7 @@ CTL2 also supports: `void`, `null` literal, `integer[]`, `string[]` (arrays).
 
 ---
 
-## 22. LLM Guidelines for Generating CloverDX Transformation Graphs
+## 23. LLM Guidelines for Generating CloverDX Transformation Graphs
 
 Follow these rules whenever you are tasked with generating a CloverDX graph XML file.
 
@@ -2083,6 +2159,8 @@ Follow these rules whenever you are tasked with generating a CloverDX graph XML 
 | `DB_OUTPUT_TABLE` sqlQuery field mapping wrong direction | `$cloverField:=dbColumn` — CloverDX field on the left, DB column on the right |
 | Aggregate without input sorted | `AGGREGATE` with `sortedInput="false"` (default) sorts internally; for large data set `sortedInput="true"` and pre-sort with `EXT_SORT` |
 | `EXT_MERGE_JOIN` with unsorted input | Both master and slave edges must be sorted on the join key fields; add `EXT_SORT` before the join |
+| `<RichTextNote>` placed inside `<Phase>` | It is a `<Global>` child — placing it in `<Phase>` causes a parse error |
+| `backgroundColor="#FAF6D6"` (with `#`) | Hex colour values must have no `#` prefix: `backgroundColor="FAF6D6"` |
 | Subgraph without SubgraphInput/SubgraphOutput | Every `.sgrf` file must have exactly one `SUBGRAPH_INPUT` and one `SUBGRAPH_OUTPUT` node |
 | Using hardcoded DB credentials in graph XML | Put password in a connection `.cfg` file referenced by `fileURL`, or use a secure parameter |
 
