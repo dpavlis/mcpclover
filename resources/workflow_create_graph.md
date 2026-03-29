@@ -1,4 +1,4 @@
-# CloverDX Workflow Guide — `create_graph`
+  # CloverDX Workflow Guide — `create_graph`
 
 > LLM-only guide. Execute phases in order. Do not write XML until Phase 2 is complete.
 
@@ -272,8 +272,9 @@ Repeat this loop for each stage added to the graph:
 2. validate_graph  →  fix all errors before proceeding
 3. execute_graph   →  confirm no runtime errors
 4. get_graph_tracking  →  verify record counts are sensible
-5. If counts are wrong: diagnose with think(), fix, repeat from step 2
-6. Move TRASH to the next stage and continue
+5. get_edge_debug_info, get_edge_debug_data → validate components are producing expected values at the edge level 
+6. If counts are wrong or debug data show unexpected values: diagnose with think(), fix, repeat from step 2
+7. Move TRASH to the next stage and continue
 ```
 
 **Step 2 catches:** XML errors, invalid attributes, CTL compile errors, wrong port names.

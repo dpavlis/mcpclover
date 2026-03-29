@@ -16138,5 +16138,775 @@
         "outputPortName": "0"
       }
     ]
+  },
+    {
+    "category": "aiml",
+    "name": "AIAnonymizer",
+    "type": "AI_ANONYMIZER",
+    "shortDescription": "Classify incoming data via token classification model and anonymize selected token classes.",
+    "description": "Classify incoming data via token classification model and anonymize selected token classes.",
+    "inputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "outputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "properties": [
+      {
+        "name": "serverModelPath",
+        "label": "Server model",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlModel",
+        "type": "serverModelPath"
+      },
+      {
+        "name": "modelPath",
+        "label": "Classification model directory",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlModel",
+        "type": "modelPath",
+        "selectionMode": "directory_only"
+      },
+      {
+        "name": "modelName",
+        "label": "Model name",
+        "modifiable": false,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "string"
+      },
+      {
+        "name": "deviceType",
+        "label": "Device",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "CPU",
+        "category": "mlModel",
+        "type": "enum",
+        "values": [
+          {
+            "value": "cpu",
+            "label": "CPU"
+          },
+          {
+            "value": "gpu",
+            "label": "GPU"
+          }
+        ]
+      },
+      {
+        "name": "modelArguments",
+        "label": "Model arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "tokenizerArguments",
+        "label": "Tokenizer arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "translatorArguments",
+        "label": "Translator arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "inputFields",
+        "label": "Fields to anonymize",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlInputOutputParameters",
+        "type": "fields"
+      },
+      {
+        "name": "classes",
+        "label": "Anonymize classes and thresholds",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlInputOutputParameters",
+        "type": "classes"
+      },
+      {
+        "name": "maskingType",
+        "label": "Masking type",
+        "modifiable": true,
+        "nullable": false,
+        "defaultHint": "Mask",
+        "category": "mlInputOutputParameters",
+        "type": "enum",
+        "values": [
+          {
+            "value": "mask",
+            "label": "Mask"
+          },
+          {
+            "value": "redact",
+            "label": "Redact"
+          }
+        ]
+      },
+      {
+        "name": "maskCharacter",
+        "label": "Mask character",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "defaultHint": "*",
+        "category": "mlInputOutputParameters",
+        "type": "string"
+      },
+      {
+        "name": "redactString",
+        "label": "Redact string",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "defaultHint": " [REDACTED] ",
+        "category": "mlInputOutputParameters",
+        "type": "string"
+      },
+      {
+        "name": "resultField",
+        "label": "Anonymization information",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlInputOutputParameters",
+        "type": "field",
+        "outputPortName": "0"
+      },
+      {
+        "name": "batchSize",
+        "label": "Batch size",
+        "modifiable": true,
+        "nullable": false,
+        "required": false,
+        "defaultHint": "10",
+        "category": "mlInputOutputParameters",
+        "type": "int"
+      }
+    ]
+  },
+  {
+    "category": "aiml",
+    "name": "AITokenClassifier",
+    "type": "TOKEN_CLASSIFIER",
+    "shortDescription": "Process incoming data through token classificaton machine learning model.",
+    "description": "Process incoming data through token classificaton machine learning model.",
+    "inputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "outputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "properties": [
+      {
+        "name": "serverModelPath",
+        "label": "Server model",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlModel",
+        "type": "serverModelPath"
+      },
+      {
+        "name": "modelPath",
+        "label": "Classification model directory",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlModel",
+        "type": "modelPath",
+        "selectionMode": "directory_only"
+      },
+      {
+        "name": "modelName",
+        "label": "Model name",
+        "modifiable": false,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "string"
+      },
+      {
+        "name": "deviceType",
+        "label": "Device",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "CPU",
+        "category": "mlModel",
+        "type": "enum",
+        "values": [
+          {
+            "value": "cpu",
+            "label": "CPU"
+          },
+          {
+            "value": "gpu",
+            "label": "GPU"
+          }
+        ]
+      },
+      {
+        "name": "modelArguments",
+        "label": "Model arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "tokenizerArguments",
+        "label": "Tokenizer arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "translatorArguments",
+        "label": "Translator arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "inputFields",
+        "label": "Fields to classify",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlInputOutputParameters",
+        "type": "fields"
+      },
+      {
+        "name": "classes",
+        "label": "Token classes and thresholds",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlInputOutputParameters",
+        "type": "classes"
+      },
+      {
+        "name": "resultField",
+        "label": "Classification output field",
+        "modifiable": true,
+        "nullable": false,
+        "category": "mlInputOutputParameters",
+        "type": "field",
+        "outputPortName": "0"
+      },
+      {
+        "name": "batchSize",
+        "label": "Batch size",
+        "modifiable": true,
+        "nullable": false,
+        "required": false,
+        "defaultHint": "10",
+        "category": "mlInputOutputParameters",
+        "type": "int"
+      },
+      {
+        "name": "transform",
+        "label": "Transform",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "advanced",
+        "type": "transformDJL"
+      },
+      {
+        "name": "classesToTransform",
+        "label": "Classes to transform",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "advanced",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "category": "aiml",
+    "name": "AITextClassifier",
+    "type": "TEXT_CLASSIFIER",
+    "shortDescription": "Process incoming data through text classificaton machine learning model.",
+    "description": "Process incoming data through text classificaton machine learning model.",
+    "inputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "outputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "properties": [
+      {
+        "name": "serverModelPath",
+        "label": "Server model",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlModel",
+        "type": "serverModelPath"
+      },
+      {
+        "name": "modelPath",
+        "label": "Classification model directory",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlModel",
+        "type": "modelPath",
+        "selectionMode": "directory_only"
+      },
+      {
+        "name": "modelName",
+        "label": "Model name",
+        "modifiable": false,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "string"
+      },
+      {
+        "name": "deviceType",
+        "label": "Device",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "CPU",
+        "category": "mlModel",
+        "type": "enum",
+        "values": [
+          {
+            "value": "cpu",
+            "label": "CPU"
+          },
+          {
+            "value": "gpu",
+            "label": "GPU"
+          }
+        ]
+      },
+      {
+        "name": "modelArguments",
+        "label": "Model arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "tokenizerArguments",
+        "label": "Tokenizer arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "translatorArguments",
+        "label": "Translator arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "inputFields",
+        "label": "Fields to classify",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlInputOutputParameters",
+        "type": "fields"
+      },
+      {
+        "name": "classes",
+        "label": "Token classes and thresholds",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlInputOutputParameters",
+        "type": "classes"
+      },
+      {
+        "name": "resultField",
+        "label": "Classification output field",
+        "modifiable": true,
+        "nullable": false,
+        "category": "mlInputOutputParameters",
+        "type": "field",
+        "outputPortName": "0"
+      },
+      {
+        "name": "batchSize",
+        "label": "Batch size",
+        "modifiable": true,
+        "nullable": false,
+        "required": false,
+        "defaultHint": "10",
+        "category": "mlInputOutputParameters",
+        "type": "int"
+      },
+      {
+        "name": "transform",
+        "label": "Transform",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "advanced",
+        "type": "transformDJL"
+      },
+      {
+        "name": "classesToTransform",
+        "label": "Classes to transform",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "advanced",
+        "type": "string"
+      },
+      {
+        "name": "tokenOverflowPolicy",
+        "label": "Token overflow policy",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "Strict",
+        "category": "errorHandling",
+        "type": "enum",
+        "values": [
+          {
+            "value": "strict",
+            "label": "Strict"
+          },
+          {
+            "value": "lenient",
+            "label": "Lenient"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "category": "aiml",
+    "name": "AIZeroShotClassifier",
+    "type": "ZERO_SHOT_CLASSIFIER",
+    "shortDescription": "Process incoming data through zero shot classificaton machine learning model.",
+    "description": "Process incoming data through zero shot classificaton machine learning model.",
+    "inputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "outputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "properties": [
+      {
+        "name": "serverModelPath",
+        "label": "Server model",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlModel",
+        "type": "serverModelPath"
+      },
+      {
+        "name": "modelPath",
+        "label": "Classification model directory",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlModel",
+        "type": "modelPath",
+        "selectionMode": "directory_only"
+      },
+      {
+        "name": "modelName",
+        "label": "Model name",
+        "modifiable": false,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "string"
+      },
+      {
+        "name": "deviceType",
+        "label": "Device",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "CPU",
+        "category": "mlModel",
+        "type": "enum",
+        "values": [
+          {
+            "value": "cpu",
+            "label": "CPU"
+          },
+          {
+            "value": "gpu",
+            "label": "GPU"
+          }
+        ]
+      },
+      {
+        "name": "modelArguments",
+        "label": "Model arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "tokenizerArguments",
+        "label": "Tokenizer arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "translatorArguments",
+        "label": "Translator arguments",
+        "modifiable": true,
+        "nullable": true,
+        "category": "mlModel",
+        "type": "properties"
+      },
+      {
+        "name": "inputFields",
+        "label": "Fields to classify",
+        "modifiable": true,
+        "nullable": false,
+        "required": true,
+        "category": "mlInputOutputParameters",
+        "type": "fields"
+      },
+      {
+        "name": "classes",
+        "label": "Classes and thresholds",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "mlInputOutputParameters",
+        "type": "classes"
+      },
+      {
+        "name": "resultField",
+        "label": "Classification output field",
+        "modifiable": true,
+        "nullable": false,
+        "category": "mlInputOutputParameters",
+        "type": "field",
+        "outputPortName": "0"
+      },
+      {
+        "name": "batchSize",
+        "label": "Batch size",
+        "modifiable": true,
+        "nullable": false,
+        "required": false,
+        "defaultHint": "10",
+        "category": "mlInputOutputParameters",
+        "type": "int"
+      },
+      {
+        "name": "transform",
+        "label": "Transform",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "advanced",
+        "type": "transformDJL"
+      },
+      {
+        "name": "classesToTransform",
+        "label": "Classes to transform",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "advanced",
+        "type": "string"
+      },
+      {
+        "name": "tokenOverflowPolicy",
+        "label": "Token overflow policy",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "Strict",
+        "category": "errorHandling",
+        "type": "enum",
+        "values": [
+          {
+            "value": "strict",
+            "label": "Strict"
+          },
+          {
+            "value": "lenient",
+            "label": "Lenient"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "category": "aiml",
+    "name": "AIClient",
+    "type": "AI_OPENAICLIENT",
+    "shortDescription": "Client for communication with remote AI agents.",
+    "description": "Client for communication with remote AI agents: Anthropic, Azure OpenAI, Gemini, and OpenAI.",
+    "inputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "outputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
+      }
+    ],
+    "properties": [
+      {
+        "name": "connection",
+        "label": "Connection",
+        "modifiable": true,
+        "nullable": false,
+        "category": "basic",
+        "type": "assistantConnection"
+      },
+      {
+        "name": "systemMessageURL",
+        "label": "System message URL",
+        "modifiable": true,
+        "nullable": true,
+        "category": "basic",
+        "type": "file"
+      },
+      {
+        "name": "systemMessage",
+        "label": "System message",
+        "modifiable": true,
+        "nullable": true,
+        "category": "basic",
+        "type": "multiline"
+      },
+      {
+        "name": "transform",
+        "label": "Query and response processor",
+        "modifiable": true,
+        "nullable": false,
+        "required": true,
+        "category": "basic",
+        "type": "transformOpenAI"
+      },
+      {
+        "name": "requestTimeout",
+        "label": "Request timeout",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "1m",
+        "category": "errorHandling",
+        "type": "interval"
+      },
+      {
+        "name": "retryCount",
+        "label": "Retry count",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "0 (do not retry in case of failure)",
+        "category": "errorHandling",
+        "type": "int"
+      },
+      {
+        "name": "retryDelay",
+        "label": "Retry delay",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "0 (wait 0 seconds for another retry)",
+        "category": "errorHandling",
+        "type": "string"
+      },
+      {
+        "name": "rateLimitTimeInterval",
+        "label": "Rate limit: time interval",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "1s",
+        "category": "errorHandling",
+        "type": "enum",
+        "values": [
+          {
+            "value": "1s",
+            "label": "1s"
+          },
+          {
+            "value": "1m",
+            "label": "1m"
+          },
+          {
+            "value": "1h",
+            "label": "1h"
+          },
+          {
+            "value": "1d",
+            "label": "1d"
+          }
+        ]
+      },
+      {
+        "name": "rateLimitRequestsPerInterval",
+        "label": "Rate limit: max requests",
+        "modifiable": true,
+        "nullable": true,
+        "category": "errorHandling",
+        "type": "int"
+      }
+    ]
   }
 ]
