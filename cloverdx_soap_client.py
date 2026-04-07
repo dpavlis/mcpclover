@@ -39,6 +39,7 @@ class CloverDXSoapClient:
         self._wsdl_url = f"{scheme}://{host}:{port}/clover/webservice?wsdl"
         self._rest_base = f"{scheme}://{host}:{port}/clover/api/rest/v1"
         self._debug_read_url = f"{scheme}://{host}:{port}/clover/data-service/debugRead"
+        self._debug_read_csv_url = f"{scheme}://{host}:{port}/clover/data-service/debugReadCSV"
         self._username = username
         self._password = password
         self._verify_ssl = verify_ssl
@@ -687,18 +688,29 @@ class CloverDXSoapClient:
             return raw
         return raw.get("metadata") or str(raw)
 
-    def _rest_debug_read(self, run_id: str, edge_id: str, num_rec: int) -> Any:
+    def _rest_debug_read(self, run_id: str, edge_id: str, num_rec: int, data_format: str = "json") -> Any:
         self._init_client()
+        fmt = (data_format or "json").strip().lower()
+        if fmt not in {"json", "csv"}:
+            raise ValueError("data_format must be either 'json' or 'csv'")
+
+        url = self._debug_read_csv_url if fmt == "csv" else self._debug_read_url
+        accept = "text/csv" if fmt == "csv" else "application/json"
+
         resp = self._client.transport.session.get(
-            self._debug_read_url,
+            url,
             params={"runID": str(run_id), "edgeID": str(edge_id), "numRec": int(num_rec)},
             headers={
                 "X-Requested-By": "mcp",
-                "Accept": "application/json",
+                "Accept": accept,
             },
             timeout=60,
         )
         resp.raise_for_status()
+
+        if fmt == "csv":
+            return resp.text
+
         content_type = (resp.headers.get("Content-Type") or "").lower()
         if "json" in content_type:
             return resp.json()
@@ -718,9 +730,23 @@ class CloverDXSoapClient:
 
     def get_edge_debug_data(self,
                             run_id: str, edge_id: str,
-                            record_count: int = 100) -> str:
+                            record_count: int = 100,
+                            data_format: str = "json") -> str:
         effective_record_count = max(1, int(record_count))
-        parsed = self._rest_debug_read(run_id=run_id, edge_id=edge_id, num_rec=effective_record_count)
+        fmt = (data_format or "json").strip().lower()
+        if fmt not in {"json", "csv"}:
+            raise ValueError("format must be either 'json' or 'csv'")
+
+        parsed = self._rest_debug_read(
+            run_id=run_id,
+            edge_id=edge_id,
+            num_rec=effective_record_count,
+            data_format=fmt,
+        )
+
+        if fmt == "csv":
+            return parsed if isinstance(parsed, str) else str(parsed)
+
         if isinstance(parsed, str):
             return parsed
 

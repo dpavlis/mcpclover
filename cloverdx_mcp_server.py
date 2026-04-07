@@ -1945,7 +1945,7 @@ async def handle_list_tools() -> List[types.Tool]:
             name="get_edge_debug_data",
             description=(
                 "Fetch edge debug records for a specific edge of a completed debug run. "
-                "Returns the debug data as JSON array of records."
+                "Returns the debug data as JSON (default) or CSV (pipe-delimited, metadata order). "
                 "The graph run must have been executed with debug=true. "
                 
             ),
@@ -1956,6 +1956,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     "run_id":           {"type": "string",  "description": "Run ID returned by execute_graph"},
                     "edge_id":          {"type": "string",  "description": "Edge ID as defined in the graph XML"},
                     "record_count":     {"type": "integer", "description": "Max number of records to return (default: 100)."},
+                    "format":           {"type": "string",  "enum": ["json", "csv"], "description": "Output format. 'json' uses /data-service/debugRead (default), 'csv' uses /data-service/debugReadCSV and returns pipe-delimited rows in edge metadata column order."},
                 },
             },
         ),
@@ -2806,6 +2807,7 @@ async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
             run_id=args["run_id"],
             edge_id=args["edge_id"],
             record_count=int(args.get("record_count", 100)),
+            data_format=str(args.get("format", "json")),
         )
         return _text(data)
     except Exception as e:

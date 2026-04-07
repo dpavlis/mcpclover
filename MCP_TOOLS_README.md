@@ -218,9 +218,11 @@ Returns the field schema (names and types) for data flowing through a specific e
 ---
 
 ### `get_edge_debug_data`
-Fetches decoded debug records for a run edge as JSON using `run_id` + `edge_id` (optional `record_count` maps to REST `numRec`).  
+Fetches decoded debug records for a run edge using `run_id` + `edge_id` (optional `record_count` maps to REST `numRec`). Supports `format="json"` (default) or `format="csv"`. CSV output is pipe-delimited and columns are ordered by edge metadata from `get_edge_debug_metadata`.  
 **Why:** Allows the LLM to inspect mid-graph data to diagnose transformation logic errors — e.g. checking what values reached a Lookup component's reject port.  
-**Backend:** REST `GET /data-service/debugRead?runID=...&edgeID=...&numRec=...`
+**Backend:**
+- JSON: REST `GET /data-service/debugRead?runID=...&edgeID=...&numRec=...`
+- CSV: REST `GET /data-service/debugReadCSV?runID=...&edgeID=...&numRec=...`
 
 ---
 
