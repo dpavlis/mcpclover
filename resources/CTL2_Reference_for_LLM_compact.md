@@ -708,8 +708,9 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `matches` | `boolean matches(string, string regex)` | Whole-string match. |
 | `matchGroups` | `string[] matchGroups(string, string regex)` | Capture groups. |
 | `metaphone` | `string metaphone(string)` | Phonetic code. |
+| `normalizeDecimal` | `string normalizeDecimal(string arg)` | Normalize decimal-like strings by stripping non-numeric chars and using the rightmost `,` or `.` as decimal separator. Heuristic only. **null → null.** |
 | `normalizeWhitespaces` | `string normalizeWhitespaces(string)` | Trim + collapse internal whitespace. |
-| `normalizePath` | `string normalizePath(string)` | |
+| `normalizePath` | `string normalizePath(string arg)` | Normalize path/URL: remove `.` and resolvable `..`, convert `\` to `/`. Unresolvable `..` or null input → null. |
 | `properCase` | `string properCase(string)` | Title Case. **null → null.** |
 | | `string properCase(string, string locale)` | Locale-aware (e.g. Dutch "ij" digraph). locale null or `""` → default locale. **string null → null.** |
 | `randomString` | `string randomString(integer minLen, integer maxLen)` | |

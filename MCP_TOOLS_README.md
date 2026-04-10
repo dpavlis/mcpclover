@@ -64,6 +64,7 @@ Reads and resolves graph parameters for a sandbox from `workspace.prm` (CloverDX
 
 ### `read_file`
 Downloads the text content of any file from a sandbox (`.grf`, `.fmt`, `.prm`, `.ctl`, etc.). Optionally supports line-based partial reads via `start_line` + `line_count`. `start_line` is 1-based for positive values; negative values count from the end (`-1` is the last line). If partial read is requested, both parameters must be provided.  
+Response is capped at 1 MiB; if exceeded, use `start_line` + `line_count` to read smaller chunks.  
 **Why:** The LLM must read a file before modifying it, but large files do not always need to be fetched in full. Line-based partial reads reduce token usage when only a specific section is needed.  
 **Backend:** SOAP `GetSandboxFile`
 

@@ -51,6 +51,11 @@ WebServices and exposes the following tools:
   think                   – Log a reasoning thought and return acknowledgement
   plan_graph              – Record graph plan input and return acknowledgement
 
+    CTL tools
+    ─────────
+    validate_CTL            – Lint CTL2 code via an LLM (OpenAI-compatible API)
+    generate_CTL            – Generate CTL2 code/snippets via an LLM (OpenAI-compatible API)
+
 Resources exposed
 ─────────────────
   cloverdx://reference/graph-xml   – cloverdx-llm-reference.md
@@ -88,6 +93,8 @@ import mcp.server.stdio
 import mcp.types as types
 from cloverdx_graph_validator import GraphValidator
 from cloverdx_soap_client import CloverDXSoapClient
+from cloverdx_CTL_generate import validate_CTL as _ctl_validate
+from cloverdx_CTL_generate import generate_CTL as _ctl_generate
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -109,6 +116,7 @@ SERVER_VERSION = "1.0.0"
 POLL_TIMEOUT_S  = 120
 SERVER_WAIT_MS  = 10_000
 EXEC_POLL_S     = 2      # seconds between execution status polls
+READ_FILE_MAX_RESPONSE_BYTES = 1_048_500  # 1 MiB hard cap for read_file responses (actyally a bit less to leave room for error message in the response if file is too large)
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -899,7 +907,8 @@ async def handle_list_tools() -> List[types.Tool]:
                 "Read the content of a file from a CloverDX sandbox. "
                 "Use this to fetch .grf graph files, .fmt metadata files, .prm parameter files, etc. "
                 "Optionally read a line range by specifying both start_line and line_count. "
-                "start_line is 1-based; negative values count from the end (-1 is last line)."
+                "start_line is 1-based; negative values count from the end (-1 is last line). "
+                "Response is capped at 1 MiB."
             ),
             inputSchema={
                 "type": "object",
@@ -1381,6 +1390,91 @@ async def handle_list_tools() -> List[types.Tool]:
                 "required": ["component_type"],
                 "properties": {
                     "component_type": {"type": "string", "description": "Component type string (e.g. 'XML_EXTRACT')"},
+                },
+            },
+        ),
+        types.Tool(
+            name="validate_CTL",
+            description=(
+                "Lint CloverDX CTL2 transformation code using an LLM (OpenAI-compatible API, "
+                "e.g. local Ollama). "
+                "The LLM receives the CTL2 code and an optional CloverDX metadata XML block "
+                "(standard <Record>/<Field> serialization) as context for field-reference "
+                "checking. An optional 'query' parameter lets you direct the LLM's attention "
+                "to a specific concern (e.g. 'Focus on the replace() calls').\n\n"
+                "The LLM checks for:\n"
+                "- Regex-unsafe usage of ?= and replace() with unescaped meta-characters\n"
+                "- Field reference mismatches against the provided metadata\n"
+                "- Undeclared variables and scope issues\n"
+                "- Type mismatches and evalExpression() anti-patterns\n"
+                "- Missing return statements or unreachable code paths\n\n"
+                "Returns a structured ISSUES / SUGGESTIONS / VERDICT report."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["code"],
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "CTL2 code to validate (plain text, not XML-escaped).",
+                    },
+                    "metadata_context": {
+                        "type": "string",
+                        "description": (
+                            "Optional CloverDX metadata in XML serialization format "
+                            "(<Record name=\"...\"><Field name=\"...\" type=\"...\"/></Record>). "
+                            "Enables field-reference validation against actual metadata."
+                        ),
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Optional additional instruction passed to the LLM, e.g. "
+                            "'Focus on the replace() calls in transform()' or "
+                            "'Check for evalExpression usage'."
+                        ),
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "LLM request timeout in seconds (default: 120).",
+                    },
+                },
+            },
+        ),
+        types.Tool(
+            name="generate_CTL",
+            description=(
+                "Generate CloverDX CTL2 code using an LLM (OpenAI-compatible API, e.g. local Ollama). "
+                "Use it to create full component transform code, a CTL2 expression, or a focused "
+                "snippet from a functional description. If generation targets a specific component, "
+                "provide the component metadata as CloverDX XML so field names/types are aligned.\n\n"
+                "Inputs to the LLM are:\n"
+                "- description: what should be generated (functionality and desired output shape)\n"
+                "- metadata: optional CloverDX metadata XML context (recommended for component code)\n"
+                "- timeout: request timeout in seconds"
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["description"],
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": (
+                            "Describe what should be generated: full component transform code, "
+                            "a CTL2 expression, or a code snippet. Include intended functionality."
+                        ),
+                    },
+                    "metadata": {
+                        "type": "string",
+                        "description": (
+                            "Optional CloverDX metadata XML context. For component-level generation, "
+                            "this should be provided so field references are valid."
+                        ),
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "LLM request timeout in seconds (default: 120).",
+                    },
                 },
             },
         ),
@@ -2286,6 +2380,9 @@ async def tool_read_file(args: Dict) -> List[types.TextContent]:
     try:
         content = get_soap_client().download_file(args["sandbox"], args["path"])
 
+        def _is_over_limit(text: str) -> bool:
+            return len(text.encode("utf-8")) > READ_FILE_MAX_RESPONSE_BYTES
+
         start_line = args.get("start_line")
         line_count = args.get("line_count")
         partial_requested = start_line is not None or line_count is not None
@@ -2313,7 +2410,20 @@ async def tool_read_file(args: Dict) -> List[types.TextContent]:
             start_index = max(0, min(start_index, total_lines))
             end_index = min(start_index + line_count, total_lines)
 
-            return _text("".join(lines[start_index:end_index]))
+            partial_content = "".join(lines[start_index:end_index])
+            if _is_over_limit(partial_content):
+                return _text(
+                    "<!ERROR>: read_file response exceeds 1 MiB limit. "
+                    "Request fewer lines using start_line/line_count."
+                )
+
+            return _text(partial_content)
+
+        if _is_over_limit(content):
+            return _text(
+                "<!ERROR>: read_file response exceeds 1 MiB limit. "
+                "Use start_line and line_count for a partial read."
+            )
 
         return _text(content)
     except Exception as e:
@@ -2710,6 +2820,42 @@ async def tool_get_component_details(args: Dict) -> List[types.TextContent]:
         return _text(f"ERROR: {e}")
 
 
+async def tool_validate_CTL(args: Dict) -> List[types.TextContent]:
+    code = str(args.get("code") or "").strip()
+    if not code:
+        return _text("ERROR: 'code' is required")
+    metadata_context = args.get("metadata_context") or None
+    query = args.get("query") or None
+    timeout = int(args.get("timeout") or 120)
+    try:
+        result = _ctl_validate(
+            code=code,
+            metadata_context=metadata_context,
+            query=query,
+            timeout=timeout,
+        )
+        return _text(result)
+    except RuntimeError as exc:
+        return _text(f"ERROR: {exc}")
+
+
+async def tool_generate_CTL(args: Dict) -> List[types.TextContent]:
+    description = str(args.get("description") or "").strip()
+    if not description:
+        return _text("ERROR: 'description' is required")
+    metadata = args.get("metadata") or None
+    timeout = int(args.get("timeout") or 120)
+    try:
+        result = _ctl_generate(
+            description=description,
+            metadata=metadata,
+            timeout=timeout,
+        )
+        return _text(result)
+    except RuntimeError as exc:
+        return _text(f"ERROR: {exc}")
+
+
 async def tool_think(args: Dict) -> List[types.TextContent]:
     thought = str(args.get("thought") or "").strip()
     if not thought:
@@ -3038,6 +3184,8 @@ _TOOL_MAP = {
     "list_components":         tool_list_components,
     "get_component_info":      tool_get_component_info,
     "get_component_details":   tool_get_component_details,
+    "validate_CTL":             tool_validate_CTL,
+    "generate_CTL":             tool_generate_CTL,
     "think":                   tool_think,
     "plan_graph":              tool_plan_graph,
     "get_graph_tracking":      tool_get_graph_tracking,
