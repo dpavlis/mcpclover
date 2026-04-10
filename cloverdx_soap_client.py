@@ -364,25 +364,42 @@ class CloverDXSoapClient:
         return {"run_id": run_id, "status": status, "elapsed_seconds": round(time.time() - start, 1)}
 
     def await_graph_completion(self, run_id: str, timeout_s: int = 600, poll_interval_s: float = 2.0) -> Dict[str, Any]:
-        deadline = time.time() + timeout_s
+        try:
+            # Use server-side blocking with waitForStatus instead of client-side polling
+            resp = self._call("GetGraphExecutionStatus", runID=int(run_id), waitForStatus="FINISHED_OK", waitTimeout=timeout_s * 1000)
+            raw = zeep_helpers.serialize_object(resp, target_cls=dict)
+            status_obj = raw.get("out") if isinstance(raw, dict) and isinstance(raw.get("out"), dict) else raw
+            if not isinstance(status_obj, dict):
+                raise RuntimeError(f"Unexpected status response for run {run_id}: {status_obj!r}")
+            
+            status = str(status_obj.get("status") or status_obj.get("runStatus") or "UNKNOWN").upper()
+            return {
+                "run_id": run_id,
+                "status": status,
+                "completed": status in GRAPH_FINAL_STATUSES,
+                "timed_out": False,
+                "timeout_seconds": timeout_s
+            }
+        except Exception:
+            # Fallback: if server-side wait fails, use client-side polling
+            deadline = time.time() + timeout_s
+            while True:
+                status = self.get_graph_run_status(run_id)
+                normalized = str(status.get("status") or "UNKNOWN").upper()
+                if normalized in GRAPH_FINAL_STATUSES:
+                    status["completed"] = True
+                    status["timed_out"] = False
+                    status["timeout_seconds"] = timeout_s
+                    return status
 
-        while True:
-            status = self.get_graph_run_status(run_id)
-            normalized = str(status.get("status") or "UNKNOWN").upper()
-            if normalized in GRAPH_FINAL_STATUSES:
-                status["completed"] = True
-                status["timed_out"] = False
-                status["timeout_seconds"] = timeout_s
-                return status
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    status["completed"] = False
+                    status["timed_out"] = True
+                    status["timeout_seconds"] = timeout_s
+                    return status
 
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                status["completed"] = False
-                status["timed_out"] = True
-                status["timeout_seconds"] = timeout_s
-                return status
-
-            time.sleep(min(max(poll_interval_s, 0.1), remaining))
+                time.sleep(min(max(poll_interval_s, 0.1), remaining))
 
     def abort_graph_execution(self, run_id: str) -> Dict[str, Any]:
         try:
@@ -411,7 +428,7 @@ class CloverDXSoapClient:
         try:
             resp = self._call("GetJobExecutionStatus", runID=int(run_id))
         except Exception:
-            resp = self._call("GetGraphExecutionStatus", runID=int(run_id), waitTimeout=0)
+            resp = self._call("GetGraphExecutionStatus", runID=int(run_id), waitForStatus="FINISHED_OK", waitTimeout=0)
 
         raw = zeep_helpers.serialize_object(resp, target_cls=dict)
         status_obj = raw.get("out") if isinstance(raw, dict) and isinstance(raw.get("out"), dict) else raw
