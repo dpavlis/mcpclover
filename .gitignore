@@ -9,5 +9,5 @@ README_http.md
 server.crt
 server.key
 misc/
+test_*.py
 
-test_component_catalog_format.py

@@ -411,7 +411,7 @@ class CloverDXSoapClient:
         try:
             resp = self._call("GetJobExecutionStatus", runID=int(run_id))
         except Exception:
-            resp = self._call("GetGraphExecutionStatus", runID=int(run_id))
+            resp = self._call("GetGraphExecutionStatus", runID=int(run_id), waitTimeout=0)
 
         raw = zeep_helpers.serialize_object(resp, target_cls=dict)
         status_obj = raw.get("out") if isinstance(raw, dict) and isinstance(raw.get("out"), dict) else raw
