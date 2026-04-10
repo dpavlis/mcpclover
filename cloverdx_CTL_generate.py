@@ -4,10 +4,10 @@ CloverDX CTL helper module
 Provides two LLM-backed helpers over an OpenAI-compatible chat endpoint
 (e.g. local Ollama):
 
-    validate_CTL(code, metadata_context, query, timeout)
+    validate_CTL(code, input_metadata, output_metadata, query, timeout)
         Lints CTL2 code and reports issues.
 
-    generate_CTL(description, metadata, timeout)
+    generate_CTL(description, input_metadata, output_metadata, timeout)
         Generates CTL code snippets or component transform code.
 
 Configuration
@@ -19,6 +19,8 @@ override them from the environment.
     CLOVERDX_LLM_MODEL   – Overrides LLM_MODEL if defined.
     CLOVERDX_LLM_TEMPERATURE – Overrides LLM_TEMPERATURE if defined.
     CLOVERDX_LLM_TOP_P   – Overrides LLM_TOP_P if defined.
+    CLOVERDX_LLM_ALLOW   – Overrides LLM_ALLOW if defined (true/false).
+    LLM_ALLOW            – Alternate env name for enabling LLM-backed CTL tools.
 
     LLM_API_URL          – Full URL of the OpenAI-compatible /chat/completions endpoint.
                           Default: http://localhost:11434/v1/chat/completions (Ollama).
@@ -54,6 +56,19 @@ def _env_float(name: str, default: float) -> float:
         logger.warning("Invalid float in %s=%r; using default %s", name, raw, default)
         return default
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    logger.warning("Invalid bool in %s=%r; using default %s", name, raw, default)
+    return default
+
 # ── Configuration constants ────────────────────────────────────────────────────
 # Ollama default.  Change to your OpenAI or other compatible endpoint as needed.
 LLM_API_URL: str = os.getenv(
@@ -67,12 +82,25 @@ LLM_MODEL: str = os.getenv("CLOVERDX_LLM_MODEL", "Qwen35_CTL:latest")
 # Sampling parameters – lower temperature favours deterministic, rule-based output.
 LLM_TEMPERATURE: float = _env_float("CLOVERDX_LLM_TEMPERATURE", 0.2)
 LLM_TOP_P: float = _env_float("CLOVERDX_LLM_TOP_P", 0.9)
+LLM_ALLOW: bool = _env_bool("CLOVERDX_LLM_ALLOW", _env_bool("LLM_ALLOW", False))
 
 VALIDATE_SYSTEM_PROMPT: str = """\
 You are an expert CloverDX CTL2 code reviewer.
 Your job is to analyse CTL2 transformation code for correctness, safety and best practices.
 
 Focus on the following issue classes:
+
+PORT METADATA INTERPRETATION
+    When CloverDX metadata context is provided, it is organized into two groups:
+    Input Ports Metadata and Output Ports Metadata.
+    - Input Ports Metadata applies only to $in.N.fieldName references.
+    - Output Ports Metadata applies only to $out.N.fieldName references.
+    - Within each group, each labeled port subsection identifies the exact port
+        whose metadata follows.
+    - Port labels should communicate the logical role of the port, not just the
+        direction. Prefer labels such as Port 0 (master), Port 1 (slave1),
+        Port 2 (slave2), Port 0 (rejected), or Port 1 (error output) instead of
+        redundant labels such as Port 0 (input) or Port 0 (output).
 
 REGEX-UNSAFE OPERATORS
   The ?= operator and the replace() function treat their right-hand operand as a
@@ -100,12 +128,28 @@ TYPE MISMATCHES
   integer field without an explicit conversion call.
 
 evalExpression() USAGE
-  evalExpression() has no port context; it cannot access $in or $out records.
-  Warn if the code passed to evalExpression() contains field references.
+  evalExpression() evaluates a CTL expression string at runtime and returns a
+  variant.  It CAN access $in/$out port records and local variables in scope.
+  Key concerns to flag:
+  - The expression must be a single expression that returns a value — statements
+    (for, if, variable declarations) are not allowed inside the expression string.
+  - evalExpression() is expensive — warn if it appears inside a per-record
+    transform() without justification (e.g. dynamic user-provided expressions
+    from getParamValue() are a valid use case).
+  - Error handling: expressions from external sources (parameters, files) should
+    be wrapped in try/catch with CTLException to prevent runtime crashes from
+    invalid input.
 
 MISSING RETURN / UNREACHABLE CODE
   Warn if a transform() function has a code path that never returns, or if
   statements appear after a return.
+
+GENERAL LOGIC ERRORS
+  Flag code where the conditional logic is clearly inverted or contradictory —
+  e.g. checking that a value is null and then using it in arithmetic or
+  assignment, checking a condition and performing the opposite action in the
+  body, or guarding a branch with a predicate that guarantees the branch body
+  will always fail.
 
 Output format — use this exact structure:
 
@@ -133,8 +177,13 @@ You are an expert CloverDX CTL2 author.
 Generate correct, runnable CTL2 code based on the requested functionality.
 
 Rules:
-- Output only CTL2 code (no markdown fences, no prose before/after code).
+- Output only CTL2 code enclosed in ```ctl fences, with no prose before or after the fenced block.
 - Prefer clear, defensive code and explicit conversions where relevant.
+- When metadata is provided, it is grouped into Input Ports Metadata and Output
+    Ports Metadata sections. Use input-ports metadata only for $in.N references
+    and output-ports metadata only for $out.N references.
+- Port subsection labels should describe the logical role of the port where
+    possible, e.g. Port 0 (master) and Port 1 (slave1), not just input/output.
 - When metadata is provided, reference field names exactly as defined.
 - If the request is for an expression snippet, return only that expression/snippet.
 - If the request is for a component transform, return a full CTL2 block suitable
@@ -142,8 +191,41 @@ Rules:
 """
 
 GENERATE_USER_PROMPT_PREPEND: str = """\
-Generate CloverDX CTL2 code according to the request below.\
+Generate CloverDX CTL2 code according to the request below. Enclose the generated code in ```ctl ticks.\
 """
+
+
+def _build_port_metadata_section(
+    input_metadata: Optional[str] = None,
+    output_metadata: Optional[str] = None,
+) -> str:
+    input_cleaned = (input_metadata or "").strip()
+    output_cleaned = (output_metadata or "").strip()
+    if not input_cleaned and not output_cleaned:
+        return ""
+    parts = [
+        "## Component Ports Metadata",
+        "Interpret the following metadata before reading the CTL2 code or request.",
+        "### Input Ports Metadata",
+        "Use this group only for $in.N.* references.",
+    ]
+    if input_cleaned:
+        parts.append(input_cleaned)
+    else:
+        parts.append("No input ports metadata provided.")
+
+    parts.extend(
+        [
+            "### Output Ports Metadata",
+            "Use this group only for $out.N.* references.",
+        ]
+    )
+    if output_cleaned:
+        parts.append(output_cleaned)
+    else:
+        parts.append("No output ports metadata provided.")
+
+    return "\n".join(parts)
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -195,7 +277,8 @@ def _call_llm(user_message: str, system_prompt: str, timeout: int) -> str:
 
 def validate_CTL(
     code: str,
-    metadata_context: Optional[str] = None,
+    input_metadata: Optional[str] = None,
+    output_metadata: Optional[str] = None,
     query: Optional[str] = None,
     timeout: int = 120,
 ) -> str:
@@ -205,10 +288,12 @@ def validate_CTL(
     ----------
     code:
         CTL2 transform code to validate (plain text, not XML-escaped).
-    metadata_context:
-        Optional CloverDX metadata in the standard XML serialization format
-        (<Record name="..."><Field name="..." type="..." .../> ... </Record>).
-        When supplied the LLM will verify field references against it.
+    input_metadata:
+        Optional CloverDX metadata for input ports in XML serialization format.
+        This metadata is used only for $in.N field references.
+    output_metadata:
+        Optional CloverDX metadata for output ports in XML serialization format.
+        This metadata is used only for $out.N field references.
     query:
         Optional additional instruction or question appended to the user
         message, e.g. "Focus on the replace() calls in the transform function."
@@ -229,24 +314,28 @@ def validate_CTL(
     # Build the user message
     parts: list = [VALIDATE_USER_PROMPT_PREPEND.strip()]
 
+    if input_metadata or output_metadata:
+        parts.append(
+            _build_port_metadata_section(
+                input_metadata=input_metadata,
+                output_metadata=output_metadata,
+            )
+        )
+
     if query:
         parts.append(f"\nAdditional instruction: {query.strip()}")
 
     parts.append(f"\n\n## CTL2 Code\n```\n{code}\n```")
 
-    if metadata_context:
-        parts.append(
-            f"\n## CloverDX Metadata (XML)\n```xml\n{metadata_context}\n```"
-        )
-
     user_message = "\n".join(parts)
 
     logger.info(
-        "validate_CTL: calling LLM at %s (model=%s, code_len=%d, metadata=%s, query=%s)",
+        "validate_CTL: calling LLM at %s (model=%s, code_len=%d, input_metadata=%s, output_metadata=%s, query=%s)",
         LLM_API_URL,
         LLM_MODEL,
         len(code),
-        "yes" if metadata_context else "no",
+        "yes" if input_metadata else "no",
+        "yes" if output_metadata else "no",
         repr(query[:60]) if query else "none",
     )
     return _call_llm(user_message=user_message, system_prompt=VALIDATE_SYSTEM_PROMPT, timeout=timeout)
@@ -254,7 +343,8 @@ def validate_CTL(
 
 def generate_CTL(
     description: str,
-    metadata: Optional[str] = None,
+    input_metadata: Optional[str] = None,
+    output_metadata: Optional[str] = None,
     timeout: int = 120,
 ) -> str:
     """Generate CTL2 code from a functional description.
@@ -264,24 +354,33 @@ def generate_CTL(
     description:
         What to generate: component transform code, an expression snippet,
         or other CTL functionality.
-    metadata:
-        Optional CloverDX metadata XML context. For component-level generation
-        this should be provided so field names/types can be used correctly.
+    input_metadata:
+        Optional CloverDX metadata for input ports in XML serialization format.
+        This metadata is used only for $in.N field references.
+    output_metadata:
+        Optional CloverDX metadata for output ports in XML serialization format.
+        This metadata is used only for $out.N field references.
     timeout:
         HTTP request timeout in seconds.
     """
     parts: list = [GENERATE_USER_PROMPT_PREPEND.strip()]
+    if input_metadata or output_metadata:
+        parts.append(
+            _build_port_metadata_section(
+                input_metadata=input_metadata,
+                output_metadata=output_metadata,
+            )
+        )
     parts.append(f"\nRequest:\n{description.strip()}")
-    if metadata:
-        parts.append(f"\n\n## CloverDX Metadata (XML)\n```xml\n{metadata}\n```")
 
     user_message = "\n".join(parts)
 
     logger.info(
-        "generate_CTL: calling LLM at %s (model=%s, desc_len=%d, metadata=%s)",
+        "generate_CTL: calling LLM at %s (model=%s, desc_len=%d, input_metadata=%s, output_metadata=%s)",
         LLM_API_URL,
         LLM_MODEL,
         len(description),
-        "yes" if metadata else "no",
+        "yes" if input_metadata else "no",
+        "yes" if output_metadata else "no",
     )
     return _call_llm(user_message=user_message, system_prompt=GENERATE_SYSTEM_PROMPT, timeout=timeout)

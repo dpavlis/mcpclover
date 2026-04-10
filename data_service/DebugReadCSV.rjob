@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Graph author="david" created="Fri Mar 20 23:25:43 CET 2026" guiVersion="7.4.0.37" id="1774045597802" licenseCode="CLP1DDAVID32965677BY" name="testGraph" nature="restJob" showComponentDetails="true">
+<Global>
+<EndpointSettings>
+<UrlPath>/debugReadCSV</UrlPath>
+<RequestMethod name="GET"/>
+<RequestParameter id="RestJobParameter0" location="query" name="runID" type="string"/>
+<RequestParameter id="RestJobParameter1" location="query" name="edgeID" type="string"/>
+<RequestParameter id="RestJobParameter2" location="query" name="numRec" type="string"/>
+</EndpointSettings>
+<RestJobResponseStatus>
+<JobError>
+<reasonPhrase>Job failed</reasonPhrase>
+<statusCode>500</statusCode>
+<ReasonPhrase>Job failed</ReasonPhrase>
+<StatusCode>500</StatusCode>
+</JobError>
+<Success>
+<statusCode>200</statusCode>
+<StatusCode>200</StatusCode>
+</Success>
+<ValidationError>
+<reasonPhrase>Request validation failed</reasonPhrase>
+<statusCode>400</statusCode>
+<ReasonPhrase>Request validation failed</ReasonPhrase>
+<StatusCode>400</StatusCode>
+</ValidationError>
+</RestJobResponseStatus>
+<Metadata id="Metadata0">
+<Record fieldDelimiter="|" name="GeneratedRecord" recordDelimiter="\n" type="delimited">
+<Field name="id" type="integer"/>
+<Field name="name" type="string"/>
+<Field length="10" name="amount" scale="2" type="decimal"/>
+<Field name="active" type="boolean"/>
+<Field format="yyyy-MM-dd" name="created" type="date"/>
+<Field name="category" type="string"/>
+</Record>
+</Metadata>
+<GraphParameters>
+<GraphParameter name="TMP_DIR">
+<attr name="dynamicValue"><![CDATA[//#CTL2
+
+function string getValue() {
+	return getJavaProperties()["java.io.tmpdir"];
+}
+]]></attr>
+</GraphParameter>
+<GraphParameterFile fileURL="workspace.prm"/>
+</GraphParameters>
+<Dictionary/>
+</Global>
+<Phase number="0">
+<Node fileURL="${TMP_DIR}/clover_temp_node01/${runID}/clover-debug/${runID}-${runID}-${edgeID}.dbg" guiName="CloverDataReader" guiX="345" guiY="50" id="CLOVER_DATA_READER" type="CLOVER_READER"/>
+<Node guiName="Dedup" guiX="670" guiY="50" id="DEDUP" keep="first" noDupRecord="${numRec}" type="DEDUP"/>
+<Node guiName="Input" guiX="70" guiY="25" id="RESTJOB_INPUT0" requestFormat="STRING" restJobInput="true" type="RESTJOB_INPUT"/>
+<Node attachment="false" contentType="text/csv" guiName="Output" guiX="1135" guiY="25" id="RESTJOB_OUTPUT0" metadataName="false" responseFormat="CSV" restJobOutput="true" topLevelArray="true" type="RESTJOB_OUTPUT"/>
+<Edge fromNode="CLOVER_DATA_READER:0" guiBendpoints="" guiRouter="Manhattan" id="Edge1" inPort="Port 0 (in)" outPort="Port 0 (out)" toNode="DEDUP:0"/>
+<Edge fromNode="DEDUP:0" guiBendpoints="" guiRouter="Manhattan" id="Edge2" inPort="Port 0 (in)" outPort="Port 0 (unique)" toNode="RESTJOB_OUTPUT0:0"/>
+</Phase>
+</Graph>

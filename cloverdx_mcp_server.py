@@ -11,14 +11,14 @@ WebServices and exposes the following tools:
   list_sandboxes          – List all available sandboxes on the server
   list_files              – List files/folders inside a sandbox directory
   find_file               – Find files in a sandbox using * and ? wildcards
-  grep_files              – Search file contents in a sandbox by plain string or regex (like grep -r)
+    grep_files              – Search file contents across one or more sandboxes by plain string or regex
   list_linked_assets      – List externalized/linkable assets by known file types
   get_sandbox_parameters  – Read/resolve sandbox parameters from workspace.prm (+ optional server overlays)
   read_file               – Download a file or byte range (graph, metadata, params, …)
   rename_file             – Rename a file within a sandbox (RenameSandboxFile)
   copy_file               – Copy a file within/across sandboxes
   patch_file              – Patch a sandbox file using anchor-based line ranges
-  write_file              – Upload / overwrite a file
+  write_file              – Upload, overwrite, or append to a file
   delete_file             – Delete a file from a sandbox
 
   Resource access
@@ -30,7 +30,9 @@ WebServices and exposes the following tools:
   Graph operations
   ────────────────
   validate_graph          – Two-stage validation (local XML + server checkConfig)
-  execute_graph           – Run a graph and wait for completion
+  execute_graph           – Start a graph run and return run_id immediately
+  await_graph_completion  – Wait for a graph run to finish or timeout
+  abort_graph_execution   – Abort a running graph by run_id
   list_graph_runs         – List recent executions (REST /executions endpoint)
   get_graph_run_status    – Check the status of a single run by run ID
   get_graph_execution_log – Fetch the execution log for a run
@@ -69,6 +71,7 @@ Configuration (.env)
   CLOVERDX_USERNAME   clover
   CLOVERDX_PASSWORD   clover
   CLOVERDX_VERIFY_SSL false   (optional, default false)
+    CLOVERDX_LLM_ALLOW  false   (optional, default false; enables validate_CTL and generate_CTL tools)
 
 Dependencies
 ────────────
@@ -76,7 +79,6 @@ Dependencies
 """
 
 import asyncio
-import bisect
 import glob as _glob
 import json
 import logging
@@ -95,6 +97,7 @@ from cloverdx_graph_validator import GraphValidator
 from cloverdx_soap_client import CloverDXSoapClient
 from cloverdx_CTL_generate import validate_CTL as _ctl_validate
 from cloverdx_CTL_generate import generate_CTL as _ctl_generate
+from cloverdx_CTL_generate import LLM_ALLOW
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -697,14 +700,14 @@ async def handle_list_tools() -> List[types.Tool]:
         # ── Sandbox / File tools ───────────────────────────────────────────
         types.Tool(
             name="list_sandboxes",
-            description="List all sandboxes (projects) available on the CloverDX server.",
+            description="List all sandboxes on the CloverDX server. Returns sandbox codes and names.",
             inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="list_files",
             description=(
-                "List files and folders inside a directory within a CloverDX sandbox. "
-                "Use folder_only=true to list only subdirectories."
+                "List files and folders in a sandbox directory. "
+                "Set folder_only=true to return directories only."
             ),
             inputSchema={
                 "type": "object",
@@ -719,8 +722,8 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="find_file",
             description=(
-                "Find files in a CloverDX sandbox using shell-style wildcards. "
-                "Supports '*' and '?'. Searches recursively by listing files and filtering client-side."
+                "Recursively find files in a sandbox by shell-style wildcard (* and ?). "
+                "Client-side filtering."
             ),
             inputSchema={
                 "type": "object",
@@ -735,108 +738,70 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="grep_files",
             description=(
-                "Search for files in a CloverDX sandbox whose content matches a given query. "
-                "Returns the path, size, and last-modified date of each matching file. "
-                "Optionally also returns the matching lines with line numbers (like grep -n). "
-                "Supports plain-string search by default, with optional regex mode via is_regex=true. "
-                "Regex mode searches full file text and supports cross-line matches. "
-                "\n\n"
-                "Primary use cases:\n"
-                "- Find all graphs that use a specific component type: "
-                "search_string='type=\"VALIDATOR\"', path='graph'\n"
-                "- Find all graphs that reference a specific subgraph: "
-                "search_string='OrderFileReader.sgrf'\n"
-                "- Find all files that reference a specific metadata id: "
-                "search_string='metadata=\"MetaOrder\"'\n"
-                "- Find all CTL files that call a specific function: "
-                "search_string='checkTotalPrice'\n"
-                "- Find all graphs that reference a specific connection: "
-                "search_string='DWHConnection'\n"
-                "- Find example graphs to use as reference before authoring a new one: "
-                "file_pattern='*.grf', search_string='type=\"DENORMALIZER\"'\n"
-                "\n"
-                "Combine with find_file when you need both name pattern AND content filtering: "
-                "first call find_file to get the candidate file list, then call grep_files "
-                "with a path scope to filter by content."
+                "Search file contents across one or more sandboxes (like grep -rn). "
+                "Supports literal or regex matching, optional file glob filtering, "
+                "optional path scoping, and optional context lines around matches.\n\n"
+                "Examples:\n"
+                "- Find graphs using a component: search_string='type=\"VALIDATOR\"', sandboxes=['DWH'], path='graph'\n"
+                "- Find metadata usage in multiple sandboxes: search_string='metadata=\"MetaOrder\"', sandboxes=['DWH','QA']\n"
+                "- Regex search in CTL files: search_string='function\\s+[A-Za-z_]+', match_mode='regex', file_pattern='*.ctl'\n"
+                "- Include one line of context around matches: context_lines=1"
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "sandbox": {
-                        "type": "string",
-                        "description": "Sandbox code to search in.",
-                    },
                     "search_string": {
                         "type": "string",
-                        "description": (
-                            "The query to search for in file contents. "
-                            "Interpreted as plain text by default; interpreted as regex when is_regex=true. "
-                            "Case-sensitive by default."
-                        ),
+                        "description": "Exact string or regex pattern to search for.",
                     },
-                    "is_regex": {
-                        "type": "boolean",
-                        "description": (
-                            "If true, treat search_string as a Python regular expression. "
-                            "If false (default), treat search_string as plain text. "
-                            "Regex mode searches full file text and can match across line breaks."
-                        ),
+                    "sandboxes": {
+                        "type": "array",
+                        "description": "Sandbox codes to search in.",
+                        "items": {"type": "string"},
+                        "minItems": 1,
                     },
                     "path": {
                         "type": "string",
                         "description": (
-                            "Directory to search under (recursive). "
-                            "Defaults to sandbox root. "
-                            "Examples: 'graph', 'graph/subgraph', 'trans'."
+                            "Optional directory prefix within each sandbox to search recursively under. "
+                            "Defaults to sandbox root."
                         ),
                     },
                     "file_pattern": {
                         "type": "string",
                         "description": (
-                            "Optional shell-style wildcard to filter filenames before content search. "
-                            "Examples: '*.grf', '*.sgrf', '*.ctl'. "
+                            "Optional shell-style wildcard to filter files before content search. "
                             "Defaults to '*' (all files)."
                         ),
                     },
-                    "case_sensitive": {
-                        "type": "boolean",
-                        "description": "Whether the search is case-sensitive. Default: true.",
+                    "match_mode": {
+                        "type": "string",
+                        "enum": ["literal", "regex"],
+                        "description": "Match mode: literal string match or regex. Default: literal.",
                     },
-                    "include_matching_lines": {
-                        "type": "boolean",
-                        "description": (
-                            "If true, each result includes the matching lines with line numbers. "
-                            "If false, returns only file paths and metadata. "
-                            "In regex mode, also includes matching_ranges plus matching_samples "
-                            "(full text snippet for each regex hit with start_line/end_line). "
-                            "Default: false. "
-                            "Set true when you need to understand how the string is used "
-                            "(e.g. verifying which component ID uses a given attribute), "
-                            "false when you only need to know which files to read next."
-                        ),
-                    },
-                    "max_results": {
+                    "context_lines": {
                         "type": "integer",
-                        "description": "Maximum number of matching files to return. Default: 20, max: 100.",
+                        "description": "Number of lines to include before and after each matched line. Default: 0.",
+                        "minimum": 0,
+                    },
+                    "max_results_per_sandbox": {
+                        "type": "integer",
+                        "description": "Maximum number of matches to return per sandbox. Default: 25, max: 200.",
                         "minimum": 1,
-                        "maximum": 100,
+                        "maximum": 200,
                     },
                 },
-                "required": ["sandbox", "search_string"],
+                "required": ["search_string", "sandboxes"],
                 "additionalProperties": False,
             },
         ),
         types.Tool(
             name="list_linked_assets",
             description=(
-                "Lists all linkable/externalised assets available in a CloverDX sandbox — "
-                "metadata definitions (.fmt), connection definitions (.cfg), lookup table "
-                "definitions (.lkp), CTL2 transformation files (.ctl), sequence files (.seq), "
-                "and parameter files (.prm). "
-                "Call this early during graph creation to discover reusable shared assets before "
-                "defining new ones inline, and to confirm the correct fileURL paths to reference "
-                "in the graph XML. "
-                "Optionally filter by asset type to narrow results."
+                "List reusable assets in a sandbox: metadata (.fmt), connections (.cfg), "
+                "lookups (.lkp), CTL (.ctl), sequences (.seq), parameters (.prm). "
+                "Call early during graph creation to discover shared assets and their fileURL "
+                "paths before defining anything inline. Filter by asset_type to narrow results."
             ),
             inputSchema={
                 "type": "object",
@@ -848,16 +813,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     "asset_type": {
                         "type": "string",
                         "enum": ["metadata", "connection", "lookup", "ctl", "sequence", "parameters", "all"],
-                        "description": (
-                            "Type of asset to list. "
-                            "'metadata' → .fmt files; "
-                            "'connection' → .cfg files; "
-                            "'lookup' → .lkp files; "
-                            "'ctl' → .ctl transformation files; "
-                            "'sequence' → .seq files; "
-                            "'parameters' → .prm files; "
-                            "'all' → all of the above (default)."
-                        ),
+                        "description": "Filter: metadata(.fmt), connection(.cfg), lookup(.lkp), ctl(.ctl), sequence(.seq), parameters(.prm), or all (default).",
                     },
                 },
                 "required": ["sandbox"],
@@ -867,11 +823,10 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_sandbox_parameters",
             description=(
-                "Returns best-effort resolved graph parameter values for a CloverDX sandbox by "
-                "reading workspace.prm and optionally overlaying server-side defaults/properties. "
-                "Use this before writing file paths into a graph to know what ${DATAIN_DIR}, "
-                "${DATAOUT_DIR}, ${CONN_DIR} and related parameters resolve to in this sandbox context. "
-                "Response includes source provenance and unresolved placeholders."
+                "Resolve sandbox parameter values (${DATAIN_DIR}, ${DATAOUT_DIR}, ${CONN_DIR}, etc.) "
+                "from workspace.prm with optional server-side overlay. "
+                "Call before writing file paths into graphs. "
+                "Returns resolved values with source provenance and any unresolved placeholders."
             ),
             inputSchema={
                 "type": "object",
@@ -904,11 +859,10 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="read_file",
             description=(
-                "Read the content of a file from a CloverDX sandbox. "
-                "Use this to fetch .grf graph files, .fmt metadata files, .prm parameter files, etc. "
-                "Optionally read a line range by specifying both start_line and line_count. "
-                "start_line is 1-based; negative values count from the end (-1 is last line). "
-                "Response is capped at 1 MiB."
+                "Read a file from a sandbox (.grf, .fmt, .prm, .ctl, etc.). "
+                "Optionally read a line range via start_line + line_count. "
+                "start_line: 1-based; negative counts from end (-1 = last line). "
+                "Max response: 1 MiB."
             ),
             inputSchema={
                 "type": "object",
@@ -931,9 +885,8 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="rename_file",
             description=(
-                "Renames a file within a CloverDX sandbox. "
-                "Only the filename changes — the file stays in the same directory. "
-                "To move a file to a different directory, use copy_file + delete_file."
+                "Rename a file in a sandbox (same directory only). "
+                "To move to a different directory, use copy_file + delete_file."
             ),
             inputSchema={
                 "type": "object",
@@ -958,11 +911,8 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="copy_file",
             description=(
-                "Copies a file within a CloverDX sandbox, or from one sandbox to another. "
-                "Primary use: create a safe backup of a graph or any other file before making "
-                "significant edits. The copy overwrites the destination if it already exists. "
-                "Always copy a graph to a backup path (e.g. 'graph/MyGraph.bak.grf') before "
-                "a large edit so the original can be restored if patching corrupts the file."
+                "Copy a file within or across sandboxes. Overwrites destination if it exists. "
+                "Always back up a graph (e.g. 'graph/MyGraph.bak.grf') before large edits."
             ),
             inputSchema={
                 "type": "object",
@@ -997,11 +947,11 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="patch_file",
             description=(
-                "Patch a file in a CloverDX sandbox using anchor-based replacements. "
-                "Each patch locates an anchor string, computes a line range from from_offset/to_offset, "
-                "checks for conflicts, and applies all replacements bottom-up. "
-                "Supports dry_run preview mode."
-                "Hint: for graph XML files, use tool `set_graph_element_attribute`."
+                "Patch a sandbox file using anchor-based line replacements. "
+                "Each patch locates an anchor string, applies from_offset/to_offset to define the "
+                "replacement range, then all patches are applied bottom-up. "
+                "Supports dry_run=true for preview. "
+                "For graph XML attribute changes, prefer set_graph_element_attribute instead."
             ),
             inputSchema={
                 "type": "object",
@@ -1030,25 +980,14 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="set_graph_element_attribute",
             description=(
-                "Sets or updates a value on a specific element within a CloverDX graph XML file. "
-                "Operates on the parsed DOM — no text anchoring or line numbers required. "
-                "More reliable than patch_file for graph modifications. "
-                "\n\n"
-                "Supports two modification modes, selected via the 'attribute_name' parameter:\n"
-                "1. XML attribute — plain attribute on the element tag. "
-                "Use for: recordsNumber, joinType, enabled, guiX, guiY, fileURL, metadata, etc. "
-                "Example: attribute_name='recordsNumber', value='100'\n"
-                "2. <attr> child element — multi-line content stored as a CDATA child of a Node. "
-                "Prefix attribute_name with 'attr:' to select this mode. "
-                "Use for: CTL transforms, SQL queries, joinKey, mapping XML, rules, errorMapping, etc. "
-                "The value is stored as CDATA — do NOT wrap it yourself. "
-                "Example: attribute_name='attr:transform', value='//#CTL2\\nfunction integer transform() {...}'\n"
-                "\n"
-                "For Metadata elements: supply the full replacement <Record>...</Record> XML as value. "
-                "attribute_name is ignored for Metadata — set it to 'record' by convention. "
-                "The entire child content of <Metadata id='X'> is replaced. "
-                "External metadata (fileURL-style) cannot be modified with this tool — edit the .fmt file directly.\n"
-                "\n"
+                "Set/update a value on a graph XML element via DOM (no line numbers needed). "
+                "More reliable than patch_file for graph modifications.\n\n"
+                "Two modes via attribute_name:\n"
+                "1. Plain name (e.g. 'recordsNumber', 'joinType', 'fileURL') \u2192 sets XML attribute on tag.\n"
+                "2. 'attr:' prefix (e.g. 'attr:transform', 'attr:sqlQuery', 'attr:joinKey') \u2192 sets <attr> "
+                "child with auto CDATA wrapping (do NOT wrap CDATA yourself).\n\n"
+                "For Metadata: set attribute_name='record', value=full <Record>...</Record> XML. "
+                "External metadata (.fmt files) cannot be modified here.\n"
                 "Always call validate_graph after using this tool."
             ),
             inputSchema={
@@ -1065,45 +1004,26 @@ async def handle_list_tools() -> List[types.Tool]:
                     "element_type": {
                         "type": "string",
                         "enum": ["Node", "Edge", "Metadata", "GraphParameter", "Connection"],
-                        "description": (
-                            "The type of graph element to modify. "
-                            "Node: a processing component. "
-                            "Edge: a connection between components. "
-                            "Metadata: a record structure definition. "
-                            "GraphParameter: a graph parameter (matched by 'name' attribute, not 'id'). "
-                            "Connection: a database or service connection definition."
-                        ),
+                        "description": "Element type. GraphParameter matches by 'name' attribute; all others match by 'id'.",
                     },
                     "element_id": {
                         "type": "string",
-                        "description": (
-                            "The unique identifier of the target element. "
-                            "For Node, Edge, Metadata, Connection: matches the 'id' XML attribute. "
-                            "For GraphParameter: matches the 'name' XML attribute."
-                        ),
+                        "description": "Element identifier. Matches 'id' attribute (or 'name' for GraphParameter).",
                     },
                     "attribute_name": {
                         "type": "string",
                         "description": (
-                            "What to set on the element. Two forms:\n"
-                            "- Plain name (e.g. 'recordsNumber', 'joinType', 'enabled', 'guiX', "
-                            "'fileURL', 'value') → sets an XML attribute directly on the element tag.\n"
-                            "- 'attr:X' prefix (e.g. 'attr:transform', 'attr:generate', "
-                            "'attr:sqlQuery', 'attr:joinKey', 'attr:rules', 'attr:errorMapping', "
-                            "'attr:denormalize', 'attr:mapping') → sets the content of an "
-                            "<attr name='X'> child element, CDATA-wrapped automatically.\n"
-                            "For Metadata elements: set to 'record' (ignored by implementation)."
+                            "Plain name → XML attribute (e.g. 'recordsNumber', 'fileURL', 'joinType'). "
+                            "'attr:X' → <attr> CDATA child (e.g. 'attr:transform', 'attr:sqlQuery', 'attr:joinKey'). "
+                            "For Metadata: use 'record'."
                         ),
                     },
                     "value": {
                         "type": "string",
                         "description": (
-                            "The new value. "
-                            "For plain XML attributes: a simple string (e.g. '100', 'leftOuter', 'true'). "
-                            "For 'attr:' child elements: raw content, any length, any format "
-                            "(CTL code, SQL, XML) — CDATA wrapping is applied automatically. "
-                            "Do NOT wrap in <![CDATA[...]]> yourself. "
-                            "For Metadata: the full replacement <Record>...</Record> XML block."
+                            "New value. For attributes: simple string. "
+                            "For 'attr:': raw content (CTL/SQL/XML) — CDATA auto-wrapped, do NOT wrap yourself. "
+                            "For Metadata: full <Record>...</Record> XML."
                         ),
                     },
                 },
@@ -1121,8 +1041,9 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="write_file",
             description=(
-                "Write (create or overwrite) a file in a CloverDX sandbox. "
-                "Use this to save a new or modified graph, metadata file, or parameter file."
+                "Create or overwrite a file in a sandbox. "
+                "Set append=true to append content to an existing file (useful for chunked large writes). "
+                "Append mode adds raw content — no automatic separators or newlines."
             ),
             inputSchema={
                 "type": "object",
@@ -1131,7 +1052,8 @@ async def handle_list_tools() -> List[types.Tool]:
                     "sandbox":  {"type": "string", "description": "Sandbox code"},
                     "path":     {"type": "string", "description": "Directory path within the sandbox (e.g. 'graph')"},
                     "filename": {"type": "string", "description": "File name including extension (e.g. 'MyGraph.grf')"},
-                    "content":  {"type": "string", "description": "Full file content as a UTF-8 string"},
+                    "content":  {"type": "string", "description": "UTF-8 text to write. In overwrite mode this is the full file content; in append mode this chunk is appended as-is."},
+                    "append":   {"type": "boolean", "description": "If true, append content to the target file instead of overwriting it (default: false)."},
                 },
             },
         ),
@@ -1165,11 +1087,10 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="read_resource",
             description=(
-                "Fetch the full content of a resource by its URI. "
-                "Call list_resources first to see available URIs. "
-                "Examples: 'cloverdx://reference/graph-xml', "
-                "'cloverdx://reference/ctl2', 'cloverdx://reference/subgraphs', "
-                "'cloverdx://reference/components'."
+                "Fetch resource content by URI. "
+                "URIs: 'cloverdx://reference/graph-xml', 'cloverdx://reference/ctl2', "
+                "'cloverdx://reference/subgraphs', 'cloverdx://reference/components'. "
+                "Call list_resources first to see all available URIs."
             ),
             inputSchema={
                 "type": "object",
@@ -1182,21 +1103,13 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_workflow_guide",
             description=(
-                "Returns the authoritative step-by-step workflow guide for a given CloverDX task. "
-                "Always call this at the start of any CloverDX task before doing any work. "
-                "The guide contains mandatory phases, component selection rules, common error fixes, "
-                "and a checklist to verify the task is complete. "
-                "Available task types:\n"
-                "  - 'create_graph'      — Full guide for designing and creating a new graph from scratch. "
-                "Covers component selection, get_component_info/get_component_details usage, metadata design, "
-                "XML authoring rules (including nested CDATA escaping), and validation.\n"
-                "  - 'edit_graph'        — Guide for modifying an existing graph. "
-                "Covers read-before-edit discipline, patch vs rewrite decisions, re-read-between-patches rule, "
-                "and validation after every write.\n"
-                "  - 'validate_and_run'  — Guide for validating, executing, and verifying a graph. "
-                "Covers interpreting Stage 1/Stage 2 validation results, fixing common errors, "
-                "running the graph, and verifying results via tracking and execution log.\n"
-                "If no task is specified, returns the guide most appropriate for general graph work ('create_graph')."
+                "MUST call at the start of any CloverDX task. Returns the step-by-step workflow "
+                "guide with mandatory phases, rules, error fixes, and completion checklist.\n\n"
+                "Task types:\n"
+                "- 'create_graph': Design and create a new graph (component selection, metadata, XML rules, validation).\n"
+                "- 'edit_graph': Modify an existing graph (read-first, patch vs rewrite, re-read between patches).\n"
+                "- 'validate_and_run': Validate, execute, verify a graph (Stage 1/2 errors, tracking, logs).\n"
+                "Defaults to 'create_graph' if omitted."
             ),
             inputSchema={
                 "type": "object",
@@ -1204,13 +1117,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     "task": {
                         "type": "string",
                         "enum": ["create_graph", "edit_graph", "validate_and_run"],
-                        "description": (
-                            "The type of task being performed. "
-                            "'create_graph' for building a new graph from scratch; "
-                            "'edit_graph' for modifying an existing graph; "
-                            "'validate_and_run' for validating, executing, and verifying an existing graph. "
-                            "Defaults to 'create_graph' if omitted."
-                        ),
+                        "description": "Task type. Defaults to 'create_graph'.",
                     }
                 },
                 "required": [],
@@ -1222,13 +1129,12 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="validate_graph",
             description=(
-                "Validate a CloverDX graph in two stages:\n"
-                "  Stage 1 — Local XML structure + metadata check (fast, no extra server round-trip)\n"
-                "  Stage 2 — Server-side checkConfig (deep component check; only runs if Stage 1 passes)\n"
-                "The graph must already exist on the server — write it first with write_file.\n"
-                "IMPORTANT: The returned error list may not be exhaustive. Some errors block further "
-                "validation, so fixing reported issues and calling validate_graph again may reveal "
-                "additional problems. Repeat until validation returns no errors."
+                "Validate a graph in two stages:\n"
+                "Stage 1: Local XML + metadata check (fast, offline).\n"
+                "Stage 2: Server-side checkConfig (deep; runs only if Stage 1 passes).\n"
+                "Graph must exist on server (write_file first).\n"
+                "IMPORTANT: Errors may not be exhaustive — some block further checks. "
+                "Fix reported issues and re-validate until clean."
             ),
             inputSchema={
                 "type": "object",
@@ -1243,11 +1149,10 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="execute_graph",
             description=(
-                "Execute a CloverDX transformation graph on the server and wait for it to complete. "
-                "Returns the final status and elapsed time. "
-                "Use get_graph_execution_log to fetch detailed logs. "
-                "Use get_graph_tracking to see per-component record/byte counts. "
-                "Set debug=true to enable edge debug data capture (required for get_edge_debug_data)."
+                "Submit a graph for async execution. Returns run_id immediately.\n"
+                "Follow-up tools: await_graph_completion (wait), "
+                "get_graph_execution_log (logs), get_graph_tracking (record counts).\n"
+                "Set debug=true for edge debug data capture."
             ),
             inputSchema={
                 "type": "object",
@@ -1261,19 +1166,56 @@ async def handle_list_tools() -> List[types.Tool]:
                         "additionalProperties": {"type": "string"},
                     },
                     "debug":    {"type": "boolean", "description": "Enable edge debug data capture (default: false). Required to use get_edge_debug_data afterwards."},
-                    "timeout_seconds": {"type": "integer", "description": "Max seconds to wait for completion (default: 120)"},
                 },
+            },
+        ),
+        types.Tool(
+            name="await_graph_completion",
+            description=(
+                "Block until a graph run completes or timeout is reached. "
+                "Returns final status, or current status with timed_out=true on timeout. "
+                "Safe to re-call with the same run_id after a timeout."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["run_id"],
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "description": "Run ID returned by execute_graph or list_graph_runs.",
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": "Max seconds to wait for completion before returning current status with timed_out=true (default: 600).",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="abort_graph_execution",
+            description=(
+                "Abort a running graph execution. "
+                "Returns current status if already finished."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["run_id"],
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "description": "Run ID returned by execute_graph or list_graph_runs.",
+                    },
+                },
+                "additionalProperties": False,
             },
         ),
         types.Tool(
             name="list_graph_runs",
             description=(
-                "List recent graph/jobflow executions from CloverDX Server. "
-                "Filter by sandbox, job_file (substring), or status. "
-                "Returns run_id, status, submit/start/stop times, duration, and error details. "
-                "Use this to find run IDs for get_graph_run_status, get_graph_execution_log, "
-                "or get_graph_tracking. "
-                "Statuses: N_A, ENQUEUED, READY, RUNNING, WAITING, FINISHED_OK, ERROR, ABORTED, TIMEOUT."
+                "List recent graph executions. Filter by sandbox, job_file (substring), or status. "
+                "Returns run_id, status, timestamps, duration, errors. "
+                "Use to find run_ids for other graph tools."
             ),
             inputSchema={
                 "type": "object",
@@ -1309,16 +1251,10 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_graph_run_status",
             description=(
-                "Returns the current status of a graph run by its run ID — without fetching "
-                "the full execution log. "
-                "Possible statuses: RUNNING, SUCCESS, FAILED, ABORTED, WAITING. "
-                "Use this to poll the status of a long-running graph, or to quickly check "
-                "whether a specific run succeeded before deciding whether to fetch logs or "
-                "tracking data. "
-                "When status is RUNNING, also returns elapsed time and current phase number "
-                "so progress can be assessed. "
-                "For completed runs, use get_graph_tracking for record counts and "
-                "get_graph_execution_log for detailed diagnostics."
+                "Quick status check for a graph run (no log fetch). "
+                "Statuses: RUNNING, SUCCESS, FAILED, ABORTED, WAITING. "
+                "RUNNING includes elapsed time and phase number. "
+                "For completed runs, use get_graph_tracking or get_graph_execution_log."
             ),
             inputSchema={
                 "type": "object",
@@ -1347,10 +1283,7 @@ async def handle_list_tools() -> List[types.Tool]:
         # ── Component reference tools ──────────────────────────────────────
         types.Tool(
             name="list_components",
-            description=(
-                "List available CloverDX component types. "
-                "Optionally filter by category: readers, writers, transformers, joiners, others, jobControl."
-            ),
+            description="List available component types, optionally filtered by category.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1365,9 +1298,9 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_component_info",
             description=(
-                "Look up a CloverDX component's input/output ports and configurable properties. "
-                "Search by component type (e.g. 'EXT_HASH_JOIN') or display name (e.g. 'Map'). "
-                "Case-insensitive, partial match supported."
+                "Get a component's port definitions and configurable properties. "
+                "Search by type (e.g. 'EXT_HASH_JOIN') or name (e.g. 'Map'). "
+                "Case-insensitive partial match."
             ),
             inputSchema={
                 "type": "object",
@@ -1393,110 +1326,90 @@ async def handle_list_tools() -> List[types.Tool]:
                 },
             },
         ),
-        types.Tool(
-            name="validate_CTL",
-            description=(
-                "Lint CloverDX CTL2 transformation code using an LLM (OpenAI-compatible API, "
-                "e.g. local Ollama). "
-                "The LLM receives the CTL2 code and an optional CloverDX metadata XML block "
-                "(standard <Record>/<Field> serialization) as context for field-reference "
-                "checking. An optional 'query' parameter lets you direct the LLM's attention "
-                "to a specific concern (e.g. 'Focus on the replace() calls').\n\n"
-                "The LLM checks for:\n"
-                "- Regex-unsafe usage of ?= and replace() with unescaped meta-characters\n"
-                "- Field reference mismatches against the provided metadata\n"
-                "- Undeclared variables and scope issues\n"
-                "- Type mismatches and evalExpression() anti-patterns\n"
-                "- Missing return statements or unreachable code paths\n\n"
-                "Returns a structured ISSUES / SUGGESTIONS / VERDICT report."
-            ),
-            inputSchema={
-                "type": "object",
-                "required": ["code"],
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "CTL2 code to validate (plain text, not XML-escaped).",
-                    },
-                    "metadata_context": {
-                        "type": "string",
-                        "description": (
-                            "Optional CloverDX metadata in XML serialization format "
-                            "(<Record name=\"...\"><Field name=\"...\" type=\"...\"/></Record>). "
-                            "Enables field-reference validation against actual metadata."
-                        ),
-                    },
-                    "query": {
-                        "type": "string",
-                        "description": (
-                            "Optional additional instruction passed to the LLM, e.g. "
-                            "'Focus on the replace() calls in transform()' or "
-                            "'Check for evalExpression usage'."
-                        ),
-                    },
-                    "timeout": {
-                        "type": "integer",
-                        "description": "LLM request timeout in seconds (default: 120).",
+        *([
+            types.Tool(
+                name="validate_CTL",
+                description=(
+                    "Lint CTL2 code via LLM. Optionally provide input/output port metadata for "
+                    "field-reference validation ($in.N / $out.N). Label each port by role "
+                    "(e.g. 'Port 0 (master)'), not just direction.\n\n"
+                    "Checks: regex safety, field reference mismatches, undeclared variables, "
+                    "type mismatches, missing returns, unreachable code.\n"
+                    "Returns structured ISSUES / SUGGESTIONS / VERDICT."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["code"],
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description": "CTL2 code to validate (plain text, not XML-escaped).",
+                        },
+                        "input_metadata": {
+                            "type": "string",
+                            "description": (
+                                "Input port metadata blocks labeled by role (e.g. 'Port 0 (master)'). "
+                                "Used for $in.N field-reference validation."
+                            ),
+                        },
+                        "output_metadata": {
+                            "type": "string",
+                            "description": (
+                                "Output port metadata blocks labeled by role (e.g. 'Port 0 (rejected)'). "
+                                "Used for $out.N field-reference validation."
+                            ),
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Optional focus instruction for the LLM (e.g. 'Focus on the replace() calls').",
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": "LLM request timeout in seconds (default: 120).",
+                        },
                     },
                 },
-            },
-        ),
-        types.Tool(
-            name="generate_CTL",
-            description=(
-                "Generate CloverDX CTL2 code using an LLM (OpenAI-compatible API, e.g. local Ollama). "
-                "Use it to create full component transform code, a CTL2 expression, or a focused "
-                "snippet from a functional description. If generation targets a specific component, "
-                "provide the component metadata as CloverDX XML so field names/types are aligned.\n\n"
-                "Inputs to the LLM are:\n"
-                "- description: what should be generated (functionality and desired output shape)\n"
-                "- metadata: optional CloverDX metadata XML context (recommended for component code)\n"
-                "- timeout: request timeout in seconds"
             ),
-            inputSchema={
-                "type": "object",
-                "required": ["description"],
-                "properties": {
-                    "description": {
-                        "type": "string",
-                        "description": (
-                            "Describe what should be generated: full component transform code, "
-                            "a CTL2 expression, or a code snippet. Include intended functionality."
-                        ),
-                    },
-                    "metadata": {
-                        "type": "string",
-                        "description": (
-                            "Optional CloverDX metadata XML context. For component-level generation, "
-                            "this should be provided so field references are valid."
-                        ),
-                    },
-                    "timeout": {
-                        "type": "integer",
-                        "description": "LLM request timeout in seconds (default: 120).",
+            types.Tool(
+                name="generate_CTL",
+                description=(
+                    "Generate CTL2 code via LLM from a functional description. "
+                    "Produces full transforms, expressions, or snippets. "
+                    "Provide input/output port metadata labeled by role for $in.N/$out.N mapping."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["description"],
+                    "properties": {
+                        "description": {
+                            "type": "string",
+                            "description": "What to generate: full transform, expression, or snippet. Include intended functionality.",
+                        },
+                        "input_metadata": {
+                            "type": "string",
+                            "description": "Input port metadata labeled by role (e.g. 'Port 0 (master)'). Maps to $in.N references.",
+                        },
+                        "output_metadata": {
+                            "type": "string",
+                            "description": "Output port metadata labeled by role (e.g. 'Port 0 (rejected)'). Maps to $out.N references.",
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": "LLM request timeout in seconds (default: 120).",
+                        },
                     },
                 },
-            },
-        ),
+            ),
+        ] if LLM_ALLOW else []),
         types.Tool(
             name="think",
             description=(
-                "Use this tool to reason explicitly before taking action. "
-                "Call it when you need to plan, evaluate alternatives, or diagnose a problem. "
-                "\n\n"
-                "Mandatory use cases for CloverDX work:\n"
-                "- Before choosing between candidate components — reason through "
-                "selection criteria before calling get_component_info\n"
-                "- Before writing a graph — produce a complete component/edge/metadata "
-                "plan before calling write_file\n"
-                "- Before editing a graph — decide patch vs write_file and identify "
-                "exactly which elements change\n"
-                "- After validation fails — diagnose root cause before attempting a fix\n"
-                "- When a reference graph exists — reason about what pattern it uses "
-                "before deciding whether to follow it\n"
-                "\n"
-                "Input: a single 'thought' string containing your reasoning.\n"
-                "Output: acknowledgement only — the thought is logged, not acted upon."
+                "Log explicit reasoning before acting. Returns acknowledgement only.\n\n"
+                "MUST use before:\n"
+                "- Choosing between components (reason through criteria)\n"
+                "- Writing/editing a graph (plan components, edges, metadata)\n"
+                "- Fixing validation errors (diagnose root cause first)\n"
+                "- Following a reference graph pattern"
             ),
             inputSchema={
                 "type": "object",
@@ -1513,27 +1426,17 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="plan_graph",
             description=(
-                "Produce and record a structured design plan for a CloverDX graph "
-                "before writing any XML. Forces explicit upfront design decisions and "
-                "surfaces problems before implementation begins. "
-                "\n\n"
-                "WHEN TO CALL: After get_workflow_guide and all reference/component "
-                "lookups, but BEFORE write_file or set_graph_element_attribute. "
-                "Also call list_linked_assets() before filling global_assets — "
-                "discover what .fmt/.cfg/.lkp/.ctl/.seq files already exist in the "
-                "sandbox before deciding to define anything new inline. "
-                "\n\n"
-                "The plan is validated for internal consistency:\n"
-                "- Every edge references source/target component IDs that exist in components[]\n"
-                "- Every component with a CTL transform has ctl_entry_points declared\n"
-                "- DENORMALIZER, MERGE, DEDUP, EXT_MERGE_JOIN components have an upstream "
-                "sort component on their input (or sort requirement explicitly waived)\n"
-                "- Every metadata_id referenced on an edge exists in metadata[]\n"
-                "- Every connection/lookup/sequence referenced by a component exists in global_assets\n"
-                "- Required subgraph parameters are listed in param_values\n"
-                "\n"
-                "Returns the plan with any consistency warnings highlighted so they "
-                "can be resolved before writing."
+                "Record a structured graph design plan before writing XML. "
+                "Validates internal consistency and surfaces issues before implementation.\n\n"
+                "WHEN: After get_workflow_guide + component lookups, BEFORE write_file. "
+                "Call list_linked_assets() first to discover existing shared assets.\n\n"
+                "Validates:\n"
+                "- Edge source/target IDs exist in components[]\n"
+                "- CTL components have ctl_entry_points declared\n"
+                "- Sort-requiring components (DENORMALIZER, MERGE, DEDUP, EXT_MERGE_JOIN) have upstream sort\n"
+                "- Edge metadata_ids exist in metadata[]\n"
+                "- Referenced connections/lookups/sequences exist in global_assets\n"
+                "Returns plan with consistency warnings."
             ),
             inputSchema={
                 "type": "object",
@@ -1552,18 +1455,11 @@ async def handle_list_tools() -> List[types.Tool]:
                     },
                     "purpose": {
                         "type": "string",
-                        "description": (
-                            "One or two sentences describing what this graph does — "
-                            "source, transformation, and target. Used as the graph description."
-                        ),
+                        "description": "Brief: source, transformation, and target. Used as graph description.",
                     },
                     "phases": {
                         "type": "array",
-                        "description": (
-                            "List of execution phases. Most graphs have a single phase (number 0). "
-                            "Add additional phases only when operations must complete sequentially — "
-                            "e.g. phase 0 truncates target, phase 1 loads data."
-                        ),
+                        "description": "Execution phases. Most graphs use single phase 0. Add phases only for sequential dependencies.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -1581,11 +1477,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     },
                     "components": {
                         "type": "array",
-                        "description": (
-                            "Every component node in the graph. "
-                            "Call get_component_info for each type before filling this section — "
-                            "do not rely on memory for port names or attribute names."
-                        ),
+                        "description": "All component nodes. Call get_component_info for each type before filling.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -1617,12 +1509,7 @@ async def handle_list_tools() -> List[types.Tool]:
                                 "ctl_entry_points": {
                                     "type": "array",
                                     "items": {"type": "string"},
-                                    "description": (
-                                        "CTL functions this component requires. "
-                                        "Must be declared for any component with a CTL transform. "
-                                        "Examples: ['transform()'], ['append()', 'transform()', 'clean()'], "
-                                        "['generate()'], ['count()', 'transform(idx)']."
-                                    ),
+                                    "description": "Required CTL functions (e.g. ['transform()'], ['generate()']). Must declare for any CTL component.",
                                 },
                                 "debug_input": {
                                     "type": "boolean",
@@ -1644,12 +1531,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     },
                     "metadata": {
                         "type": "array",
-                        "description": (
-                            "All metadata record definitions used in the graph. "
-                            "Every edge must reference a metadata ID from this list. "
-                            "Check list_linked_assets() for existing .fmt files before "
-                            "defining new metadata inline."
-                        ),
+                        "description": "All metadata definitions. Every edge must reference one. Check list_linked_assets() for existing .fmt files first.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -1664,11 +1546,7 @@ async def handle_list_tools() -> List[types.Tool]:
                                 "source": {
                                     "type": "string",
                                     "enum": ["inline", "external", "propagated"],
-                                    "description": (
-                                        "'inline' — <Record> defined inside the graph. "
-                                        "'external' — fileURL reference to existing .fmt file (preferred for shared metadata). "
-                                        "'propagated' — auto-propagated from connected component; no explicit definition needed."
-                                    ),
+                                    "description": "'inline'=in-graph <Record>, 'external'=.fmt fileURL (preferred), 'propagated'=auto from connected component.",
                                 },
                                 "file_url": {
                                     "type": "string",
@@ -1677,11 +1555,7 @@ async def handle_list_tools() -> List[types.Tool]:
                                 "key_fields": {
                                     "type": "array",
                                     "items": {"type": "string"},
-                                    "description": (
-                                        "Most important field names and types for planning purposes "
-                                        "(e.g. ['Order_Id:long', 'rejectReason:string', 'recordNo:long']). "
-                                        "Not exhaustive — just enough to verify edge compatibility."
-                                    ),
+                                    "description": "Key field:type pairs for planning (e.g. ['Order_Id:long', 'recordNo:long']). Not exhaustive.",
                                 },
                             },
                             "required": ["id", "description", "source"],
@@ -1689,11 +1563,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     },
                     "edges": {
                         "type": "array",
-                        "description": (
-                            "Every edge connecting components. "
-                            "Use exact outPort/inPort strings as returned by get_component_info — "
-                            "wrong port names cause Stage 1 validation failures."
-                        ),
+                        "description": "All edges. Use exact port strings from get_component_info — wrong names cause validation failures.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -1727,16 +1597,11 @@ async def handle_list_tools() -> List[types.Tool]:
                     },
                     "global_assets": {
                         "type": "object",
-                        "description": (
-                            "All elements that will appear in the <Global> section of the graph "
-                            "beyond metadata. Plan these explicitly — a missing declaration causes "
-                            "a Stage 2 validation failure or a silent runtime error. "
-                            "Call list_linked_assets() first to discover what already exists."
-                        ),
+                        "description": "<Global> section assets beyond metadata. Missing declarations cause validation/runtime failures. Call list_linked_assets() first.",
                         "properties": {
                             "connections": {
                                 "type": "array",
-                                "description": "Database or service connections referenced by component dbConnection attributes.",
+                                "description": "Database/service connections referenced by component dbConnection attributes.",
                                 "items": {
                                     "type": "object",
                                     "properties": {
@@ -1747,10 +1612,7 @@ async def handle_list_tools() -> List[types.Tool]:
                                         "source": {
                                             "type": "string",
                                             "enum": ["external", "inline"],
-                                            "description": (
-                                                "'external' — fileURL reference to existing .cfg file (preferred for shared connections). "
-                                                "'inline' — full connection definition embedded in graph."
-                                            ),
+                                            "description": "'external'=.cfg fileURL (preferred); 'inline'=embedded in graph.",
                                         },
                                         "file_url": {
                                             "type": "string",
@@ -1767,10 +1629,7 @@ async def handle_list_tools() -> List[types.Tool]:
                             },
                             "lookup_tables": {
                                 "type": "array",
-                                "description": (
-                                    "Lookup tables declared in <Global> and referenced by "
-                                    "LOOKUP_JOIN components or CTL code via lookup('id').get(...)."
-                                ),
+                                "description": "Lookup tables for LOOKUP_JOIN or CTL lookup('id').get(...).",
                                 "items": {
                                     "type": "object",
                                     "properties": {
@@ -1803,11 +1662,7 @@ async def handle_list_tools() -> List[types.Tool]:
                             },
                             "sequences": {
                                 "type": "array",
-                                "description": (
-                                    "Sequences declared in <Global> and referenced in CTL via "
-                                    "sequence('id').next(). A missing declaration fails at runtime "
-                                    "even if validate_graph passes."
-                                ),
+                                "description": "Sequences for CTL sequence('id').next(). Missing declaration fails at runtime.",
                                 "items": {
                                     "type": "object",
                                     "properties": {
@@ -1843,12 +1698,7 @@ async def handle_list_tools() -> List[types.Tool]:
                             },
                             "ctl_imports": {
                                 "type": "array",
-                                "description": (
-                                    "External .ctl files imported into component transforms via "
-                                    "import statement or transformURL. "
-                                    "Always check list_linked_assets(asset_type='ctl') before writing "
-                                    "CTL logic inline — the function may already exist in trans/."
-                                ),
+                                "description": "External .ctl files via import or transformURL. Check list_linked_assets(asset_type='ctl') first.",
                                 "items": {
                                     "type": "object",
                                     "properties": {
@@ -1871,11 +1721,7 @@ async def handle_list_tools() -> List[types.Tool]:
                             },
                             "subgraphs": {
                                 "type": "array",
-                                "description": (
-                                    "Subgraphs used as SUBGRAPH components in this graph. "
-                                    "Call get_subgraph_info (when available) before filling this section "
-                                    "to confirm port counts and required parameters."
-                                ),
+                                "description": "SUBGRAPH components. Verify port counts and required parameters before filling.",
                                 "items": {
                                     "type": "object",
                                     "properties": {
@@ -1898,11 +1744,7 @@ async def handle_list_tools() -> List[types.Tool]:
                                         "param_values": {
                                             "type": "object",
                                             "additionalProperties": {"type": "string"},
-                                            "description": (
-                                                "All __PARAM overrides to set on the Node element. "
-                                                "Required public parameters must appear here. "
-                                                "Keys use the __ prefix (e.g. {'__FILE_URL': '${INPUT_FILE_URL}'})."
-                                            ),
+                                            "description": "__PARAM overrides on the Node (e.g. {'__FILE_URL': '${INPUT_FILE_URL}'}). Required params must appear.",
                                         },
                                     },
                                     "required": ["component_id", "job_url"],
@@ -1910,11 +1752,7 @@ async def handle_list_tools() -> List[types.Tool]:
                             },
                             "parameters": {
                                 "type": "array",
-                                "description": (
-                                    "Graph parameters declared in <GraphParameters> beyond "
-                                    "the standard workspace.prm entries. "
-                                    "workspace.prm is always linked — only list additional parameters here."
-                                ),
+                                "description": "Additional graph parameters beyond workspace.prm (which is always linked).",
                                 "items": {
                                     "type": "object",
                                     "properties": {
@@ -1936,11 +1774,7 @@ async def handle_list_tools() -> List[types.Tool]:
                                         },
                                         "component_reference": {
                                             "type": "string",
-                                            "description": (
-                                                "If this parameter drives a component property, "
-                                                "note it here (e.g. 'READER.fileURL'). "
-                                                "Generates a <ComponentReference> element in XML."
-                                            ),
+                                            "description": "Component property this param drives (e.g. 'READER.fileURL'). Generates <ComponentReference>.",
                                         },
                                     },
                                     "required": ["name"],
@@ -1952,24 +1786,12 @@ async def handle_list_tools() -> List[types.Tool]:
                     "risks": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": (
-                            "Known risks or things to verify before writing. "
-                            "Examples: "
-                            "'DENORMALIZER requires sorted input — FAST_SORT added upstream on recordNo', "
-                            "'CDATA nesting in VALIDATOR rules requires ]]]]><![CDATA[> escaping', "
-                            "'orderValidationRules.ctl exists in trans/ — import instead of duplicating inline', "
-                            "'DWHConnection.cfg covers both phases — no second connection needed'."
-                        ),
+                        "description": "Known risks to verify before writing (e.g. sort requirements, CDATA nesting, existing assets to reuse).",
                     },
                     "reference_graphs": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": (
-                            "Paths to existing graphs consulted as reference patterns "
-                            "(e.g. 'graph/ValidateOrderInput_withErrors.grf'). "
-                            "Documenting this confirms the canonical pattern was checked "
-                            "before designing from scratch."
-                        ),
+                        "description": "Paths to existing graphs consulted as patterns before designing.",
                     },
                 },
                 "required": ["graph_name", "sandbox", "graph_path", "purpose", "components", "edges"],
@@ -1981,11 +1803,10 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_graph_tracking",
             description=(
-                "Get execution metrics for a completed graph run: phases, component timings, "
-                "and record/byte counts per input and output port. "
-                "Set detailed=false for summary-only output. "
-                "Available for any run — no debug mode required. "
-                "Use this to verify data flowed correctly (e.g. check that a filter passed the expected number of records)."
+                "Get execution metrics for a completed run: phase timings, per-component "
+                "record/byte counts. No debug mode required. "
+                "Use to verify data flow (e.g. filter passed expected record count). "
+                "Set detailed=false for summary only."
             ),
             inputSchema={
                 "type": "object",
@@ -2002,9 +1823,8 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_edge_debug_info",
             description=(
-                "List edge debug data locations available for a specific edge of a completed graph run. "
-                "The graph must have been executed with debug=true. "
-                "Returns whether data is available for the edge, and writer/reader node IDs."
+                "Check if edge debug data is available for a specific edge (requires debug=true run). "
+                "Returns availability status and writer/reader node IDs."
             ),
             inputSchema={
                 "type": "object",
@@ -2020,9 +1840,8 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_edge_debug_metadata",
             description=(
-                "Get the field schema (names and types) for data flowing through a specific edge. "
-                "The graph must have been executed with debug=true. "
-                "Returns the metadata XML for the edge."
+                "Get field schema (names/types) for an edge from a debug run. "
+                "Returns metadata XML. Requires debug=true execution."
             ),
             inputSchema={
                 "type": "object",
@@ -2038,10 +1857,8 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="get_edge_debug_data",
             description=(
-                "Fetch edge debug records for a specific edge of a completed debug run. "
-                "Returns the debug data as JSON (default) or CSV (pipe-delimited, metadata order). "
-                "The graph run must have been executed with debug=true. "
-                
+                "Fetch sample records from an edge of a debug run. "
+                "Returns JSON (default) or CSV (pipe-delimited). Requires debug=true execution."
             ),
             inputSchema={
                 "type": "object",
@@ -2097,153 +1914,109 @@ async def tool_find_file(args: Dict) -> List[types.TextContent]:
 
 async def tool_grep_files(args: Dict) -> List[types.TextContent]:
     try:
-        sandbox         = args["sandbox"]
-        search_string   = args["search_string"]
-        is_regex        = bool(args.get("is_regex", False))
-        path            = str(args.get("path") or "").strip()
-        file_pattern    = str(args.get("file_pattern") or "*").strip() or "*"
-        case_sensitive  = bool(args.get("case_sensitive", True))
-        include_lines   = bool(args.get("include_matching_lines", False))
-        max_results     = min(int(args.get("max_results") or 20), 100)
+        search_string = str(args["search_string"])
+        sandboxes = args["sandboxes"]
+        if not isinstance(sandboxes, list) or not sandboxes:
+            return _text("ERROR: 'sandboxes' must be a non-empty list of sandbox codes")
+
+        sandbox_codes = [str(sb).strip() for sb in sandboxes if str(sb).strip()]
+        if not sandbox_codes:
+            return _text("ERROR: 'sandboxes' must contain at least one non-empty sandbox code")
+
+        path = str(args.get("path") or "").strip()
+        file_pattern = str(args.get("file_pattern") or "*").strip() or "*"
+        match_mode = str(args.get("match_mode") or "literal").strip().lower() or "literal"
+        if match_mode not in {"literal", "regex"}:
+            return _text("ERROR: 'match_mode' must be either 'literal' or 'regex'")
+
+        context_lines = max(int(args.get("context_lines", 0)), 0)
+        max_results_per_sandbox = min(max(int(args.get("max_results_per_sandbox", 25)), 1), 200)
 
         client = get_soap_client()
 
-        # Collect candidate files matching file_pattern under path
-        candidate_files = client.find_files(
-            sandbox=sandbox,
-            pattern=file_pattern,
-            path=path,
-        )
-
-        needle = search_string if case_sensitive else search_string.lower()
-        regex_flags = re.DOTALL if case_sensitive else (re.DOTALL | re.IGNORECASE)
         compiled_pattern = None
-        if is_regex:
+        if match_mode == "regex":
             try:
-                compiled_pattern = re.compile(search_string, regex_flags)
+                compiled_pattern = re.compile(search_string)
             except re.error as rx:
                 return _text(f"ERROR: Invalid regex in search_string: {rx}")
 
-        results = []
-        for item in candidate_files:
-            if not isinstance(item, dict):
-                continue
-            file_path = str(
-                item.get("path") or item.get("filePath") or
-                item.get("name") or item.get("fileName") or ""
-            ).strip().lstrip("/")
-            if not file_path:
-                continue
+        all_results: List[Dict[str, Any]] = []
+        total_matches = 0
+        truncated = False
+        for sandbox in sandbox_codes:
+            candidate_files = client.find_files(
+                sandbox=sandbox,
+                pattern=file_pattern,
+                path=path,
+            )
 
-            try:
-                content = client.download_file(sandbox, file_path)
-            except Exception:
-                continue
+            sandbox_match_count = 0
 
-            matching_lines: List[tuple[int, str]] = []
-            matching_ranges: List[Dict[str, int]] = []
-            matching_samples: List[Dict[str, Any]] = []
+            for item in candidate_files:
+                if sandbox_match_count >= max_results_per_sandbox:
+                    truncated = True
+                    break
 
-            if is_regex:
-                if not compiled_pattern:
+                if not isinstance(item, dict):
+                    continue
+                file_path = str(
+                    item.get("path") or item.get("filePath") or
+                    item.get("name") or item.get("fileName") or ""
+                ).strip().lstrip("/")
+                if not file_path:
                     continue
 
-                matches = list(compiled_pattern.finditer(content))
-                if not matches:
+                try:
+                    content = client.download_file(sandbox, file_path)
+                except Exception:
                     continue
 
-                line_starts: List[int] = []
-                line_values: List[str] = []
-                pos = 0
-                for line in content.splitlines(keepends=True):
-                    line_starts.append(pos)
-                    line_values.append(line.rstrip("\r\n"))
-                    pos += len(line)
+                lines = content.splitlines()
 
-                if not line_starts and content == "":
-                    line_starts = [0]
-                    line_values = [""]
+                for lineno, line in enumerate(lines, start=1):
+                    is_match = False
+                    if match_mode == "regex":
+                        if compiled_pattern and compiled_pattern.search(line):
+                            is_match = True
+                    else:
+                        if search_string in line:
+                            is_match = True
 
-                def _line_for_pos(char_pos: int) -> int:
-                    idx = bisect.bisect_right(line_starts, char_pos) - 1
-                    idx = max(0, min(idx, len(line_starts) - 1))
-                    return idx + 1
+                    if not is_match:
+                        continue
 
-                matched_line_numbers: set[int] = set()
-                for m in matches:
-                    start_pos, end_pos = m.span()
-                    end_lookup_pos = end_pos - 1 if end_pos > start_pos else end_pos
-                    start_line_no = _line_for_pos(start_pos)
-                    end_line_no = _line_for_pos(end_lookup_pos)
-                    matching_ranges.append({"start_line": start_line_no, "end_line": end_line_no})
+                    start_index = max(0, lineno - 1 - context_lines)
+                    end_index = min(len(lines), lineno + context_lines)
 
-                    sample_lines = line_values[start_line_no - 1:end_line_no]
-                    matching_samples.append({
-                        "start_line": start_line_no,
-                        "end_line": end_line_no,
-                        "content": "\n".join(sample_lines),
+                    context: List[Dict[str, Any]] = []
+                    for i in range(start_index, end_index):
+                        context_item: Dict[str, Any] = {
+                            "line": i + 1,
+                            "content": lines[i],
+                        }
+                        if i + 1 == lineno:
+                            context_item["match"] = True
+                        context.append(context_item)
+
+                    all_results.append({
+                        "sandbox": sandbox,
+                        "file_path": file_path,
+                        "line_number": lineno,
+                        "context": context,
                     })
 
-                    if include_lines:
-                        for line_no in range(start_line_no, end_line_no + 1):
-                            matched_line_numbers.add(line_no)
+                    sandbox_match_count += 1
+                    total_matches += 1
 
-                if include_lines:
-                    for line_no in sorted(matched_line_numbers):
-                        if 1 <= line_no <= len(line_values):
-                            matching_lines.append((line_no, line_values[line_no - 1]))
-
-                match_count = len(matches)
-            else:
-                lines = content.splitlines()
-                for lineno, line in enumerate(lines, start=1):
-                    haystack = line if case_sensitive else line.lower()
-                    if needle in haystack:
-                        matching_lines.append((lineno, line))
-
-                if not matching_lines:
-                    continue
-
-                match_count = len(matching_lines)
-
-            if match_count == 0:
-                continue
-
-            entry: Dict[str, Any] = {
-                "path": file_path,
-            }
-            # Include whatever metadata the server returned
-            for meta_key in ("size", "lastModified", "isFolder"):
-                if meta_key in item:
-                    entry[meta_key] = item[meta_key]
-            entry["match_count"] = match_count
-
-            if is_regex:
-                entry["matching_ranges"] = matching_ranges
-                if include_lines:
-                    entry["matching_samples"] = matching_samples
-
-            if include_lines:
-                entry["matching_lines"] = [
-                    {"line": lineno, "content": text}
-                    for lineno, text in matching_lines
-                ]
-
-            results.append(entry)
-            if len(results) >= max_results:
-                break
+                    if sandbox_match_count >= max_results_per_sandbox:
+                        truncated = True
+                        break
 
         payload = {
-            "sandbox": sandbox,
-            "search_string": search_string,
-            "is_regex": is_regex,
-            "path": path or "/",
-            "file_pattern": file_pattern,
-            "case_sensitive": case_sensitive,
-            "include_matching_lines": include_lines,
-            "result_count": len(results),
-            "truncated": len(results) == max_results and len(results) < len(candidate_files),
-            "results": results,
+            "total_matches": total_matches,
+            "truncated": truncated,
+            "results": all_results,
         }
         return _text(json.dumps(payload, indent=2))
     except Exception as e:
@@ -2636,7 +2409,20 @@ async def tool_patch_file(args: Dict) -> List[types.TextContent]:
 
 async def tool_write_file(args: Dict) -> List[types.TextContent]:
     try:
-        get_soap_client().upload_file(
+        append = bool(args.get("append", False))
+        client = get_soap_client()
+        if append:
+            client.append_file(
+                sandbox=args["sandbox"],
+                dir_path=args["path"],
+                filename=args["filename"],
+                content=args["content"],
+            )
+            return _text(
+                f"OK: Content appended to '{args['path']}/{args['filename']}' in sandbox '{args['sandbox']}'."
+            )
+
+        client.upload_file(
             sandbox=args["sandbox"],
             dir_path=args["path"],
             filename=args["filename"],
@@ -2699,11 +2485,11 @@ async def tool_execute_graph(args: Dict) -> List[types.TextContent]:
     sandbox    = args["sandbox"]
     graph_path = args["graph_path"]
     user_params: Dict[str, str] = args.get("params") or {}
-    timeout_s  = int(args.get("timeout_seconds", POLL_TIMEOUT_S))
 
     # ── Pre-flight: extract graph parameters ───────────────────────────────
     xml_defaults: Dict[str, str] = {}
     required_missing: List[str]  = []
+    no_value_params: List[str] = []
     try:
         graph_xml = get_soap_client().download_file(sandbox, graph_path)
         xml_defaults, no_value_params = _parse_graph_params(graph_xml)
@@ -2738,8 +2524,40 @@ async def tool_execute_graph(args: Dict) -> List[types.TextContent]:
             params=exec_params,
             debug=args.get("debug", False),
         )
-        status = get_soap_client().poll_execution_status(run_id=run_id, timeout_s=timeout_s)
-        return _text(json.dumps(status, indent=2))
+        payload = {
+            "run_id": str(run_id),
+            "status": "SUBMITTED",
+            "sandbox": sandbox,
+            "graph_path": graph_path,
+            "debug": bool(args.get("debug", False)),
+            "parameters_supplied": sorted(exec_params.keys()) if exec_params else [],
+        }
+        return _text(json.dumps(payload, indent=2))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_await_graph_completion(args: Dict) -> List[types.TextContent]:
+    run_id = str(args.get("run_id") or "").strip()
+    if not run_id:
+        return _text("ERROR: 'run_id' is required")
+
+    timeout_s = int(args.get("timeout_seconds") or 600)
+    try:
+        payload = get_soap_client().await_graph_completion(run_id=run_id, timeout_s=timeout_s)
+        return _text(json.dumps(payload, indent=2, default=str))
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_abort_graph_execution(args: Dict) -> List[types.TextContent]:
+    run_id = str(args.get("run_id") or "").strip()
+    if not run_id:
+        return _text("ERROR: 'run_id' is required")
+
+    try:
+        payload = get_soap_client().abort_graph_execution(run_id=run_id)
+        return _text(json.dumps(payload, indent=2, default=str))
     except Exception as e:
         return _text(f"ERROR: {e}")
 
@@ -2824,13 +2642,15 @@ async def tool_validate_CTL(args: Dict) -> List[types.TextContent]:
     code = str(args.get("code") or "").strip()
     if not code:
         return _text("ERROR: 'code' is required")
-    metadata_context = args.get("metadata_context") or None
+    input_metadata = args.get("input_metadata") or None
+    output_metadata = args.get("output_metadata") or None
     query = args.get("query") or None
     timeout = int(args.get("timeout") or 120)
     try:
         result = _ctl_validate(
             code=code,
-            metadata_context=metadata_context,
+            input_metadata=input_metadata,
+            output_metadata=output_metadata,
             query=query,
             timeout=timeout,
         )
@@ -2843,12 +2663,14 @@ async def tool_generate_CTL(args: Dict) -> List[types.TextContent]:
     description = str(args.get("description") or "").strip()
     if not description:
         return _text("ERROR: 'description' is required")
-    metadata = args.get("metadata") or None
+    input_metadata = args.get("input_metadata") or None
+    output_metadata = args.get("output_metadata") or None
     timeout = int(args.get("timeout") or 120)
     try:
         result = _ctl_generate(
             description=description,
-            metadata=metadata,
+            input_metadata=input_metadata,
+            output_metadata=output_metadata,
             timeout=timeout,
         )
         return _text(result)
@@ -3178,14 +3000,14 @@ _TOOL_MAP = {
     "delete_file":             tool_delete_file,
     "validate_graph":          tool_validate_graph,
     "execute_graph":           tool_execute_graph,
+    "await_graph_completion":  tool_await_graph_completion,
+    "abort_graph_execution":   tool_abort_graph_execution,
     "get_graph_run_status":    tool_get_graph_run_status,
     "list_graph_runs":         tool_list_graph_runs,
     "get_graph_execution_log": tool_get_graph_execution_log,
     "list_components":         tool_list_components,
     "get_component_info":      tool_get_component_info,
     "get_component_details":   tool_get_component_details,
-    "validate_CTL":             tool_validate_CTL,
-    "generate_CTL":             tool_generate_CTL,
     "think":                   tool_think,
     "plan_graph":              tool_plan_graph,
     "get_graph_tracking":      tool_get_graph_tracking,
@@ -3197,6 +3019,10 @@ _TOOL_MAP = {
     "read_resource":           tool_read_resource,
     "get_workflow_guide":      tool_get_workflow_guide,
 }
+
+if LLM_ALLOW:
+    _TOOL_MAP["validate_CTL"] = tool_validate_CTL
+    _TOOL_MAP["generate_CTL"] = tool_generate_CTL
 
 
 # Keys whose values should never appear in logs (secrets / bulk data).

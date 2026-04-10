@@ -19,6 +19,8 @@ from zeep import helpers as zeep_helpers
 
 POLL_TIMEOUT_S = 120
 SERVER_WAIT_MS = 10_000
+GRAPH_FINAL_STATUSES = {"SUCCESS", "FAILED", "ABORTED", "TIMEOUT", "FINISHED_OK", "ERROR"}
+GRAPH_ACTIVE_STATUSES = {"N_A", "READY", "RUNNING", "WAITING", "UNKNOWN"}
 
 logger = logging.getLogger(__name__)
 
@@ -135,18 +137,41 @@ class CloverDXSoapClient:
         resp = self._call("DownloadFileContent", sandboxCode=sandbox, filePath=path)
         return self._decode_content(resp)
 
-    def upload_file(self, sandbox: str, dir_path: str, filename: str, content: str):
+    def upload_file(self, sandbox: str, dir_path: str, filename: str, content: str, append: bool = False):
         content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
         full_path = f"{dir_path.rstrip('/')}/{filename}"
         try:
-            self._call("UploadFileContent", sandboxCode=sandbox, filePath=full_path, content=content_b64)
+            kwargs: Dict[str, Any] = {
+                "sandboxCode": sandbox,
+                "filePath": full_path,
+                "content": content_b64,
+            }
+            if append:
+                kwargs["append"] = True
+            self._call("UploadFileContent", **kwargs)
         except Exception as e:
             err_str = str(e).lower()
             if "not found" in err_str or "does not exist" in err_str or "no such" in err_str:
                 self._call("CreateSandboxFile", sandboxCode=sandbox, filePath=full_path)
-                self._call("UploadFileContent", sandboxCode=sandbox, filePath=full_path, content=content_b64)
+                kwargs = {
+                    "sandboxCode": sandbox,
+                    "filePath": full_path,
+                    "content": content_b64,
+                }
+                if append:
+                    kwargs["append"] = True
+                self._call("UploadFileContent", **kwargs)
             else:
                 raise
+
+    def append_file(self, sandbox: str, dir_path: str, filename: str, content: str):
+        self.upload_file(
+            sandbox=sandbox,
+            dir_path=dir_path,
+            filename=filename,
+            content=content,
+            append=True,
+        )
 
     def copy_file(self, source_sandbox: str, source_path: str, dest_sandbox: str, dest_path: str):
         if not os.path.basename(dest_path):
@@ -337,6 +362,37 @@ class CloverDXSoapClient:
         raw = zeep_helpers.serialize_object(resp, target_cls=dict)
         status = str(raw.get("status") or raw.get("runStatus") or "UNKNOWN").upper()
         return {"run_id": run_id, "status": status, "elapsed_seconds": round(time.time() - start, 1)}
+
+    def await_graph_completion(self, run_id: str, timeout_s: int = 600, poll_interval_s: float = 2.0) -> Dict[str, Any]:
+        deadline = time.time() + timeout_s
+
+        while True:
+            status = self.get_graph_run_status(run_id)
+            normalized = str(status.get("status") or "UNKNOWN").upper()
+            if normalized in GRAPH_FINAL_STATUSES:
+                status["completed"] = True
+                status["timed_out"] = False
+                status["timeout_seconds"] = timeout_s
+                return status
+
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                status["completed"] = False
+                status["timed_out"] = True
+                status["timeout_seconds"] = timeout_s
+                return status
+
+            time.sleep(min(max(poll_interval_s, 0.1), remaining))
+
+    def abort_graph_execution(self, run_id: str) -> Dict[str, Any]:
+        try:
+            self._call("KillJob", runID=int(run_id))
+        except Exception:
+            self._call("KillGraph", runID=int(run_id))
+
+        status = self.get_graph_run_status(run_id)
+        status["abort_requested"] = True
+        return status
 
     @staticmethod
     def _to_unix_seconds(value: Any) -> Optional[float]:

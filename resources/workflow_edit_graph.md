@@ -91,8 +91,8 @@ If the edit introduces a pattern not already in the graph, find graphs that
 already use it — use `grep_files`, not `find_file`, to search by component type:
 
 ```
-grep_files(sandbox, search_string='type="VALIDATOR"', file_pattern="*.grf", path="graph")
-grep_files(sandbox, search_string='type="DENORMALIZER"', file_pattern="*.grf")
+grep_files(search_string='type="VALIDATOR"', sandboxes=[sandbox], file_pattern="*.grf", path="graph")
+grep_files(search_string='type="DENORMALIZER"', sandboxes=[sandbox], file_pattern="*.grf")
 ```
 
 Use `think` to evaluate whether to follow the reference pattern:

@@ -113,8 +113,8 @@ that use the same components — these are your canonical pattern references.
 Use `grep_files` not `find_file` — it searches inside files, not just filenames:
 
 ```
-grep_files(sandbox, search_string='type="VALIDATOR"', file_pattern="*.grf", path="graph")
-grep_files(sandbox, search_string='type="DENORMALIZER"', file_pattern="*.grf", path="graph")
+grep_files(search_string='type="VALIDATOR"', sandboxes=[sandbox], file_pattern="*.grf", path="graph")
+grep_files(search_string='type="DENORMALIZER"', sandboxes=[sandbox], file_pattern="*.grf", path="graph")
 ```
 
 Read any promising reference graph before designing your own:

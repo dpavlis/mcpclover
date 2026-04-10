@@ -10,6 +10,7 @@
         "CLOVERDX_USERNAME": "clover",
         "CLOVERDX_PASSWORD": "clover",
         "CLOVERDX_VERIFY_SSL": "false",
+        "CLOVERDX_LLM_ALLOW": "false",
         "CLOVERDX_LOG_LEVEL": "INFO"
       }
     }

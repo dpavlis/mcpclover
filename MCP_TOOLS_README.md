@@ -32,16 +32,14 @@ Finds files in a sandbox using shell-style wildcards (`*`, `?`). Searches recurs
 #### TODO:
 - *Implement server-side content search to avoid downloading large files for client-side filtering. This would require a new SOAP method that accepts a search string and optional filename pattern, and returns matching file metadata and lines. The current client-side approach is inefficient for large sandboxes with many files.*
 
-Searches files in a sandbox whose **content** matches a given query. By default, `search_string` is treated as plain text; set `is_regex=true` to treat it as a regex. In regex mode, matching is performed against the full file text and supports cross-line matches; results include `matching_ranges` with `start_line`/`end_line` for each regex hit. When `include_matching_lines=true`, regex results also include `matching_samples` where each sample contains the full multi-line matched snippet (`start_line`, `end_line`, `content`). Returns the path, size, and last-modified date of each matching file. Optionally returns matching lines with line numbers (like `grep -n`). Supports optional filename pattern filter (`file_pattern`) and case-insensitive mode.  
-**Why:** Lets the LLM find all graphs that use a specific component type, reference a particular subgraph or connection, call a named CTL function, or define a particular metadata ID — without reading every file manually. Much faster than individually reading files when the target string could appear in many places.  
+Searches files in one or more sandboxes whose **content** matches a given query. `search_string` can be matched as a literal (`match_mode="literal"`, default) or regex (`match_mode="regex"`). Results are returned as a flat per-match list with top-level `total_matches`, `truncated`, and `results` only (request parameters are not echoed back). Each result item includes `sandbox`, `file_path`, `line_number`, and `context` (line-window around the match). Optional `context_lines` controls how many lines before/after each match are included in `context`. Optional `file_pattern` scopes candidate files by glob, and `path` scopes traversal under a directory prefix inside each sandbox. `max_results_per_sandbox` limits per-sandbox match volume to avoid flooding context.  
+**Why:** Lets the LLM find all graphs that use a specific component type, reference a particular subgraph or connection, call a named CTL function, or define a particular metadata ID — across multiple environments in one call.  
 **Key use cases:**
-- Find all graphs using a component: `search_string='type="VALIDATOR"'`, `path='graph'`
-- Find all graphs referencing a subgraph: `search_string='OrderFileReader.sgrf'`
-- Find graphs referencing a metadata ID: `search_string='metadata="MetaOrder"'`
-- Find example graphs for a component: `file_pattern='*.grf'`, `search_string='type="DENORMALIZER"'`
-- Regex search for multiple component types: `search_string='type="(VALIDATOR|DENORMALIZER)"'`, `is_regex=true`
-- Regex search for metadata IDs by prefix: `search_string='metadata="Meta[A-Za-z0-9_]+"'`, `is_regex=true`
-- Regex across line breaks: `search_string='ORDER_VALIDATOR.*?type="VALIDATOR"'`, `is_regex=true`
+- Find all graphs using a component in one sandbox: `search_string='type="VALIDATOR"'`, `sandboxes=['DWHExample']`, `path='graph'`
+- Find all graphs referencing a subgraph in multiple sandboxes: `search_string='OrderFileReader.sgrf'`, `sandboxes=['DWHExample','QA']`
+- Find example graphs for a component: `file_pattern='*.grf'`, `search_string='type="DENORMALIZER"'`, `sandboxes=['DWHExample']`
+- Regex search for multiple component types: `search_string='type="(VALIDATOR|DENORMALIZER)"'`, `match_mode='regex'`, `sandboxes=['DWHExample']`
+- Include one line of context around each hit: `context_lines=1`
 
 Combine with `find_file` when both name pattern and content filtering are needed.  
 **Backend:** SOAP `ListFiles` (file discovery) + `GetSandboxFile` (content read); filtering runs client-side
@@ -92,9 +90,27 @@ Applies anchor-based line-range replacements to a sandbox file. Each patch speci
 ---
 
 ### `write_file`
-Creates or overwrites a file in a sandbox with supplied content.  
-**Why:** Required for writing new graphs, metadata files, parameter files, and CTL2 scripts onto the server. Always use `copy_file` to back up an existing file before a full rewrite.  
-**Backend:** SOAP `UploadSandboxFile`
+Writes a file in a sandbox with supplied content. By default it creates or overwrites the target file. If `append=true`, the supplied content is appended to the existing file instead.  
+**Why:** Required for writing new graphs, metadata files, parameter files, and CTL2 scripts onto the server. The new append mode is specifically useful when the calling tool hits a content-size limit and must write a large graph or metadata file in smaller chunks. Always use `copy_file` to back up an existing file before a full rewrite.  
+
+**Parameters:**
+- `sandbox` — sandbox code
+- `path` — directory path within the sandbox
+- `filename` — target file name including extension
+- `content` — text to write; in overwrite mode this is the full file content, in append mode this is the next chunk
+- `append` — optional boolean, default `false`; when `true`, appends the chunk instead of overwriting the file
+
+**Chunked write pattern:**
+1. First call `write_file` with `append=false` and the first chunk.
+2. Call `write_file` again with `append=true` for each remaining chunk.
+3. Validate the resulting graph or file after the final append.
+
+**Important behavior:**
+- Append mode does not insert separators or newlines automatically.
+- If the target file does not exist yet, append mode creates it with the provided content.
+- Append mode uses CloverDX Server's native append support exposed by `UploadFileContent(append=true)`.
+
+**Backend:** SOAP `UploadSandboxFile` / `UploadFileContent` with native append support
 
 ---
 
@@ -167,9 +183,23 @@ Stage 2 only runs if Stage 1 passes. Errors may not be exhaustive — repeat unt
 ---
 
 ### `execute_graph`
-Executes a graph on the server and polls until completion. Returns final status and elapsed time. Supports parameter overrides and optional debug mode (required for `get_edge_debug_data`).  
-**Why:** Core execution tool. Pre-flight checks ensure required parameters are provided before submission. Debug mode enables post-run data inspection on any edge.  
-**Backend:** SOAP `ExecuteGraph` + polling `GetJobExecutionStatus`
+Executes a graph on the server in async mode and returns a `run_id` immediately. Supports parameter overrides and optional debug mode (required for `get_edge_debug_data`).  
+**Why:** Core execution submission tool. Pre-flight checks ensure required parameters are provided before submission. Debug mode enables post-run data inspection on any edge. Use `await_graph_completion` when you need to block for completion.  
+**Backend:** SOAP `ExecuteGraph`
+
+---
+
+### `await_graph_completion`
+Waits for a previously submitted graph run to finish. Accepts `run_id` and optional `timeout_seconds` (default `600`). If the graph finishes in time, returns the final status. If the timeout is reached while the graph is still active, returns the current status with `timed_out=true` instead of failing. The same `run_id` can be passed again later to continue waiting.  
+**Why:** Separates long-running wait behavior from graph submission so agents do not need to re-submit the graph just because a wait timed out.  
+**Backend:** SOAP `GetJobExecutionStatus` via repeated status polling
+
+---
+
+### `abort_graph_execution`
+Aborts a graph execution by `run_id`. If the run is still active, the server is asked to kill it. If it has already finished, the current final status is returned.  
+**Why:** Lets the LLM stop runaway or no-longer-needed executions explicitly instead of waiting for timeout or leaving work running on the server.  
+**Backend:** SOAP `KillJob` with `KillGraph` fallback
 
 ---
 
@@ -268,15 +298,38 @@ Accepts a structured graph-design plan payload (graph identity, phases, componen
 
 ---
 
-## TO BE IMPLEMENTED (suggestions)
-### `validate_ctl`
+## CTL LLM Tools
+### `validate_CTL`
+Validates CloverDX CTL2 code with LLM-assisted review.
 
-These are genuinely different tools with different use cases, not one tool with a mode flag:
+Inputs:
+- `code` — CTL2 source to review
+- `input_metadata` — optional input-ports metadata only; used only for `$in.N` references
+- `output_metadata` — optional output-ports metadata only; used only for `$out.N` references
+- `query` — optional instruction to focus the review
+- `timeout` — request timeout in seconds
 
-**Standalone** — "I'm assembling a CTL snippet and want fast syntax + type checking before I even have a graph. I know my metadata, I'll supply it."
+Prompt behavior:
+- Metadata is sent before the code
+- Input Ports Metadata and Output Ports Metadata are emitted as separate groups
+- Missing direction-specific metadata is stated explicitly in the prompt
+
+### `generate_CTL`
+Generates CloverDX CTL2 code from a request description.
+
+Inputs:
+- `description` — desired CTL behavior or transform requirement
+- `input_metadata` — optional input-ports metadata only; used only for `$in.N` references
+- `output_metadata` — optional output-ports metadata only; used only for `$out.N` references
+- `timeout` — request timeout in seconds
+
+Prompt behavior:
+- Metadata is sent before the generation request
+- Input Ports Metadata and Output Ports Metadata are emitted as separate groups
+- Missing direction-specific metadata is stated explicitly in the prompt
 
 ### `in_graph_validate_ctl`
-**In-graph** — "I have a working graph. I want to iterate on just the CTL of one component without running validate_graph on the whole thing every time. The graph provides all context."
+Potential future tool for validating CTL in full graph context, where propagated metadata and graph assets are already resolved.
 
 
 ### Other potential tools:
