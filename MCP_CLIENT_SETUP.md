@@ -85,7 +85,32 @@ Notes:
 
 Restart Claude Desktop after saving the file.
 
-## 5) Quick local sanity check (optional)
+## 5) IMPORTANT: Install debug DataServices on the target CloverDX server
+
+For the `get_edge_debug_data` MCP tool to work, the target CloverDX server must have two DataServices deployed:
+
+- `debugRead`
+- `debugReadCSV`
+
+These are provided in this repository under `data_service/`:
+
+- `data_service/DebugRead.rjob`
+- `data_service/DebugReadCSV.rjob`
+
+Install/deploy both jobs as CloverDX DataServices on the target server (same server instance your MCP config points to via `CLOVERDX_BASE_URL`).
+
+Why this is required:
+
+- `get_edge_debug_data` calls `/clover/data-service/debugRead` (JSON) and `/clover/data-service/debugReadCSV` (CSV).
+- If those DataServices are not deployed, reading edge debug data from debug runs will fail.
+
+Quick verification after deployment:
+
+- Run a graph with `debug=true`.
+- Call `get_edge_debug_data` for one edge.
+- If service endpoints are missing, the tool call fails even when debug data was captured.
+
+## 6) Quick local sanity check (optional)
 
 With your venv activated:
 
@@ -95,15 +120,16 @@ python cloverdx_mcp_server.py
 
 If it starts without import errors, dependencies are installed correctly.
 
-## 6) Troubleshooting
+## 7) Troubleshooting
 
 - Server not listed in Claude: verify JSON is valid and the config path is exactly `~/Library/Application Support/Claude/claude_desktop_config.json`.
 - Import errors: make sure Claude `command` points to `venv/bin/python`, not system Python.
 - Authentication failures: re-check `CLOVERDX_BASE_URL`, `CLOVERDX_USERNAME`, `CLOVERDX_PASSWORD`.
 - Self-signed HTTPS certs: set `CLOVERDX_VERIFY_SSL` to `false`.
 - More logs: set `CLOVERDX_LOG_LEVEL` to `DEBUG`.
+- `get_edge_debug_data` fails: confirm `DebugRead.rjob` and `DebugReadCSV.rjob` from `data_service/` are deployed as server DataServices.
 
-## 7) Maintain `requirements.txt`
+## 8) Maintain `requirements.txt`
 
 When you add or upgrade Python packages in this venv, refresh `requirements.txt`:
 

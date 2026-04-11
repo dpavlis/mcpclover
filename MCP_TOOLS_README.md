@@ -1,6 +1,6 @@
 # CloverDX MCP Tools Reference
 
-This document describes all 30 tools exposed by the CloverDX Graph Builder MCP server.
+This document describes all 33 tools exposed by the CloverDX Graph Builder MCP server.
 Each tool maps to one or more CloverDX Server operations (SOAP WebService or REST API).
 
 ---
@@ -251,6 +251,7 @@ Returns the field schema (names and types) for data flowing through a specific e
 ### `get_edge_debug_data`
 Fetches decoded debug records for a run edge using `run_id` + `edge_id` (optional `record_count` maps to REST `numRec`). Supports `format="json"` (default) or `format="csv"`. CSV output is pipe-delimited and columns are ordered by edge metadata from `get_edge_debug_metadata`.  
 **Why:** Allows the LLM to inspect mid-graph data to diagnose transformation logic errors — e.g. checking what values reached a Lookup component's reject port.  
+**Prerequisite:** The target CloverDX server must have the two debug DataServices installed (`debugRead` and `debugReadCSV`) from this repository's `data_service`/`data_services` folder. If these DataServices are not deployed, reading edge debug data for debug runs will fail.
 **Backend:**
 - JSON: REST `GET /data-service/debugRead?runID=...&edgeID=...&numRec=...`
 - CSV: REST `GET /data-service/debugReadCSV?runID=...&edgeID=...&numRec=...`
@@ -295,6 +296,50 @@ Accepts a single `thought` string and returns acknowledgement only (the thought 
 Accepts a structured graph-design plan payload (graph identity, phases, components, metadata, edges, global assets, risks, references) and returns acknowledgement only.  
 **Why:** Forces explicit, reviewable design before writing graph XML so inconsistencies are surfaced early and planning context is recorded. Intended to be called after workflow/reference/component lookups and before `write_file` or `set_graph_element_attribute`.  
 **Backend:** Local acknowledgement response + server log entry (no CloverDX SOAP/REST call)
+
+---
+
+### `note_add`
+Appends one note entry under a named section (`section`, `content`). Creates the section when missing.  
+**Why:** Lets the LLM keep lightweight task memory (metadata discoveries, assumptions, pending fixes) between calls.  
+**Backend:** In-memory sectioned note store inside MCP server process.
+
+---
+
+### `note_read`
+Reads notes from the in-memory store. If `section` is provided, returns only that section; if omitted, returns all sections.  
+**Why:** Used before planning/writing tools to refresh working context without re-reading long files.  
+**Backend:** In-memory sectioned note store inside MCP server process.
+
+---
+
+### `note_clear`
+Clears notes either for one `section` or all sections when omitted.  
+**Why:** Resets working memory cleanly at the start of a new task.  
+**Backend:** In-memory sectioned note store inside MCP server process.
+
+---
+
+### `kb_store`
+Creates or updates a persistent knowledge-base entry in sandbox `CLV_MCP_KWBASE`. Stores markdown content with structured header fields (`tags`, `description`, `created`, `updated`). Entry names are validated as lowercase kebab-case and become `{name}.md`.
+**Why:** Persists cross-session lessons learned (CTL2 gotchas, component patterns, conventions) so the LLM does not repeatedly rediscover the same facts.
+**Backend:** SOAP `DownloadFileContent` (existence/read), `UploadFileContent` (write) via existing file infrastructure.
+
+---
+
+### `kb_search`
+Searches the persistent KB entries or returns a catalog when no query is provided.
+- Catalog mode: lists all `.md` KB entries with parsed `name`, `tags`, `description`, `created`, `updated`.
+- Search mode: searches tags/description/body with `match_mode="literal"` or `match_mode="regex"`, returning grouped matches per entry with one-line context.
+**Why:** Lets the LLM quickly discover what prior knowledge already exists before solving a task.
+**Backend:** SOAP `ListFiles`/`FindFiles` + `DownloadFileContent`, with grep-like matching in client logic.
+
+---
+
+### `kb_read`
+Reads a single KB entry by `name` and returns structured fields plus full markdown body content.
+**Why:** Complements `kb_search` by loading complete details for a selected entry.
+**Backend:** SOAP `DownloadFileContent` + local header/body parsing.
 
 ---
 

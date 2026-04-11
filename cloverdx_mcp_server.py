@@ -11,7 +11,7 @@ WebServices and exposes the following tools:
   list_sandboxes          – List all available sandboxes on the server
   list_files              – List files/folders inside a sandbox directory
   find_file               – Find files in a sandbox using * and ? wildcards
-    grep_files              – Search file contents across one or more sandboxes by plain string or regex
+  grep_files              – Search file contents across one or more sandboxes by plain string or regex
   list_linked_assets      – List externalized/linkable assets by known file types
   get_sandbox_parameters  – Read/resolve sandbox parameters from workspace.prm (+ optional server overlays)
   read_file               – Download a file or byte range (graph, metadata, params, …)
@@ -39,7 +39,7 @@ WebServices and exposes the following tools:
   get_graph_tracking      – Fetch graph tracking metrics for a run
   get_edge_debug_info     – List edge debug availability/details for a run edge
   get_edge_debug_metadata – Fetch edge debug metadata XML for a run edge
-  get_edge_debug_data     – Fetch edge debug data summary for a run edge
+  get_edge_debug_data     – Fetch edge debug data summary for a run edge (requires debug DataServices installed)
   set_graph_element_attribute – Set/replace an attribute or <attr> child on a graph element (DOM-based)
 
   Component reference (local, no server round-trip)
@@ -52,17 +52,23 @@ WebServices and exposes the following tools:
   ────────────────
   think                   – Log a reasoning thought and return acknowledgement
   plan_graph              – Record graph plan input and return acknowledgement
+  note_add                – Append a note under a named section
+  note_read               – Read all notes or one note section
+  note_clear              – Clear one note section or all notes
+  kb_store                – Store/update persistent KB entries in CLV_MCP_KWBASE
+  kb_search               – Search KB entries or list a catalog of entries
+  kb_read                 – Read one KB entry by name
 
-    CTL tools
-    ─────────
-    validate_CTL            – Lint CTL2 code via an LLM (OpenAI-compatible API)
-    generate_CTL            – Generate CTL2 code/snippets via an LLM (OpenAI-compatible API)
+  CTL tools
+  ─────────
+  validate_CTL            – Lint CTL2 code via an LLM (OpenAI-compatible API)
+  generate_CTL            – Generate CTL2 code/snippets via an LLM (OpenAI-compatible API)
 
 Resources exposed
 ─────────────────
   cloverdx://reference/graph-xml   – cloverdx-llm-reference.md
   cloverdx://reference/ctl2        – CTL2_Reference_for_LLM_compact.md
-    cloverdx://reference/subgraphs   – CLOVERDX_SUBGRAPHS.md
+  cloverdx://reference/subgraphs   – CLOVERDX_SUBGRAPHS.md
   cloverdx://reference/components  – components.json (non-deprecated)
 
 Configuration (.env)
@@ -71,7 +77,7 @@ Configuration (.env)
   CLOVERDX_USERNAME   clover
   CLOVERDX_PASSWORD   clover
   CLOVERDX_VERIFY_SSL false   (optional, default false)
-    CLOVERDX_LLM_ALLOW  false   (optional, default false; enables validate_CTL and generate_CTL tools)
+  CLOVERDX_LLM_ALLOW  false   (optional, default false; enables validate_CTL and generate_CTL tools)
 
 Dependencies
 ────────────
@@ -79,6 +85,7 @@ Dependencies
 """
 
 import asyncio
+from datetime import date
 import glob as _glob
 import json
 import logging
@@ -120,6 +127,8 @@ POLL_TIMEOUT_S  = 120
 SERVER_WAIT_MS  = 10_000
 EXEC_POLL_S     = 2      # seconds between execution status polls
 READ_FILE_MAX_RESPONSE_BYTES = 1_048_500  # 1 MiB hard cap for read_file responses (actyally a bit less to leave room for error message in the response if file is too large)
+KB_SANDBOX = "CLV_MCP_KWBASE"
+KB_NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -453,12 +462,15 @@ class ComponentCatalog:
         return "\n".join(lines)
 
     @staticmethod
-    def format_compact(comps: List[Dict]) -> str:
+    def format_compact(comps: List[Dict], use_short_description: bool = True) -> str:
         """Compact listing for multiple results."""
         rows = ["Type | Name | Category | Description"]
         rows.append("-" * 80)
         for c in comps:
-            desc = c.get("shortDescription") or c.get("description") or ""
+            if use_short_description:
+                desc = c.get("shortDescription") or c.get("description") or ""
+            else:
+                desc = c.get("description") or ""
             rows.append(
                 f"{c.get('type', '')} | {c.get('name', '')} | {c.get('category', '')} | {desc}"
             )
@@ -583,6 +595,7 @@ soap_client:       Optional[CloverDXSoapClient] = None
 component_catalog: Optional[ComponentCatalog]   = None
 _comp_details_map: Dict[str, str]               = {}
 _reference_cache:  Dict[str, str]               = {}
+_task_notes:       Dict[str, List[str]]         = {}
 
 
 def get_soap_client() -> CloverDXSoapClient:
@@ -605,6 +618,80 @@ def _load_reference(uri_key: str, file_path: str) -> str:
         except FileNotFoundError:
             _reference_cache[uri_key] = f"[Reference file not found: {file_path}]"
     return _reference_cache[uri_key]
+
+
+def _today_iso() -> str:
+    return date.today().isoformat()
+
+
+def _kb_split_header_body(raw_text: str) -> tuple[List[str], str]:
+    lines = raw_text.splitlines()
+    separator_index = None
+    for idx, line in enumerate(lines):
+        if line.strip() == "---":
+            separator_index = idx
+            break
+
+    if separator_index is None:
+        return lines, ""
+
+    header_lines = lines[:separator_index]
+    body = "\n".join(lines[separator_index + 1:])
+    return header_lines, body
+
+
+def _kb_parse_entry(raw_text: str) -> Dict[str, Any]:
+    header_lines, body = _kb_split_header_body(raw_text)
+    if body.startswith("\n"):
+        body = body[1:]
+    header: Dict[str, str] = {}
+    for line in header_lines:
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        header[key.strip().lower()] = value.strip()
+
+    raw_tags = header.get("tags", "none")
+    if raw_tags.lower() == "none":
+        tags: List[str] = []
+    else:
+        tags = [tag.strip() for tag in raw_tags.split(",") if tag.strip()]
+
+    return {
+        "tags": tags,
+        "description": header.get("description", ""),
+        "created": header.get("created", ""),
+        "updated": header.get("updated", ""),
+        "content": body,
+    }
+
+
+def _kb_build_entry_markdown(
+    tags: List[str],
+    description: str,
+    created: str,
+    updated: str,
+    content: str,
+) -> str:
+    tags_line = ", ".join(tags) if tags else "none"
+    return (
+        f"tags: {tags_line}\n"
+        f"description: {description}\n"
+        f"created: {created}\n"
+        f"updated: {updated}\n"
+        "---\n\n"
+        f"{content}"
+    )
+
+
+def _sandbox_item_path(item: Dict[str, Any]) -> str:
+    return str(
+        item.get("path")
+        or item.get("filePath")
+        or item.get("name")
+        or item.get("fileName")
+        or ""
+    ).strip().lstrip("/")
 
 
 # ── MCP Server ─────────────────────────────────────────────────────────────────
@@ -1283,7 +1370,10 @@ async def handle_list_tools() -> List[types.Tool]:
         # ── Component reference tools ──────────────────────────────────────
         types.Tool(
             name="list_components",
-            description="List available component types, optionally filtered by category.",
+            description=(
+                "List available component types, optionally filtered by category and search string. "
+                "Search is case-insensitive and supports literal or regex mode."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1291,6 +1381,15 @@ async def handle_list_tools() -> List[types.Tool]:
                         "type": "string",
                         "description": "Optional category filter",
                         "enum": ["readers", "writers", "transformers", "joiners", "others", "jobControl"],
+                    },
+                    "search_string": {
+                        "type": "string",
+                        "description": "Optional case-insensitive search value.",
+                    },
+                    "match_mode": {
+                        "type": "string",
+                        "enum": ["literal", "regex"],
+                        "description": "Search mode for search_string. Default: literal.",
                     },
                 },
             },
@@ -1798,6 +1897,132 @@ async def handle_list_tools() -> List[types.Tool]:
                 "additionalProperties": False,
             },
         ),
+        types.Tool(
+            name="note_add",
+            description=(
+                "Append a note under a named section. "
+                "Creates the section when it does not exist."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "description": "Required section name (e.g. 'metadata', 'assumptions').",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Note text to append under the section.",
+                    },
+                },
+                "required": ["section", "content"],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="note_read",
+            description=(
+                "Read notes from working memory. "
+                "When section is provided, returns only that section; otherwise returns all sections."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "description": "Optional section name to read.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="note_clear",
+            description=(
+                "Clear notes from working memory. "
+                "When section is provided, clears only that section; otherwise clears all sections."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "description": "Optional section name to clear.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="kb_store",
+            description=(
+                "Store a persistent knowledge-base entry. Overwrites existing entries with the same name "
+                "so corrections can be recorded across sessions."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["name", "description", "content"],
+                "additionalProperties": False,
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Entry identifier (lowercase kebab-case). Becomes filename without .md.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "One-line summary used by catalog and search.",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional lowercase tags for categorization.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full markdown body of the knowledge entry.",
+                    },
+                },
+            },
+        ),
+        types.Tool(
+            name="kb_search",
+            description=(
+                "Search KB entries by query (tags, description, content) or list catalog when query is omitted."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": [],
+                "additionalProperties": False,
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search term. Omit for catalog mode.",
+                    },
+                    "match_mode": {
+                        "type": "string",
+                        "enum": ["literal", "regex"],
+                        "description": "Search mode. Default: literal.",
+                    },
+                },
+            },
+        ),
+        types.Tool(
+            name="kb_read",
+            description="Read a full knowledge-base entry by name.",
+            inputSchema={
+                "type": "object",
+                "required": ["name"],
+                "additionalProperties": False,
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Entry name (without .md extension), typically from kb_search results.",
+                    },
+                },
+            },
+        ),
 
         # ── Tracking + edge debug tools ────────────────────────────────────
         types.Tool(
@@ -1858,7 +2083,8 @@ async def handle_list_tools() -> List[types.Tool]:
             name="get_edge_debug_data",
             description=(
                 "Fetch sample records from an edge of a debug run. "
-                "Returns JSON (default) or CSV (pipe-delimited). Requires debug=true execution."
+                "Returns JSON (default) or CSV (semicolong-delimited). Requires debug=true execution."
+                "Use to inspect mid-graph data for diagnosing transformation logic errors — e.g. checking what values reached a component's reject port."
             ),
             inputSchema={
                 "type": "object",
@@ -1866,8 +2092,9 @@ async def handle_list_tools() -> List[types.Tool]:
                 "properties": {
                     "run_id":           {"type": "string",  "description": "Run ID returned by execute_graph"},
                     "edge_id":          {"type": "string",  "description": "Edge ID as defined in the graph XML"},
-                    "record_count":     {"type": "integer", "description": "Max number of records to return (default: 100)."},
-                    "format":           {"type": "string",  "enum": ["json", "csv"], "description": "Output format. 'json' uses /data-service/debugRead (default), 'csv' uses /data-service/debugReadCSV and returns pipe-delimited rows in edge metadata column order."},
+                    "record_count":     {"type": "integer", "description": "Max number of records to return (default: 50)."},
+                    "from_rec":         {"type": "integer", "description": "Zero-based index of the first record to return (default: 0)."},
+                    "format":           {"type": "string",  "enum": ["json", "csv"], "description": "Output format. 'json' (default), 'csv' semicolon-delimited rows in edge metadata column order."},
                 },
             },
         ),
@@ -2594,8 +2821,44 @@ async def tool_list_graph_runs(args: Dict) -> List[types.TextContent]:
 
 async def tool_list_components(args: Dict) -> List[types.TextContent]:
     try:
-        comps = get_catalog().list_by_category(args.get("category"))
-        return _text(ComponentCatalog.format_compact(comps))
+        category = args.get("category")
+        comps = get_catalog().list_by_category(category)
+
+        search_string = str(args.get("search_string") or "").strip()
+        match_mode = str(args.get("match_mode") or "literal").strip().lower() or "literal"
+        if match_mode not in {"literal", "regex"}:
+            return _text("ERROR: 'match_mode' must be either 'literal' or 'regex'")
+
+        if search_string:
+            filtered: List[Dict] = []
+            compiled = None
+            if match_mode == "regex":
+                try:
+                    compiled = re.compile(search_string, flags=re.IGNORECASE)
+                except re.error as rx:
+                    return _text(f"ERROR: Invalid regex in search_string: {rx}")
+
+            for comp in comps:
+                fields = [
+                    str(comp.get("type") or ""),
+                    str(comp.get("name") or ""),
+                    str(comp.get("category") or ""),
+                    str(comp.get("shortDescription") or ""),
+                    str(comp.get("description") or ""),
+                ]
+                if match_mode == "regex":
+                    if compiled and any(compiled.search(field) for field in fields):
+                        filtered.append(comp)
+                else:
+                    needle = search_string.lower()
+                    if any(needle in field.lower() for field in fields):
+                        filtered.append(comp)
+
+            comps = filtered
+
+        # For category-filtered output, always show full description field.
+        use_short_description = category is None
+        return _text(ComponentCatalog.format_compact(comps, use_short_description=use_short_description))
     except Exception as e:
         return _text(f"ERROR: {e}")
 
@@ -2695,6 +2958,303 @@ async def tool_plan_graph(args: Dict) -> List[types.TextContent]:
     return _text("Graph plan received. No obvious issues detected.")
 
 
+async def tool_note_add(args: Dict) -> List[types.TextContent]:
+    section = str(args.get("section") or "").strip()
+    if not section:
+        return _text("ERROR: 'section' is required")
+
+    content = str(args.get("content") or "").strip()
+    if not content:
+        return _text("ERROR: 'content' is required")
+
+    notes_in_section = _task_notes.setdefault(section, [])
+    notes_in_section.append(content)
+    logger.info("note_add section='%s' notes_in_section=%d", section, len(notes_in_section))
+
+    return _text(json.dumps({
+        "status": "ok",
+        "section": section,
+        "notes_in_section": len(notes_in_section),
+    }, indent=2))
+
+
+async def tool_note_read(args: Dict) -> List[types.TextContent]:
+    section_arg = args.get("section")
+    if section_arg is not None:
+        section = str(section_arg).strip()
+        if not section:
+            return _text("ERROR: 'section' must be non-empty when provided")
+
+        notes = list(_task_notes.get(section, []))
+        return _text(json.dumps({
+            "section": section,
+            "notes": notes,
+            "count": len(notes),
+        }, indent=2))
+
+    note_count = sum(len(notes) for notes in _task_notes.values())
+    return _text(json.dumps({
+        "sections": _task_notes,
+        "section_count": len(_task_notes),
+        "note_count": note_count,
+    }, indent=2))
+
+
+async def tool_note_clear(args: Dict) -> List[types.TextContent]:
+    section_arg = args.get("section")
+    if section_arg is not None:
+        section = str(section_arg).strip()
+        if not section:
+            return _text("ERROR: 'section' must be non-empty when provided")
+
+        cleared = section in _task_notes
+        _task_notes.pop(section, None)
+        logger.info("note_clear section='%s' cleared=%s", section, cleared)
+
+        return _text(json.dumps({
+            "status": "ok",
+            "scope": "section",
+            "section": section,
+            "cleared": cleared,
+        }, indent=2))
+
+    sections_cleared = len(_task_notes)
+    notes_cleared = sum(len(notes) for notes in _task_notes.values())
+    _task_notes.clear()
+    logger.info("note_clear all sections=%d notes=%d", sections_cleared, notes_cleared)
+
+    return _text(json.dumps({
+        "status": "ok",
+        "scope": "all",
+        "sections_cleared": sections_cleared,
+        "notes_cleared": notes_cleared,
+    }, indent=2))
+
+
+async def tool_kb_store(args: Dict) -> List[types.TextContent]:
+    name = str(args.get("name") or "").strip()
+    if not name:
+        return _text(json.dumps({"status": "error", "message": "'name' is required"}, indent=2))
+    if not KB_NAME_RE.fullmatch(name):
+        return _text(json.dumps({
+            "status": "error",
+            "message": f"Invalid name: '{name}'. Use lowercase kebab-case (a-z, 0-9, hyphens only).",
+        }, indent=2))
+
+    description = str(args.get("description") or "").strip()
+    if not description:
+        return _text(json.dumps({"status": "error", "message": "'description' is required"}, indent=2))
+
+    content = str(args.get("content") or "")
+    if not content:
+        return _text(json.dumps({"status": "error", "message": "'content' is required"}, indent=2))
+
+    tags_value = args.get("tags")
+    if tags_value is None:
+        tags: List[str] = []
+    elif isinstance(tags_value, list):
+        tags = [str(tag).strip().lower() for tag in tags_value if str(tag).strip()]
+    else:
+        return _text(json.dumps({"status": "error", "message": "'tags' must be an array when provided"}, indent=2))
+
+    file_name = f"{name}.md"
+    client = get_soap_client()
+    created = _today_iso()
+    updated = _today_iso()
+    action = "created"
+    previous_created: Optional[str] = None
+
+    try:
+        existing_raw = client.download_file(KB_SANDBOX, file_name)
+        existing_entry = _kb_parse_entry(existing_raw)
+        if existing_entry.get("created"):
+            created = str(existing_entry["created"])
+        action = "updated"
+        previous_created = created
+    except Exception:
+        pass
+
+    entry_text = _kb_build_entry_markdown(
+        tags=tags,
+        description=description,
+        created=created,
+        updated=updated,
+        content=content,
+    )
+
+    try:
+        client.upload_file(
+            sandbox=KB_SANDBOX,
+            dir_path="",
+            filename=file_name,
+            content=entry_text,
+        )
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+    payload: Dict[str, Any] = {
+        "status": "ok",
+        "name": name,
+        "action": action,
+        "sandbox": KB_SANDBOX,
+        "path": file_name,
+    }
+    if previous_created is not None:
+        payload["previous_created"] = previous_created
+    return _text(json.dumps(payload, indent=2))
+
+
+async def tool_kb_search(args: Dict) -> List[types.TextContent]:
+    query = str(args.get("query") or "").strip()
+    match_mode = str(args.get("match_mode") or "literal").strip().lower() or "literal"
+    if match_mode not in {"literal", "regex"}:
+        return _text(json.dumps({"status": "error", "message": "'match_mode' must be 'literal' or 'regex'"}, indent=2))
+
+    client = get_soap_client()
+
+    if not query:
+        try:
+            files = client.list_files(sandbox=KB_SANDBOX, path="", folder_only=False)
+        except Exception as e:
+            return _text(f"ERROR: {e}")
+
+        entries: List[Dict[str, Any]] = []
+        for item in files:
+            if not isinstance(item, dict):
+                continue
+            if bool(item.get("isFolder") or item.get("folder")):
+                continue
+
+            file_path = _sandbox_item_path(item)
+            base_name = os.path.basename(file_path)
+            if not base_name.endswith(".md"):
+                continue
+
+            try:
+                raw_text = client.download_file(KB_SANDBOX, file_path)
+            except Exception:
+                continue
+
+            parsed = _kb_parse_entry(raw_text)
+            entries.append({
+                "name": os.path.splitext(base_name)[0],
+                "tags": parsed["tags"],
+                "description": parsed["description"],
+                "created": parsed["created"],
+                "updated": parsed["updated"],
+            })
+
+        entries.sort(key=lambda entry: entry["name"])
+        return _text(json.dumps({
+            "mode": "catalog",
+            "entries": entries,
+            "entry_count": len(entries),
+        }, indent=2))
+
+    compiled_pattern = None
+    if match_mode == "regex":
+        try:
+            compiled_pattern = re.compile(query)
+        except re.error as rx:
+            return _text(json.dumps({"status": "error", "message": f"Invalid regex in query: {rx}"}, indent=2))
+
+    try:
+        candidates = client.find_files(sandbox=KB_SANDBOX, pattern="*.md", path="")
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+    grouped: Dict[str, Dict[str, Any]] = {}
+    match_count = 0
+    max_results_per_sandbox = 50
+
+    for item in candidates:
+        if match_count >= max_results_per_sandbox:
+            break
+
+        if not isinstance(item, dict):
+            continue
+        file_path = _sandbox_item_path(item)
+        if not file_path.endswith(".md"):
+            continue
+
+        try:
+            raw_text = client.download_file(KB_SANDBOX, file_path)
+        except Exception:
+            continue
+
+        parsed = _kb_parse_entry(raw_text)
+        lines = raw_text.splitlines()
+
+        for line_idx, line in enumerate(lines, start=1):
+            if match_count >= max_results_per_sandbox:
+                break
+
+            if match_mode == "regex":
+                is_match = bool(compiled_pattern and compiled_pattern.search(line))
+            else:
+                is_match = query in line
+            if not is_match:
+                continue
+
+            entry_name = os.path.splitext(os.path.basename(file_path))[0]
+            if entry_name not in grouped:
+                grouped[entry_name] = {
+                    "name": entry_name,
+                    "tags": parsed["tags"],
+                    "description": parsed["description"],
+                    "matches": [],
+                }
+
+            context: List[Dict[str, Any]] = []
+            prev_idx = line_idx - 2
+            next_idx = line_idx
+            if prev_idx >= 0:
+                context.append({"line": prev_idx + 1, "content": lines[prev_idx]})
+            if next_idx < len(lines):
+                context.append({"line": next_idx + 1, "content": lines[next_idx]})
+
+            grouped[entry_name]["matches"].append({
+                "line_number": line_idx,
+                "content": line,
+                "context": context,
+            })
+            match_count += 1
+
+    results = sorted(grouped.values(), key=lambda entry: entry["name"])
+    return _text(json.dumps({
+        "mode": "search",
+        "query": query,
+        "match_mode": match_mode,
+        "results": results,
+        "result_count": len(results),
+    }, indent=2))
+
+
+async def tool_kb_read(args: Dict) -> List[types.TextContent]:
+    name = str(args.get("name") or "").strip()
+    if not name:
+        return _text(json.dumps({"status": "error", "message": "'name' is required"}, indent=2))
+
+    file_name = f"{name}.md"
+    try:
+        raw_text = get_soap_client().download_file(KB_SANDBOX, file_name)
+    except Exception:
+        return _text(json.dumps({
+            "status": "error",
+            "message": f"Knowledge entry '{name}' not found. Use kb_search() to list available entries.",
+        }, indent=2))
+
+    parsed = _kb_parse_entry(raw_text)
+    return _text(json.dumps({
+        "name": name,
+        "tags": parsed["tags"],
+        "description": parsed["description"],
+        "created": parsed["created"],
+        "updated": parsed["updated"],
+        "content": parsed["content"],
+    }, indent=2))
+
+
 # ── Tool dispatcher ────────────────────────────────────────────────────────────
 
 async def tool_get_graph_tracking(args: Dict) -> List[types.TextContent]:
@@ -2774,7 +3334,8 @@ async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
         data = get_soap_client().get_edge_debug_data(
             run_id=args["run_id"],
             edge_id=args["edge_id"],
-            record_count=int(args.get("record_count", 100)),
+            record_count=int(args.get("record_count", 50)),
+            from_rec=int(args.get("from_rec", 0)),
             data_format=str(args.get("format", "json")),
         )
         return _text(data)
@@ -3010,6 +3571,12 @@ _TOOL_MAP = {
     "get_component_details":   tool_get_component_details,
     "think":                   tool_think,
     "plan_graph":              tool_plan_graph,
+    "note_add":                tool_note_add,
+    "note_read":               tool_note_read,
+    "note_clear":              tool_note_clear,
+    "kb_store":                tool_kb_store,
+    "kb_search":               tool_kb_search,
+    "kb_read":                 tool_kb_read,
     "get_graph_tracking":      tool_get_graph_tracking,
     "get_edge_debug_info":     tool_get_edge_debug_info,
     "get_edge_debug_metadata": tool_get_edge_debug_metadata,

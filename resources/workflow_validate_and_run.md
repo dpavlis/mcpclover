@@ -50,6 +50,24 @@ think("Stage 1 error at line 176: element type 'attr' must be terminated by
       as ]]]]><![CDATA[>.")
 ```
 
+### 1.4 Use `validate_CTL` for CTL-related errors
+When validation reports CTL compilation errors, extract the CTL code and run
+it through `validate_CTL` for a more detailed diagnosis:
+
+```
+read_file("graph/MyGraph.grf", sandbox)    -- find the CTL block
+validate_CTL(
+    code="...extracted CTL...",
+    input_metadata="Port 0 (orders):\n<Record name='OrderRecord'>...",
+    output_metadata="Port 0 (output):\n<Record name='OutputRecord'>...",
+    query="Focus on the compile error reported by validate_graph"
+)
+```
+
+`validate_CTL` checks field references against metadata, type mismatches,
+undeclared variables, scope issues, and logic errors — often pinpointing the
+exact line and cause faster than reading the raw compile error.
+
 #### Stage 1 — XML errors
 
 | Error | Cause | Fix |
@@ -65,10 +83,10 @@ think("Stage 1 error at line 176: element type 'attr' must be terminated by
 | `Attribute 'X' is not allowed to appear in element 'Y'` | Remove that attribute (e.g. `customRejectMessage` not valid on `<expression>`) |
 | `Syntax error on token 'function'` | CTL declared as `returnType function name()` — flip to `function returnType name()` |
 | `Syntax error on token '('` | Same as above, partially corrected |
-| `CTL code compilation finished with N errors` | Read full message, find the line, fix it |
+| `CTL code compilation finished with N errors` | Read full message, find the line, fix it — or use `validate_CTL` for detailed analysis |
 | Port or metadata mismatch | Check edge `inPort`/`outPort` strings against `get_component_info` output |
 
-### 1.4 Apply fixes safely
+### 1.5 Apply fixes safely
 Back up before any significant fix:
 ```
 copy_file("graph/MyGraph.grf", sandbox, "graph/MyGraph.bak.grf", sandbox)
@@ -111,28 +129,35 @@ list_graph_runs(sandbox="DWHExample", job_file="MyGraph.grf")
 list_graph_runs(sandbox="DWHExample", status="ERROR")   -- find recent failures
 ```
 
-### 2.3 Execute the graph
+### 2.3 Execute the graph and await completion
 
 ```
-result = execute_graph("graph/MyGraph.grf", sandbox)
+run = execute_graph("graph/MyGraph.grf", sandbox)
+await_graph_completion(run.run_id, timeout_seconds=120)
 ```
 
-Note the `run_id` — needed for tracking, log retrieval, and debug data.
+`await_graph_completion` blocks until the graph finishes or the timeout is
+reached. On completion it returns the final status (`FINISHED_OK`, `ERROR`,
+`ABORTED`). On timeout it returns the current status with `timed_out=true`.
 
-For long-running graphs, poll status without fetching the full log:
+For quick progress checks without waiting:
 ```
 get_graph_run_status(run_id)
 ```
-Returns status (`RUNNING`, `FINISHED_OK`, `ERROR`, `ABORTED`) plus elapsed time
-and current phase when running. Use to assess progress before committing to a
-full log fetch.
+Returns status, elapsed time, and current phase when running.
+
+To abort a graph that is stuck or taking too long:
+```
+abort_graph_execution(run_id)
+```
 
 ### 2.4 When to use debug mode
 Enable debug mode when you anticipate needing to inspect actual record values
 at specific edges — not just counts:
 
 ```
-result = execute_graph("graph/MyGraph.grf", sandbox, debug=True)
+run = execute_graph("graph/MyGraph.grf", sandbox, debug=True)
+await_graph_completion(run.run_id)
 ```
 
 Debug mode must be enabled at execution time — it cannot be added retroactively.
@@ -187,11 +212,18 @@ Read the log when:
 The log contains per-component messages, full error stack traces, and timing.
 Always identify the failing component and root cause before attempting a fix.
 
-### 3.3 Edge debug diagnostics — when and how
-When tracking counts and the execution log don't pinpoint the problem and you
-need to inspect actual record values at a specific edge:
+### 3.3 Inspect actual data with edge debug
+Edge debug is one of the most powerful debugging tools — it lets you peek at the
+actual records flowing through any edge, not just counts. Use it to verify that
+field values, types, and content are what you expect at each stage of the graph.
 
-**Step 1 — confirm debug data is available:**
+**Always run with debug mode when investigating data issues:**
+```
+run = execute_graph("graph/MyGraph.grf", sandbox, debug=True)
+await_graph_completion(run.run_id)
+```
+
+**Step 1 — confirm debug data is available on the edge:**
 ```
 get_edge_debug_info(edge_id="Edge2", graph_path, sandbox, run_id)
 ```
@@ -206,25 +238,118 @@ Returns the metadata XML — field names and types. Use this to confirm the
 record structure is what you expected (e.g. verify `rejectReason` is present,
 check field types match what CTL code expects).
 
-**Step 3 — fetch record count and summary:**
+**Step 3 — fetch and inspect actual record values:**
 ```
 get_edge_debug_data(run_id=run_id, edge_id="Edge2", record_count=20)
 ```
+Returns actual record data from the edge. Use this to:
+- Verify field values after a transform (are dates formatted correctly? are nulls
+  handled? are computed fields correct?)
+- Check what a join or filter is actually receiving and producing
+- Inspect rejection reasons on a VALIDATOR's invalid port
+- Compare values between two edges to diagnose why a join produces 0 matches
+- Verify that CTL logic produces the expected output for real input data
 
-`get_edge_debug_data` calls `/data-service/debugRead` using `runID` and `edgeID`
-and returns the JSON output from that endpoint.
+**Typical debug workflow for a failing join:**
+```
+run = execute_graph("graph/MyGraph.grf", sandbox, debug=True)
+await_graph_completion(run.run_id)
+get_graph_tracking(run.run_id)                        -- confirm 0 output on join
+
+get_edge_debug_data(run_id, edge_id="Edge0", record_count=5)  -- check master values
+get_edge_debug_data(run_id, edge_id="Edge1", record_count=5)  -- check slave values
+
+think("Master has Store_Id values 1,2,3. Slave has store_id values 'S001','S002'.
+      The join key types don't match — master is integer, slave is string.
+      Fix: either change metadata or add a conversion step.")
+```
 
 **When to use edge debug vs other approaches:**
 
 | Need | Best tool |
 |---|---|
 | How many records flowed through each component | `get_graph_tracking` |
-| Why the graph failed | `get_graph_execution_log` |
-| What fields exist on a specific edge | `get_edge_debug_metadata` |
-| Read sample values from a specific edge | `get_edge_debug_data` |
-| Debug output file inspection fallback | Read output file, or re-run with `TRASH debugPrint=true` on the edge |
+| Why the graph failed (exception, stack trace) | `get_graph_execution_log` |
+| What fields and types exist on a specific edge | `get_edge_debug_metadata` |
+| Inspect actual record values at a specific edge | `get_edge_debug_data` |
+| Quick visual dump in the log | TRASH with `debugPrint="true"` |
 
-### 3.4 Common execution problems and diagnosis paths
+### 3.4 Isolate problems by disabling components
+When a graph has many components and the failure is hard to localize, disable
+components to test parts of the graph in isolation. Every component has an
+`enabled` attribute that controls its runtime behaviour.
+
+**Three modes:**
+
+| Mode | XML | Behaviour |
+|---|---|---|
+| Enabled (default) | `enabled="enabled"` | Component runs normally |
+| Disabled (pass-through) | `enabled="disabled"` | Component is skipped; data flows through to the next component via pass-through ports |
+| Disabled as Trash | `enabled="trash"` | Component and everything downstream is disabled; incoming data is discarded |
+
+**Disable as Trash — isolate the first half of a graph:**
+```
+set_graph_element_attribute(graph_path, sandbox,
+    element_type="Node", element_id="ORDER_VALIDATOR",
+    attribute_name="enabled", value="trash")
+```
+This makes the VALIDATOR and all components downstream of it inactive. The graph
+runs only up to that point, so you can validate that the upstream data is correct
+using `get_graph_tracking` and `get_edge_debug_data` on the edges before the
+disabled component.
+
+**Disable (pass-through) — skip a component but keep downstream running:**
+```
+set_graph_element_attribute(graph_path, sandbox,
+    element_type="Node", element_id="MY_FILTER",
+    attribute_name="enabled", value="disabled")
+```
+The component is skipped and data passes straight through. Use this to test
+whether a specific component (a filter, a transform, a join) is causing the
+problem — if the graph works with it disabled, the issue is in that component.
+
+By default, pass-through uses input port 0 and output port 0. If you need
+data to flow through a different port pair, set:
+```
+set_graph_element_attribute(graph_path, sandbox,
+    element_type="Node", element_id="MY_COMPONENT",
+    attribute_name="passThroughInputPort", value="0")
+set_graph_element_attribute(graph_path, sandbox,
+    element_type="Node", element_id="MY_COMPONENT",
+    attribute_name="passThroughOutputPort", value="1")
+```
+
+**After debugging, always re-enable the component:**
+```
+set_graph_element_attribute(graph_path, sandbox,
+    element_type="Node", element_id="ORDER_VALIDATOR",
+    attribute_name="enabled", value="enabled")
+```
+
+**Step-by-step debugging strategy:**
+1. Disable later components as Trash to test the first stage only
+2. Execute with debug mode, inspect edge data with `get_edge_debug_data`
+3. If the first stage is correct, re-enable it and disable the next stage as Trash
+4. Repeat until you find the stage where data goes wrong
+5. Re-enable all components when debugging is complete
+
+### 3.5 Use `validate_CTL` to diagnose CTL runtime errors
+When a runtime error points to a CTL issue (null dereference, type mismatch,
+wrong function call), extract the CTL code and validate it:
+
+```
+validate_CTL(
+    code="...extracted CTL from the failing component...",
+    input_metadata="Port 0 (master):\n<Record>...",
+    output_metadata="Port 0 (output):\n<Record>...",
+    query="Focus on null handling and type coercions"
+)
+```
+
+This can catch issues like inverted null checks, missing null guards on slave
+ports, and field reference mismatches that cause runtime failures.
+
+### 3.6 Common execution problems and diagnosis paths
 
 | Symptom | Think / investigate |
 |---|---|
@@ -236,23 +361,48 @@ and returns the JSON output from that endpoint.
 | Records lost between two components | Tracking shows where count drops — inspect that component's configuration and CTL logic |
 | Runtime error mid-stream | Log stack trace identifies component and record; check for null fields, type mismatches, missing sequence/lookup declarations |
 
+### 3.7 Persist new knowledge
+If debugging this run revealed a new insight — a component behaviour, a CTL
+gotcha, or a configuration pattern worth remembering — store it:
+
+```
+kb_store(
+    name="validator-date-format-mismatch",
+    description="VALIDATOR date interval rules require date-typed fields, not strings parsed as dates",
+    tags=["component", "validator", "date"],
+    content="When a VALIDATOR interval rule checks a date field, the field must\n
+             be typed as date in the metadata. If it arrives as a string,\n
+             the comparison silently fails and all records are rejected.\n
+             Fix: ensure the upstream component converts string to date,\n
+             or use a <function> rule with str2date() instead of <interval>."
+)
+```
+
+Only store genuine discoveries — not routine facts already in the reference docs.
+
 ---
 
 ## CHECKLIST — validate and run complete
 
 - [ ] `validate_graph` called — result is `overall: PASS` with no errors or warnings
 - [ ] Used `think` to diagnose any validation errors before fixing
+- [ ] Used `validate_CTL` for CTL compilation errors to get detailed diagnosis
 - [ ] All fixes used `set_graph_element_attribute` for attribute/CTL changes
 - [ ] Backed up graph before significant fixes (`copy_file`)
 - [ ] Re-read file between multiple fixes — never edited from stale state
 - [ ] Re-validated after every fix — repeated until clean PASS
 - [ ] `execute_graph` called only after clean validation
+- [ ] `await_graph_completion` used to wait for execution result
 - [ ] `get_graph_tracking` called after execution
 - [ ] Input record count matches expected source size
 - [ ] All port split ratios correct (valid + invalid = total, etc.)
 - [ ] No component shows 0 records unexpectedly
 - [ ] If run status not `FINISHED_OK`: `get_graph_execution_log` consulted and root cause identified
 - [ ] Used `think` to reason through unexpected counts before attempting fixes
+- [ ] Used `validate_CTL` to diagnose CTL runtime errors when applicable
 - [ ] If edge debug used: `get_edge_debug_info` confirmed data available first
-- [ ] Used `get_edge_debug_data` to inspect edge records decoded by `debugRead`
+- [ ] Used `get_edge_debug_data` to inspect actual record values at edges
+- [ ] If isolating a problem: disabled components with `enabled="trash"` or `enabled="disabled"`
+- [ ] All disabled components re-enabled after debugging
 - [ ] Run status is `FINISHED_OK`
+- [ ] Used `kb_store` to persist any new discoveries for future sessions

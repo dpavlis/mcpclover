@@ -1,12 +1,24 @@
-  # CloverDX Workflow Guide — `create_graph`
+# CloverDX Workflow Guide — `create_graph`
 
 > LLM-only guide. Execute phases in order. Do not write XML until Phase 2 is complete.
 
 ---
 
-## PHASE 0 — Read authoritative context
+## PHASE 0 — Read authoritative context and check knowledge base
 
-### 0.1 Read resources
+### 0.1 Check the knowledge base
+Start by reviewing what you already know from previous sessions:
+
+```
+kb_search()                               -- catalog of all knowledge entries
+kb_read("ctl2-isnull-vs-isNull")          -- load entries relevant to the task
+kb_read("aggregate-sort-requirement")
+```
+
+Skim the catalog; load any entries whose name or description relates to the
+components, CTL patterns, or data structures you expect to work with.
+
+### 0.2 Read resources
 Always read authoritative MCP resources before any other work:
 
 ```
@@ -22,7 +34,7 @@ read_resource("cloverdx://reference/subgraphs")
 Do not rely on training knowledge when a resource exists. These are the authoritative
 source — they override anything you think you know.
 
-### 0.2 Resolve sandbox parameters
+### 0.3 Resolve sandbox parameters
 Check what the standard path parameters resolve to in this sandbox:
 
 ```
@@ -31,7 +43,13 @@ get_sandbox_parameters(sandbox)       -- resolved ${DATAIN_DIR}, ${CONN_DIR} etc
 
 This is needed before writing any file paths into graph XML.
 
-### 0.3 Sandbox rule
+### 0.4 Clear session notes
+Start with a clean scratchpad:
+```
+note_clear()
+```
+
+### 0.5 Sandbox rule
 Never create or store files in `wrangler_shared_home`.
 
 ---
@@ -46,10 +64,13 @@ think("What are the processing steps? For each step, what are 2+ candidate
       component types? Which is most specialized for this task?")
 ```
 
-Use `list_components(category)` to orient if the component name is not known:
+Use `list_components` to find candidate components. Search by task description
+to find relevant components across all categories, or narrow by category:
 ```
-list_components("transformers")
-list_components("joiners")
+list_components(search_string="compare two datasets")   -- task-oriented search
+list_components(search_string="sort")                    -- find sort-related components
+list_components(category="joiners")                      -- browse a whole category
+list_components(category="transformers", search_string="duplicate")  -- category + search
 ```
 
 Selection rules — prefer the most specialized valid component:
@@ -67,6 +88,8 @@ Selection rules — prefer the most specialized valid component:
 | Merge N unsorted streams | `SIMPLE_GATHER` | Non-deterministic order |
 | Merge N streams preserving port order | `CONCATENATE` | All from port 0 first, then port 1, etc. |
 | Merge N pre-sorted streams into one sorted | `MERGE` | Inputs MUST be sorted |
+| Compare two sorted sets (A-only, both, B-only) | `DATA_INTERSECTION` | SCD, delta detection, data comparison. 3 output ports. |
+| Combine one record from each input into one output | `COMBINE` | Merges parallel streams record-by-record. No sort required. |
 | Declarative validation with accept/reject | `VALIDATOR` | When built-in rule types fit |
 | Validation mixed with transform logic | `REFORMAT` | When VALIDATOR rules insufficient |
 | Generic mapping / transform | `REFORMAT` | Fallback only |
@@ -107,7 +130,20 @@ get_component_details("XML_EXTRACT")  -- mapping XML, parentKey/generatedKey syn
 If no details are returned, proceed with `get_component_info` data alone.
 Always call `get_component_info` first — never substitute `get_component_details` for it.
 
-### 1.4 Find reference graphs using grep_files
+### 1.4 Record key findings in session notes
+As you explore components and reference graphs, save important facts for later
+phases — metadata field names, connection IDs, component decisions, patterns:
+
+```
+note_add("metadata", "OrderInput: order_id(long), customer_name(string), amount(decimal:10.2)")
+note_add("connections", "conn/DWH.cfg — PostgreSQL, used by loader graphs")
+note_add("decisions", "Use EXT_HASH_JOIN not EXT_MERGE_JOIN — input unsorted, small dataset")
+```
+
+These notes keep discoveries accessible when you reach plan_graph and write_file
+without re-reading earlier tool outputs.
+
+### 1.5 Find reference graphs using grep_files
 Now that you know which components you will use, search for existing graphs
 that use the same components — these are your canonical pattern references.
 Use `grep_files` not `find_file` — it searches inside files, not just filenames:
@@ -159,6 +195,9 @@ Before planning any CTL code, confirm the required function signatures:
 | `VALIDATOR` `errorMapping` | `function integer transform()` — `$in.0`=record, `$in.1.validationMessage`, `$in.1.recordNo` |
 | `VALIDATOR` `rules` `<expression>` | bare boolean — no `function`, no `return`, no `//#CTL2` |
 | `PARTITION` `partitionSource` | `function integer getOutputPort()` |
+| Joiners `transform` | `function integer transform()` — applies to `EXT_HASH_JOIN`, `EXT_MERGE_JOIN`, `LOOKUP_JOIN`, `DBJOIN` |
+| `DATA_INTERSECTION` `transform` | `function integer transform()` — only needed when output port 1 (both) is connected |
+| `COMBINE` `transform` | `function integer transform()` |
 
 User-defined helper functions: `function` keyword comes **first**:
 ```
@@ -214,6 +253,11 @@ plan_graph(
 )
 ```
 
+**Review session notes before calling plan_graph:**
+```
+note_read()    -- refresh your memory of all findings from exploration
+```
+
 **What `plan_graph` checks (basic layout validation only):**
 - Every edge references component IDs that exist in components[]
 - Every metadata_id on an edge exists in metadata[]
@@ -264,15 +308,40 @@ Before writing any graph file that already exists, create a backup:
 copy_file("graph/MyGraph.grf", sandbox, "graph/MyGraph.bak.grf", sandbox)
 ```
 
-### 3.2 The incremental build loop
+### 3.2 Use `generate_CTL` for transform code
+When writing CTL transforms, use the LLM-powered code generator. Provide
+input and output metadata for accurate field references:
+
+```
+generate_CTL(
+    description="Reformat: copy order fields, compute total_with_tax as amount * 1.21,
+                 set status to 'HIGH_VALUE' if amount > 1000, else 'NORMAL'",
+    input_metadata="Port 0 (orders):\n<Record name='OrderRecord'>...",
+    output_metadata="Port 0 (enriched orders):\n<Record name='EnrichedOrder'>..."
+)
+```
+
+**Always validate generated CTL before embedding it in the graph:**
+```
+validate_CTL(
+    code="...generated CTL...",
+    input_metadata="Port 0 (orders):\n<Record name='OrderRecord'>...",
+    output_metadata="Port 0 (enriched orders):\n<Record name='EnrichedOrder'>..."
+)
+```
+
+Fix any issues flagged by `validate_CTL` before proceeding. If the generated
+code has errors, correct it and re-validate — do not embed unvalidated CTL.
+
+### 3.3 The incremental build loop
 Repeat this loop for each stage added to the graph:
 
 ```
 1. Write the stage (reader / transform / join / etc.) + TRASH terminal
 2. validate_graph  →  fix all errors before proceeding
-3. execute_graph   →  confirm no runtime errors
+3. execute_graph + await_graph_completion  →  confirm no runtime errors
 4. get_graph_tracking  →  verify record counts are sensible
-5. get_edge_debug_info, get_edge_debug_data → validate components are producing expected values at the edge level 
+5. get_edge_debug_info, get_edge_debug_data  →  validate components produce expected values
 6. If counts are wrong or debug data show unexpected values: diagnose with think(), fix, repeat from step 2
 7. Move TRASH to the next stage and continue
 ```
@@ -286,7 +355,25 @@ wrong branch taken, unexpected null propagation.
 
 Neither validate nor execute alone is sufficient. Both are required.
 
-### 3.3 TRASH configuration for incremental testing
+### 3.4 Execute and await completion
+After validation passes, execute and wait for the result:
+
+```
+run = execute_graph("graph/MyGraph.grf", sandbox)
+await_graph_completion(run.run_id, timeout_seconds=120)
+get_graph_tracking(run.run_id)
+```
+
+Use `await_graph_completion` instead of manual polling. It blocks until the
+graph finishes or times out, then returns the final status. If it times out,
+you can check progress with `get_graph_run_status(run_id)` or wait again.
+
+For graphs that are stuck or taking too long:
+```
+abort_graph_execution(run_id)
+```
+
+### 3.5 TRASH configuration for incremental testing
 Always attach TRASH at the current end of the incomplete pipeline with debug printing
 enabled so records are visible in the execution log:
 
@@ -304,10 +391,9 @@ set_graph_element_attribute(..., element_id="TRASH_DEBUG",
 This confirms records are actually flowing and lets you inspect values without
 writing output files.
 
-### 3.4 Interpreting tracking results
+### 3.6 Interpreting tracking results
 After `execute_graph`, always call:
 ```
-run = execute_graph("graph/MyGraph.grf", sandbox)
 get_graph_tracking(run.run_id)
 ```
 
@@ -332,7 +418,7 @@ think("The EXT_HASH_JOIN shows 0 output records. Input to port 0 was 1000 record
       in both streams.")
 ```
 
-### 3.5 When to use debug mode
+### 3.7 When to use debug mode
 For most incremental testing, plain `execute_graph` + `get_graph_tracking` is
 sufficient. Enable debug mode (`execute_graph(debug=true)`) when:
 - Tracking shows unexpected counts and you need to inspect actual record values
@@ -343,12 +429,20 @@ sufficient. Enable debug mode (`execute_graph(debug=true)`) when:
 Debug mode workflow:
 ```
 run = execute_graph("graph/MyGraph.grf", sandbox, debug=True)
-get_edge_debug_info(edge_id="Edge2", graph_path, sandbox, run_id)
+await_graph_completion(run.run_id)
+get_edge_debug_info(edge_id="Edge2", graph_path, sandbox, run.run_id)
 get_edge_debug_metadata(edge_id="Edge2", ...)   -- confirm field schema
-get_edge_debug_data(run_id=run_id, edge_id="Edge2", record_count=50)
+get_edge_debug_data(run_id=run.run_id, edge_id="Edge2", record_count=50)
 ```
 
-### 3.6 Use `set_graph_element_attribute` for targeted changes
+**For deeper debugging** — inspecting actual record values at multiple edges,
+isolating failures by disabling components, or diagnosing complex runtime errors —
+consult the `validate_and_run` workflow guide:
+```
+get_workflow_guide("validate_and_run")
+```
+
+### 3.8 Use `set_graph_element_attribute` for targeted changes
 Prefer `set_graph_element_attribute` over `patch_file` for all graph modifications:
 
 ```
@@ -365,7 +459,7 @@ set_graph_element_attribute(graph_path, sandbox,
 Use `patch_file` only for structural changes that `set_graph_element_attribute`
 cannot handle (e.g. adding a new Node or Edge element). Always use `dry_run=true` first.
 
-### 3.7 Nested CDATA escaping — most common breakage source
+### 3.9 Nested CDATA escaping — most common breakage source
 Any `]]>` inside an outer CDATA block must be escaped as:
 ```
 ]]]]><![CDATA[>
@@ -373,7 +467,7 @@ Any `]]>` inside an outer CDATA block must be escaped as:
 This is required in VALIDATOR `rules` CDATA blocks that contain `<expression>`
 elements with their own CDATA. Always review before writing.
 
-### 3.8 Edge `outPort` strings must match exactly
+### 3.10 Edge `outPort` strings must match exactly
 Use the exact strings from `get_component_info` — not guesses.
 
 | Component | Exact `outPort` |
@@ -427,28 +521,50 @@ Common failures and fixes:
 | `Syntax error on token 'function'` | CTL declared as `returnType function name()` — flip to `function returnType name()` |
 | `CTL code compilation finished with N errors` | CTL syntax error — read full message, find the line, fix it |
 
+### 4.3 Persist new knowledge
+If you discovered something new during this task — a CTL gotcha, a component
+pattern, a correction to a previous assumption — store it for future sessions:
+
+```
+kb_store(
+    name="ctl2-validator-no-customrejectmessage-on-expression",
+    description="VALIDATOR <expression> rules do not support customRejectMessage attribute",
+    tags=["component", "validator", "rules"],
+    content="The <expression> element in VALIDATOR rules does not allow the\n
+             customRejectMessage attribute. Use the name attribute as the\n
+             human-readable label instead."
+)
+```
+
+Only store genuine discoveries — not routine facts already in the reference docs.
+
 ---
 
 ## CHECKLIST — before presenting the graph as complete
 
+- [ ] Called `kb_search()` and loaded relevant knowledge entries
 - [ ] Read `cloverdx://reference/graph-xml` and `cloverdx://reference/ctl2`
 - [ ] Read `cloverdx://reference/subgraphs` if creating a subgraph
 - [ ] Called `get_sandbox_parameters` — know what ${DATAIN_DIR} etc. resolve to
+- [ ] Cleared session notes with `note_clear()`
 - [ ] Sandbox is not `wrangler_shared_home`
 - [ ] Used `think` to reason through component candidates before looking them up
-- [ ] Called `list_components` to orient if component names were uncertain
+- [ ] Used `list_components(search_string=...)` to find candidates when component type was uncertain
 - [ ] Considered at least 2 candidate components per processing step
 - [ ] Called `get_component_info` for every component type used
 - [ ] Called `get_component_details` for complex components (VALIDATOR, XML_EXTRACT, etc.)
+- [ ] Used `note_add` to record key findings during exploration (metadata, connections, decisions)
 - [ ] Used `grep_files` with component type strings to find reference graphs — not find_file
 - [ ] Read relevant reference graphs and used `think` to evaluate their patterns
 - [ ] Designed metadata including all downstream auxiliary fields
 - [ ] Confirmed CTL entry points for every CTL-bearing component
 - [ ] Called `list_linked_assets` after component/metadata design — checked for reusable .fmt/.cfg/.ctl/.lkp/.seq before defining anything inline
-- [ ] Called `plan_graph` — reviewed layout warnings; genuine errors fixed; false-positive warnings (e.g. sort handled by DB query ORDER BY) documented in risks[] and consciously accepted
+- [ ] Called `note_read()` before `plan_graph` to refresh findings
+- [ ] Called `plan_graph` — reviewed layout warnings; genuine errors fixed; false-positive warnings documented in risks[] and consciously accepted
 - [ ] Backed up any existing graph before overwriting
-- [ ] Built incrementally: each stage validated (validate_graph) AND executed (execute_graph) before adding the next
-- [ ] After each execution: get_graph_tracking called and record counts verified as sensible
+- [ ] Used `generate_CTL` for transform code and `validate_CTL` to check it before embedding
+- [ ] Built incrementally: each stage validated (validate_graph) AND executed (execute_graph + await_graph_completion) before adding the next
+- [ ] After each execution: `get_graph_tracking` called and record counts verified as sensible
 - [ ] No stage produces 0 records unexpectedly
 - [ ] Port split ratios are correct (valid + invalid = total, accepted + rejected = total, etc.)
 - [ ] Used `set_graph_element_attribute` for targeted attribute/CTL changes
@@ -458,3 +574,4 @@ Common failures and fixes:
 - [ ] CTL user-defined functions: `function returnType name(...)` not `returnType function name(...)`
 - [ ] TRASH terminals replaced with real destinations for final graph
 - [ ] Final full graph: validate_graph PASS + execute_graph SUCCESS + tracking verified
+- [ ] Used `kb_store` to persist any new discoveries for future sessions

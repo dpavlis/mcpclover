@@ -761,7 +761,7 @@ class CloverDXSoapClient:
             return raw
         return raw.get("metadata") or str(raw)
 
-    def _rest_debug_read(self, run_id: str, edge_id: str, num_rec: int, data_format: str = "json") -> Any:
+    def _rest_debug_read(self, run_id: str, edge_id: str, num_rec: int, from_rec: int = 0, data_format: str = "json") -> Any:
         self._init_client()
         fmt = (data_format or "json").strip().lower()
         if fmt not in {"json", "csv"}:
@@ -772,7 +772,7 @@ class CloverDXSoapClient:
 
         resp = self._client.transport.session.get(
             url,
-            params={"runID": str(run_id), "edgeID": str(edge_id), "numRec": int(num_rec)},
+            params={"runID": str(run_id), "edgeID": str(edge_id), "numRec": int(num_rec), "fromRec": int(from_rec)},
             headers={
                 "X-Requested-By": "mcp",
                 "Accept": accept,
@@ -803,7 +803,8 @@ class CloverDXSoapClient:
 
     def get_edge_debug_data(self,
                             run_id: str, edge_id: str,
-                            record_count: int = 100,
+                            record_count: int = 50,
+                            from_rec: int = 0,
                             data_format: str = "json") -> str:
         effective_record_count = max(1, int(record_count))
         fmt = (data_format or "json").strip().lower()
@@ -814,6 +815,7 @@ class CloverDXSoapClient:
             run_id=run_id,
             edge_id=edge_id,
             num_rec=effective_record_count,
+            from_rec=max(0, int(from_rec)),
             data_format=fmt,
         )
 
