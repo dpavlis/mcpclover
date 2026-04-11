@@ -152,7 +152,7 @@ Returns the authoritative step-by-step workflow guide for a CloverDX task type.
 
 ## Graph Operations
 
-### `set_graph_element_attribute`
+### `graph_edit_properties`
 Sets or replaces a value on a specific element within a CloverDX graph XML file (`.grf`). Operates on the parsed DOM — no text anchoring, no line numbers, no regex. Loads the file, finds the target element, modifies it, and writes it back.
 
 **Element types:** `Node`, `Edge`, `Metadata`, `GraphParameter`, `Connection`
@@ -165,7 +165,7 @@ Sets or replaces a value on a specific element within a CloverDX graph XML file 
 
 **GraphParameter:** matched by `name` attribute (not `id`). Only plain XML attributes are supported — no `attr:` prefix.
 
-**Why:** More reliable than `patch_file` for graph element modifications — immune to whitespace/formatting differences, works on any element regardless of how the XML is laid out. Always follow with `validate_graph`.
+**Why:** More reliable than `patch_file` for graph element modifications — immune to whitespace/formatting differences, works on any element regardless of how the XML is laid out. Companion to `graph_edit_structure` (which adds/deletes/moves whole elements). Always follow with `validate_graph`.
 
 **Backend:** SOAP `GetSandboxFile` + `UploadSandboxFile`; DOM manipulation via lxml (preferred) or stdlib `xml.etree.ElementTree` fallback
 
@@ -294,7 +294,7 @@ Accepts a single `thought` string and returns acknowledgement only (the thought 
 
 ### `plan_graph`
 Accepts a structured graph-design plan payload (graph identity, phases, components, metadata, edges, global assets, risks, references) and returns acknowledgement only.  
-**Why:** Forces explicit, reviewable design before writing graph XML so inconsistencies are surfaced early and planning context is recorded. Intended to be called after workflow/reference/component lookups and before `write_file` or `set_graph_element_attribute`.  
+**Why:** Forces explicit, reviewable design before writing graph XML so inconsistencies are surfaced early and planning context is recorded. Intended to be called after workflow/reference/component lookups and before `write_file` or `graph_edit_properties`.  
 **Backend:** Local acknowledgement response + server log entry (no CloverDX SOAP/REST call)
 
 ---

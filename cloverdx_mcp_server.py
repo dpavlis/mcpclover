@@ -40,7 +40,8 @@ WebServices and exposes the following tools:
   get_edge_debug_info     – List edge debug availability/details for a run edge
   get_edge_debug_metadata – Fetch edge debug metadata XML for a run edge
   get_edge_debug_data     – Fetch edge debug data summary for a run edge (requires debug DataServices installed)
-  set_graph_element_attribute – Set/replace an attribute or <attr> child on a graph element (DOM-based)
+  graph_edit_structure     – Add/delete/move whole elements in a graph (Metadata, Phase, Node, Edge, etc.)
+  graph_edit_properties    – Set/replace an attribute or <attr> child on an existing graph element (DOM-based)
 
   Component reference (local, no server round-trip)
   ──────────────────────────────────────────────────
@@ -101,6 +102,7 @@ from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
 from cloverdx_graph_validator import GraphValidator
+from cloverdx_graph_structure import GraphStructureService, VALID_ELEMENT_TYPES
 from cloverdx_soap_client import CloverDXSoapClient
 from cloverdx_CTL_generate import validate_CTL as _ctl_validate
 from cloverdx_CTL_generate import generate_CTL as _ctl_generate
@@ -1037,8 +1039,12 @@ async def handle_list_tools() -> List[types.Tool]:
                 "Patch a sandbox file using anchor-based line replacements. "
                 "Each patch locates an anchor string, applies from_offset/to_offset to define the "
                 "replacement range, then all patches are applied bottom-up. "
-                "Supports dry_run=true for preview. "
-                "For graph XML attribute changes, prefer set_graph_element_attribute instead."
+                "Supports dry_run=true for preview.\n\n"
+                "USE FOR: non-graph text files (.ctl, .prm, .csv, .sql, etc.).\n"
+                "DO NOT USE FOR graph (.grf) files -- use the graph_edit_* tools instead:\n"
+                "  graph_edit_structure  - add/delete/move whole elements (Metadata, Node, Edge, Phase, ...)\n"
+                "  graph_edit_properties - set attributes, CTL code, metadata records on existing elements\n"
+                "The graph_edit_* tools operate on the XML DOM and are far more reliable for graph edits."
             ),
             inputSchema={
                 "type": "object",
@@ -1065,15 +1071,123 @@ async def handle_list_tools() -> List[types.Tool]:
             },
         ),
         types.Tool(
-            name="set_graph_element_attribute",
+            name="graph_edit_structure",
             description=(
-                "Set/update a value on a graph XML element via DOM (no line numbers needed). "
-                "More reliable than patch_file for graph modifications.\n\n"
+                "Add, delete, or move whole structural elements in a graph (.grf) via XML DOM.\n"
+                "Companion to graph_edit_properties (which sets values on existing elements).\n\n"
+                "USE FOR: adding new Metadata/Node/Edge/Phase/Connection/etc., deleting elements,\n"
+                "  moving a Node or Edge between Phases.\n"
+                "DO NOT USE FOR: changing attribute values, CTL code, or metadata records on\n"
+                "  existing elements -- use graph_edit_properties for that.\n\n"
+                "Actions:\n"
+                "  add    - Insert a new element. Provide full element XML in element_xml.\n"
+                "           The tool handles placement and ID uniqueness.\n"
+                "  delete - Remove an element by its identity attribute (id or name).\n"
+                "  edit   - Move a Node or Edge to a different Phase (target_phase_number).\n\n"
+                "Supported element_type values:\n"
+                "  Metadata, Phase, Node, Edge, Connection, GraphParameter,\n"
+                "  RichTextNote, LookupTable, DictionaryEntry, Sequence\n\n"
+                "For add Node/Edge: provide phase_number for the target Phase.\n"
+                "For edit (move): provide element_id and target_phase_number.\n"
+                "For delete: cascade=true auto-removes dependent elements where supported\n"
+                "  (Node -> edges, Metadata -> edges, Connection -> dbConnection attrs,\n"
+                "   Phase -> nodes+edges).\n"
+                "  LookupTable and Sequence deletions require manual ref cleanup first.\n\n"
+                "dry_run=true previews changes without writing the file.\n"
+                "Always call validate_graph after structural changes."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["graph_path", "sandbox", "action", "element_type"],
+                "additionalProperties": False,
+                "properties": {
+                    "graph_path": {
+                        "type": "string",
+                        "description": "Path to the .grf file within the sandbox (e.g. 'graph/MyGraph.grf').",
+                    },
+                    "sandbox": {
+                        "type": "string",
+                        "description": "Sandbox code.",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "delete", "edit"],
+                        "description": "Operation: add inserts a new element, delete removes one, edit moves a Node or Edge to another Phase.",
+                    },
+                    "element_type": {
+                        "type": "string",
+                        "enum": [
+                            "Metadata", "Phase", "Node", "Edge", "Connection",
+                            "GraphParameter", "RichTextNote", "LookupTable",
+                            "DictionaryEntry", "Sequence",
+                        ],
+                        "description": "Type of graph element to operate on.",
+                    },
+                    "element_xml": {
+                        "type": "string",
+                        "description": (
+                            "[add only] Full XML string of the element to insert. "
+                            "Must be well-formed XML with the correct root tag for element_type. "
+                            "DictionaryEntry expects <Entry .../>. "
+                            "The LLM constructs this XML; the tool inserts it as-is."
+                        ),
+                    },
+                    "element_id": {
+                        "type": "string",
+                        "description": (
+                            "[delete and edit] Value of the element's identity attribute. "
+                            "For most types this is the 'id' attribute; "
+                            "for GraphParameter it is 'name'; "
+                            "for Phase it is the 'number' value; "
+                            "for DictionaryEntry it is the Entry 'name'."
+                        ),
+                    },
+                    "phase_number": {
+                        "type": "integer",
+                        "description": "[add Node/Edge only] Phase number to insert into. Required for Node and Edge.",
+                    },
+                    "target_phase_number": {
+                        "type": "integer",
+                        "description": "[edit Node/Edge only] Phase number to move the element into.",
+                    },
+                    "cascade": {
+                        "type": "boolean",
+                        "description": (
+                            "[delete only] When true, automatically remove dependent elements "
+                            "(edges when deleting a Node, edges when deleting Metadata, "
+                            "dbConnection attrs when deleting a Connection, "
+                            "contained nodes+edges when deleting a Phase). Default: false."
+                        ),
+                    },
+                    "validate": {
+                        "type": "boolean",
+                        "description": "Run Stage 1 local validation after the operation. Default: true. Set false for batch edits.",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Preview what would change without writing the graph file. Default: false.",
+                    },
+                },
+            },
+        ),
+        types.Tool(
+            name="graph_edit_properties",
+            description=(
+                "Set or update a property value on an existing graph element via XML DOM.\n"
+                "Companion to graph_edit_structure (which adds/deletes/moves whole elements).\n\n"
+                "USE FOR: changing attributes, CTL code, SQL, join keys, metadata records\n"
+                "  on elements that already exist in the graph.\n"
+                "DO NOT USE FOR: adding or removing whole elements (Metadata, Node, Edge, Phase, ...)\n"
+                "  -- use graph_edit_structure for that.\n\n"
                 "Two modes via attribute_name:\n"
-                "1. Plain name (e.g. 'recordsNumber', 'joinType', 'fileURL') \u2192 sets XML attribute on tag.\n"
-                "2. 'attr:' prefix (e.g. 'attr:transform', 'attr:sqlQuery', 'attr:joinKey') \u2192 sets <attr> "
-                "child with auto CDATA wrapping (do NOT wrap CDATA yourself).\n\n"
-                "For Metadata: set attribute_name='record', value=full <Record>...</Record> XML. "
+                "1. Plain name (e.g. 'recordsNumber', 'joinType', 'fileURL') -> sets XML attribute.\n"
+                "   USE THIS for short, simple values. This is the DEFAULT and preferred mode.\n"
+                "2. 'attr:' prefix (e.g. 'attr:transform', 'attr:sqlQuery') -> sets <attr> child\n"
+                "   with auto CDATA wrapping. Use ONLY when the value is multi-line code\n"
+                "   (CTL, SQL, XML) or contains characters unsafe in XML attributes (<, >, &, \").\n"
+                "   Do NOT use attr: for short single-value properties like 'enabled', 'joinType',\n"
+                "   'recordsNumber', 'fileURL', 'sortKey', etc. -- plain name is correct for those.\n\n"
+                "For Metadata: attribute_name='record', value=full <Record>...</Record> XML.\n"
                 "External metadata (.fmt files) cannot be modified here.\n"
                 "Always call validate_graph after using this tool."
             ),
@@ -1100,17 +1214,20 @@ async def handle_list_tools() -> List[types.Tool]:
                     "attribute_name": {
                         "type": "string",
                         "description": (
-                            "Plain name → XML attribute (e.g. 'recordsNumber', 'fileURL', 'joinType'). "
-                            "'attr:X' → <attr> CDATA child (e.g. 'attr:transform', 'attr:sqlQuery', 'attr:joinKey'). "
+                            "Plain name -> XML attribute. Use for short, simple values -- this is the default. "
+                            "Examples: 'recordsNumber', 'fileURL', 'joinType', 'enabled', 'sortKey', 'joinKey'.\n"
+                            "'attr:X' -> <attr> CDATA child. Use ONLY for multi-line code (CTL/SQL) or values "
+                            "containing XML-unsafe characters (<, >, &, \"). Examples: 'attr:transform', 'attr:sqlQuery'.\n"
                             "For Metadata: use 'record'."
                         ),
                     },
                     "value": {
                         "type": "string",
                         "description": (
-                            "New value. For attributes: simple string. "
-                            "For 'attr:': raw content (CTL/SQL/XML) — CDATA auto-wrapped, do NOT wrap yourself. "
-                            "For Metadata: full <Record>...</Record> XML."
+                            "New value. For plain attributes: simple string. "
+                            "For 'attr:': multi-line code or XML-unsafe content -- CDATA auto-wrapped, "
+                            "do NOT wrap yourself. "
+                            "For Metadata 'record': full <Record>...</Record> XML."
                         ),
                     },
                 },
@@ -1447,14 +1564,18 @@ async def handle_list_tools() -> List[types.Tool]:
                         "input_metadata": {
                             "type": "string",
                             "description": (
-                                "Input port metadata blocks labeled by role (e.g. 'Port 0 (master)'). "
+                                "Input port metadata in CloverDX XML format. Must be one or more "
+                                "<Metadata id=\"...\"><Record ...><Field .../></Record></Metadata> blocks, "
+                                "labeled by port role (e.g. 'Port 0 (master): <Metadata ...>'). "
                                 "Used for $in.N field-reference validation."
                             ),
                         },
                         "output_metadata": {
                             "type": "string",
                             "description": (
-                                "Output port metadata blocks labeled by role (e.g. 'Port 0 (rejected)'). "
+                                "Output port metadata in CloverDX XML format. Must be one or more "
+                                "<Metadata id=\"...\"><Record ...><Field .../></Record></Metadata> blocks, "
+                                "labeled by port role (e.g. 'Port 0 (rejected): <Metadata ...>'). "
                                 "Used for $out.N field-reference validation."
                             ),
                         },
@@ -1486,11 +1607,21 @@ async def handle_list_tools() -> List[types.Tool]:
                         },
                         "input_metadata": {
                             "type": "string",
-                            "description": "Input port metadata labeled by role (e.g. 'Port 0 (master)'). Maps to $in.N references.",
+                            "description": (
+                                "Input port metadata in CloverDX XML format. Must be one or more "
+                                "<Metadata id=\"...\"><Record ...><Field .../></Record></Metadata> blocks, "
+                                "labeled by port role (e.g. 'Port 0 (master): <Metadata ...>'). "
+                                "Maps to $in.N references."
+                            ),
                         },
                         "output_metadata": {
                             "type": "string",
-                            "description": "Output port metadata labeled by role (e.g. 'Port 0 (rejected)'). Maps to $out.N references.",
+                            "description": (
+                                "Output port metadata in CloverDX XML format. Must be one or more "
+                                "<Metadata id=\"...\"><Record ...><Field .../></Record></Metadata> blocks, "
+                                "labeled by port role (e.g. 'Port 0 (rejected): <Metadata ...>'). "
+                                "Maps to $out.N references."
+                            ),
                         },
                         "timeout": {
                             "type": "integer",
@@ -2083,7 +2214,7 @@ async def handle_list_tools() -> List[types.Tool]:
             name="get_edge_debug_data",
             description=(
                 "Fetch sample records from an edge of a debug run. "
-                "Returns JSON (default) or CSV (semicolong-delimited). Requires debug=true execution."
+                "Returns JSON (default) or CSV (pipe-delimited). Requires debug=true execution."
                 "Use to inspect mid-graph data for diagnosing transformation logic errors — e.g. checking what values reached a component's reject port."
             ),
             inputSchema={
@@ -2094,7 +2225,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     "edge_id":          {"type": "string",  "description": "Edge ID as defined in the graph XML"},
                     "record_count":     {"type": "integer", "description": "Max number of records to return (default: 50)."},
                     "from_rec":         {"type": "integer", "description": "Zero-based index of the first record to return (default: 0)."},
-                    "format":           {"type": "string",  "enum": ["json", "csv"], "description": "Output format. 'json' (default), 'csv' semicolon-delimited rows in edge metadata column order."},
+                    "format":           {"type": "string",  "enum": ["json", "csv"], "description": "Output format. 'json' (default), 'csv' pipe-delimited rows in edge metadata column order."},
                 },
             },
         ),
@@ -3343,6 +3474,119 @@ async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
         return _text(f"ERROR: {e}")
 
 
+async def tool_modify_graph_structure(args: Dict) -> List[types.TextContent]:
+    graph_path   = args.get("graph_path", "")
+    sandbox      = args.get("sandbox", "")
+    action       = args.get("action", "")
+    element_type = args.get("element_type", "")
+
+    if action not in ("add", "delete", "edit"):
+        return _text(json.dumps({"status": "error", "message": f"action must be 'add', 'delete', or 'edit', got '{action}'"}))
+    if element_type not in VALID_ELEMENT_TYPES:
+        return _text(json.dumps({"status": "error",
+                                 "message": f"Unknown element_type '{element_type}'. "
+                                            f"Valid: {', '.join(sorted(VALID_ELEMENT_TYPES))}"}))
+
+    # Download graph
+    try:
+        xml_text = get_soap_client().download_file(sandbox, graph_path)
+    except Exception as exc:
+        return _text(json.dumps({"status": "error",
+                                 "message": f"Could not download graph: {exc}"}))
+
+    svc = GraphStructureService(xml_text)
+    dry_run  = bool(args.get("dry_run", False))
+    validate = bool(args.get("validate", True))
+
+    if action == "add":
+        element_xml = args.get("element_xml")
+        if not element_xml:
+            return _text(json.dumps({"status": "error",
+                                     "message": "element_xml is required for action='add'"}))
+        phase_number = args.get("phase_number")
+        if phase_number is not None:
+            try:
+                phase_number = int(phase_number)
+            except (TypeError, ValueError):
+                return _text(json.dumps({"status": "error",
+                                         "message": "phase_number must be an integer"}))
+        result = svc.add_element(
+            element_type=element_type,
+            element_xml=element_xml,
+            phase_number=phase_number,
+            validate=validate,
+            dry_run=dry_run,
+        )
+    elif action == "edit":
+        element_id = args.get("element_id")
+        if not element_id:
+            return _text(json.dumps({"status": "error",
+                                     "message": "element_id is required for action='edit'"}))
+        target_phase_number = args.get("target_phase_number")
+        if target_phase_number is None:
+            return _text(json.dumps({"status": "error",
+                                     "message": "target_phase_number is required for action='edit'"}))
+        try:
+            target_phase_number = int(target_phase_number)
+        except (TypeError, ValueError):
+            return _text(json.dumps({"status": "error",
+                                     "message": "target_phase_number must be an integer"}))
+        result = svc.move_element(
+            element_type=element_type,
+            element_id=str(element_id),
+            target_phase_number=target_phase_number,
+            validate=validate,
+            dry_run=dry_run,
+        )
+    else:  # delete
+        element_id = args.get("element_id")
+        if not element_id:
+            return _text(json.dumps({"status": "error",
+                                     "message": "element_id is required for action='delete'"}))
+        cascade = bool(args.get("cascade", False))
+        result = svc.delete_element(
+            element_type=element_type,
+            element_id=str(element_id),
+            cascade=cascade,
+            validate=validate,
+            dry_run=dry_run,
+        )
+
+    if not result.ok:
+        return _text(json.dumps({
+            "status": "error",
+            "element_type": element_type,
+            "errors": result.errors,
+            "warnings": result.warnings,
+            "changes": result.changes,
+        }, indent=2))
+
+    # Upload result (unless dry-run)
+    if not dry_run and result.xml_out is not None:
+        dir_path, filename = os.path.split(graph_path)
+        try:
+            get_soap_client().upload_file(
+                sandbox=sandbox,
+                dir_path=dir_path,
+                filename=filename,
+                content=result.xml_out,
+            )
+        except Exception as exc:
+            return _text(json.dumps({"status": "error",
+                                     "message": f"Graph modified in memory but upload failed: {exc}",
+                                     "changes": result.changes}))
+
+    return _text(json.dumps({
+        "status": "dry_run" if dry_run else "ok",
+        "action": action,
+        "element_type": element_type,
+        "graph_path": graph_path,
+        "sandbox": sandbox,
+        "changes": result.changes,
+        "warnings": result.warnings,
+    }, indent=2))
+
+
 async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent]:
     graph_path     = args["graph_path"]
     sandbox        = args["sandbox"]
@@ -3581,7 +3825,8 @@ _TOOL_MAP = {
     "get_edge_debug_info":     tool_get_edge_debug_info,
     "get_edge_debug_metadata": tool_get_edge_debug_metadata,
     "get_edge_debug_data":     tool_get_edge_debug_data,
-    "set_graph_element_attribute": tool_set_graph_element_attribute,
+    "graph_edit_structure":     tool_modify_graph_structure,
+    "graph_edit_properties":     tool_set_graph_element_attribute,
     "list_resources":          tool_list_resources,
     "read_resource":           tool_read_resource,
     "get_workflow_guide":      tool_get_workflow_guide,

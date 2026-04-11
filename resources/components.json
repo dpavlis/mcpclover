@@ -1233,7 +1233,7 @@
     "passThrough": true,
     "shortDescription": "Copies data to output ports.",
     "description": "Receives data through connected input port and copies data records to all connected output ports.",
-    "usage":"When to use: Broadcast one input stream to multiple output ports unchanged — every record goes to ALL connected outputs simultaneously. Use when the same data needs to feed multiple downstream branches in parallel (e.g. write to DB and to a CSV file at the same time, or feed two different transformation chains with the same source records).\nConstraints: All connected output ports receive every record — there is no content-based routing. Use PARTITION if different records should go to different ports. Use REFORMAT if the copies need to be transformed differently per output.",
+    "usage": "When to use: Broadcast one input stream to multiple output ports unchanged \u2014 every record goes to ALL connected outputs simultaneously. Use when the same data needs to feed multiple downstream branches in parallel (e.g. write to DB and to a CSV file at the same time, or feed two different transformation chains with the same source records).\nConstraints: All connected output ports receive every record \u2014 there is no content-based routing. Use PARTITION if different records should go to different ports. Use REFORMAT if the copies need to be transformed differently per output.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1257,7 +1257,7 @@
     "passThrough": true,
     "shortDescription": "Concatenates data flows.",
     "description": "Receives data through all connected input ports in turn. Gets all records from each input port, sends them to output port and continues with the next input port. Skips ports without incoming data. Terminates when all incoming records are received and sent to connected output port.",
-    "usage":"When to use: Merge N streams where output must preserve port order — all records from port 0 first, then all from port 1, etc. Order within each stream is preserved.\nConstraints: Slower than SIMPLE_GATHER — waits for each port to finish before moving to the next. Input does NOT need to be sorted.",
+    "usage": "When to use: Merge N streams where output must preserve port order \u2014 all records from port 0 first, then all from port 1, etc. Order within each stream is preserved.\nConstraints: Slower than SIMPLE_GATHER \u2014 waits for each port to finish before moving to the next. Input does NOT need to be sorted.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -1280,7 +1280,7 @@
     "passThrough": true,
     "shortDescription": "Gathers data flows.",
     "description": "Receives data incoming through all connected input ports in the order so that all records are gathered and send out through output port as soon as possible.",
-    "usage":"When to use: Merge N streams where output order doesn't matter. Fastest option — emits records from whichever port has data ready.\nConstraints: Output order is non-deterministic. Do NOT use if downstream requires sorted or port-ordered output.",
+    "usage": "When to use: Merge N streams where output order doesn't matter. Fastest option \u2014 emits records from whichever port has data ready.\nConstraints: Output order is non-deterministic. Do NOT use if downstream requires sorted or port-ordered output.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -1301,7 +1301,7 @@
     "type": "REFORMAT",
     "shortDescription": "Maps (transforms) data from one input to one or multiple outputs. Replaces Reformat component.",
     "description": "Receives data through connected input port, transforms them in a user specified way, and sends such new outgoing data records to all connected output ports. Implements org.jetel.component.RecordTransform interface.",
-    "usage":"When to use: 1->1 transformation where each input record produces one (modified, enriched, or restructured) output record. Primary use is to transform data structure or content between input and output metadata. Optionally, can produce records on different output ports to support routing or different output structures; return a port number (or ALL) to control routing.\nConstraints: Not intended for data-driven record expansion or aggregation across multiple input records. Use NORMALIZER when multiple output records per input are required. Use DENORMALIZER when a single output record should be created from a group of multiple input records.",
+    "usage": "When to use: 1->1 transformation where each input record produces one (modified, enriched, or restructured) output record. Primary use is to transform data structure or content between input and output metadata. Optionally, can produce records on different output ports to support routing or different output structures; return a port number (or ALL) to control routing.\nConstraints: Not intended for data-driven record expansion or aggregation across multiple input records. Use NORMALIZER when multiple output records per input are required. Use DENORMALIZER when a single output record should be created from a group of multiple input records.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1579,7 +1579,7 @@
     "viewGridData": false,
     "shortDescription": "Or DBWriter, replaces DBOutputTable. Writes data into database using JDBC driver. Supported databases are Amazon Redshift, Microsoft Access, Microsoft SQL Server, MySQL, Oracle, PostgreSQL, SQLite, Sybase, Vertica, DB2 and any other database with JDBC compliant driver.",
     "description": "Receives data through connected input port, connects to database using JDBC driver, performs database operation and loads data records into specified DB table. Correspondence between input metadata and DB table columns must be defined.",
-    "usage":"When to use: Write records from a data stream into a database table via JDBC. Three configuration modes — choose based on how closely field names match column names and how much SQL control is needed:\n- dbTable (auto-mapping): Field names in metadata exactly match DB column names. CloverDX auto-generates the INSERT. Simplest option — no SQL required. Use when schema alignment is clean.\n- sqlQuery (manual SQL): Full control over the INSERT statement. Field-to-column mapping syntax: $cloverField:=dbColumn. Use when field names differ from column names, or when custom SQL behaviour is needed (ON CONFLICT, MERGE, stored procedure call, etc.).\n- url: External .sql file containing the query. Use when the SQL is long or shared across multiple graphs.\n\nPerformance: Enable batchMode=true with appropriate batchSize (default 25) for significantly faster bulk loads. Tune commit interval (default 100) to balance transaction overhead vs memory.\nConstraints: Requires a defined dbConnection. Port 0 (rejected) receives rows that failed DB insertion when maxErrors > 0. Port 1 (autogenerated) receives DB-generated key values (e.g. auto-increment IDs) when the DB returns them.",
+    "usage": "When to use: Write records from a data stream into a database table via JDBC. Three configuration modes \u2014 choose based on how closely field names match column names and how much SQL control is needed:\n- dbTable (auto-mapping): Field names in metadata exactly match DB column names. CloverDX auto-generates the INSERT. Simplest option \u2014 no SQL required. Use when schema alignment is clean.\n- sqlQuery (manual SQL): Full control over the INSERT statement. Field-to-column mapping syntax: $cloverField:=dbColumn. Use when field names differ from column names, or when custom SQL behaviour is needed (ON CONFLICT, MERGE, stored procedure call, etc.).\n- url: External .sql file containing the query. Use when the SQL is long or shared across multiple graphs.\n\nPerformance: Enable batchMode=true with appropriate batchSize (default 25) for significantly faster bulk loads. Tune commit interval (default 100) to balance transaction overhead vs memory.\nConstraints: Requires a defined dbConnection. Port 0 (rejected) receives rows that failed DB insertion when maxErrors > 0. Port 1 (autogenerated) receives DB-generated key values (e.g. auto-increment IDs) when the DB returns them.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1934,7 +1934,7 @@
     "passThrough": true,
     "shortDescription": "Removes duplicate records.",
     "description": "Receives sorted data records through connected input port and removes records that are in duplicate with a view to the specified key values. Keeps defined number of records from either the start (First) or the end (Last) of each group with the same key value. If desired, only unique records are kept. Dedup key is name or combination of names of field(s) of incoming records. Rejected records are sent to the optional second output port if connected.",
-    "usage":"When to use: Remove duplicate records from a stream based on key field values. Keeps the first, last, or a defined count of records per duplicate group. Optionally routes duplicates to a second output port for inspection or logging rather than silently discarding them. If no dedupKey is defined, the component operates on the entire input as a single group, effectively acting as a global head/tail (first/last N records).\nConstraints: Input MUST be sorted on dedupKey when sorted=true (default) — add EXT_SORT or FAST_SORT upstream. Set sorted=false to handle unsorted input but this uses significantly more memory. Use DATA_INTERSECTION instead if you need to compare duplicates across two separate streams rather than within one stream.",
+    "usage": "When to use: Remove duplicate records from a stream based on key field values. Keeps the first, last, or a defined count of records per duplicate group. Optionally routes duplicates to a second output port for inspection or logging rather than silently discarding them. If no dedupKey is defined, the component operates on the entire input as a single group, effectively acting as a global head/tail (first/last N records).\nConstraints: Input MUST be sorted on dedupKey when sorted=true (default) \u2014 add EXT_SORT or FAST_SORT upstream. Set sorted=false to handle unsorted input but this uses significantly more memory. Use DATA_INTERSECTION instead if you need to compare duplicates across two separate streams rather than within one stream.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2211,7 +2211,7 @@
     "type": "CROSS_JOIN",
     "shortDescription": "Performs cartesian product.",
     "description": "Receives data records through all connected input ports and performs cartesian product on them. Each connected input port represents one set of records. Results are sent to the connected output port.",
-    "usage" : "When to use: Cartesian product — every record from port 0 combined with every record from port 1. Use for combinatorial generation or when explicit all-pairs combination is needed.\nConstraints: Output size = |port0| × |port1|. Dangerous for large inputs. Only use when cartesian product is intentional.",
+    "usage": "When to use: Cartesian product \u2014 every record from port 0 combined with every record from port 1. Use for combinatorial generation or when explicit all-pairs combination is needed.\nConstraints: Output size = |port0| \u00d7 |port1|. Dangerous for large inputs. Only use when cartesian product is intentional.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2431,7 +2431,7 @@
     "type": "EXT_MERGE_JOIN",
     "shortDescription": "Joins sorted data flows.",
     "description": "Receives sorted data through all connected input ports, for each join key value contained in data records incoming through the first input port (drivers) searches corresponding data records incoming through the other port(s) (slaves) with the same key value. Every combination of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port.",
-    "usage": "When to use: Equality join. Both driver and slave are already sorted on the join key (or you're adding EXT_SORT upstream anyway). More memory-efficient than EXT_HASH_JOIN for large slaves.\nConstraints: BOTH inputs MUST be pre-sorted on join key — add EXT_SORT or FAST_SORT upstream if not.\nUse EXT_HASH_JOIN if inputs are unsorted and slave fits in memory.",
+    "usage": "When to use: Equality join. Both driver and slave are already sorted on the join key (or you're adding EXT_SORT upstream anyway). More memory-efficient than EXT_HASH_JOIN for large slaves.\nConstraints: BOTH inputs MUST be pre-sorted on join key \u2014 add EXT_SORT or FAST_SORT upstream if not.\nUse EXT_HASH_JOIN if inputs are unsorted and slave fits in memory.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2999,7 +2999,7 @@
     "type": "EXT_HASH_JOIN",
     "shortDescription": "Joins unsorted data flows.",
     "description": "Receives data through all connected input ports, for every connected slave input port (all input ports except the first) creates hash table from data records incoming through such slave input port (for this reason, number of incoming slave data records must be sufficiently small), for each join key value contained in data records incoming through the first input port (drivers) looks up every hash table and searches corresponding slave data records with the same key value. Every tuple of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port.",
-    "usage": "When to use: Equality join. Input does NOT need to be sorted. Slave side loaded entirely into memory as a hash table — slave must fit in RAM. Best for large driver + small-to-medium slave.\nConstraints: Slave size limited by available memory.\nUse EXT_MERGE_JOIN instead if both streams are already sorted or if slave is large.",
+    "usage": "When to use: Equality join. Input does NOT need to be sorted. Slave side loaded entirely into memory as a hash table \u2014 slave must fit in RAM. Best for large driver + small-to-medium slave.\nConstraints: Slave size limited by available memory.\nUse EXT_MERGE_JOIN instead if both streams are already sorted or if slave is large.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3611,7 +3611,7 @@
     "passThrough": true,
     "shortDescription": "Sorts incoming data.",
     "description": "Receives data records through connected input port, sorts them according to specified sort key and sends them to all connected output ports. Sort key is name or combination of names of field(s) of incoming records. Sort order can be either Ascending (default) or Descending. Any number of records can be sorted. If internal buffer is full, external sorting is performed.",
-    "usage":"When to use: Dataset may be larger than available RAM. Spills to disk if buffer exhausted. Use when data size is unknown or large. When sort stability is required.\nConstraints: Slower than FAST_SORT due to potential disk I/O.",
+    "usage": "When to use: Dataset may be larger than available RAM. Spills to disk if buffer exhausted. Use when data size is unknown or large. When sort stability is required.\nConstraints: Slower than FAST_SORT due to potential disk I/O.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3700,7 +3700,7 @@
     "passThrough": true,
     "shortDescription": "Sorts incoming data in groups.",
     "description": "Receives data records through connected input port, sorts them according to specified sort key within groups of data records. The groups are defined by previous sorting of the records by the group key, with each group consisting of records considered equal when sorting by the group key. Sends sorted data records to all connected output ports. Sort key (as well as group key) is name or combination of names of field(s) of incoming data records. Sort order of each data field can be either Ascending (default) or Descending. Can be different for different key fields. Any number of records can be sorted. If the internal buffer is full, external sorting is performed.",
-    "usage":"When to use: Sort records within pre-existing groups without re-sorting the entire dataset globally. Input is already grouped by groupKey (but not necessarily sorted globally) and records within each group need internal ordering by a different sortKey. Much cheaper than a full EXT_SORT when the stream is already partitioned — only one group is buffered at a time.\nConstraints: Input MUST already be grouped on groupKey (consecutive records with the same key value form a group). Does NOT perform global sorting. If input is not already grouped, add sorting on groupKey upstream first. Use EXT_SORT or FAST_SORT instead if you need a full global sort.",
+    "usage": "When to use: Sort records within pre-existing groups without re-sorting the entire dataset globally. Input is already grouped by groupKey (but not necessarily sorted globally) and records within each group need internal ordering by a different sortKey. Much cheaper than a full EXT_SORT when the stream is already partitioned \u2014 only one group is buffered at a time.\nConstraints: Input MUST already be grouped on groupKey (consecutive records with the same key value form a group). Does NOT perform global sorting. If input is not already grouped, add sorting on groupKey upstream first. Use EXT_SORT or FAST_SORT instead if you need a full global sort.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3764,7 +3764,7 @@
     "passThrough": true,
     "shortDescription": "Splits incoming data flow.",
     "description": "Receives data through connected input port, splits incoming data flow into more flows and sends each of them to different connected output port.",
-    "usage": "When to use: Route each record to a specific output port based on content — value ranges, hash of a key field, or CTL2 logic returning a port number. Content-aware routing.\nConstraints: Record goes to exactly one port. Define routing via ranges, partitionKey (hash-based), or partitionSource (CTL2).",
+    "usage": "When to use: Route each record to a specific output port based on content \u2014 value ranges, hash of a key field, or CTL2 logic returning a port number. Content-aware routing.\nConstraints: Record goes to exactly one port. Define routing via ranges, partitionKey (hash-based), or partitionSource (CTL2).",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3856,7 +3856,7 @@
     "type": "DATA_INTERSECTION",
     "shortDescription": "Intersects two data flows.",
     "description": "Receives sorted data flows through both input ports, finds data records with the same key values, converts these records to outgoing records according to defined transformation and sends these resulting records to the second output port. Data records contained only in the first or second data flow are sent to the first or third output ports, respectively.",
-    "usage":"When to use: Set operations (intersect, diff, union) between two sorted streams. Produces three output ports covering all three logical regions simultaneously — more efficient than multiple EXT_FILTER passes.\nConstraints: BOTH inputs MUST be pre-sorted on joinKey. Use EXT_HASH_JOIN for equality join where you just want matched records without needing the unmatched subsets separately",
+    "usage": "When to use: Set operations (intersect, diff, union) between two sorted streams. Produces three output ports covering all three logical regions simultaneously \u2014 more efficient than multiple EXT_FILTER passes.\nConstraints: BOTH inputs MUST be pre-sorted on joinKey. Use EXT_HASH_JOIN for equality join where you just want matched records without needing the unmatched subsets separately",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3994,7 +3994,7 @@
     "type": "AGGREGATE",
     "shortDescription": "Aggregates information about data.",
     "description": "Receives data through connected input port, aggregates information about groups of adjacent records with the same aggregate key value, creates outgoing records from this information along with other input fields according to output metadata and sends these resulting records to all connected output ports. Can by used similarly as GROUP BY in SQL.",
-    "usage":"When to use: Standard GROUP BY — sum, avg, count, min, max, first, last on groups. No custom logic needed. Fastest option for standard aggregations.\nConstraints: Only built-in aggregation functions. Input sorted=true (default) requires pre-sorted input; sorted=false handles unsorted but uses more memory.\nPrefer over ROLLUP when built-in functions are sufficient.",
+    "usage": "When to use: Standard GROUP BY \u2014 sum, avg, count, min, max, first, last on groups. No custom logic needed. Fastest option for standard aggregations.\nConstraints: Only built-in aggregation functions. Input sorted=true (default) requires pre-sorted input; sorted=false handles unsorted but uses more memory.\nPrefer over ROLLUP when built-in functions are sufficient.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -5483,7 +5483,7 @@
     "type": "DBJOIN",
     "shortDescription": "Joins incoming data flow with records from database table.",
     "description": "Receives data through connected input port (drivers), connects to database, for each join key value contained in driver data records searches corresponding data records with the same key value in database table (slaves). Every pair of driver and slave records is sent to transformation class that joins them to form outgoing data flow. Resulting data records are sent to the first output port. Driver records without slave are sent to the second output port if connected and if inner join (default) is performed.",
-    "usage":"When to use: Join driver stream against a database table via SQL query per record. Slave data lives in DB, not in memory. Use when slave is in a DB and too large for a lookup table, or when slave data must be current (real-time DB lookup per record).\nConstraints: One DB query per driver record (or per cache miss) — slow for large driver streams. maxCached (default 100) caches recent results. For bulk joins, prefer loading DB data with DB_INPUT_TABLE then joining with EXT_HASH_JOIN.",
+    "usage": "When to use: Join driver stream against a database table via SQL query per record. Slave data lives in DB, not in memory. Use when slave is in a DB and too large for a lookup table, or when slave data must be current (real-time DB lookup per record).\nConstraints: One DB query per driver record (or per cache miss) \u2014 slow for large driver streams. maxCached (default 100) caches recent results. For bulk joins, prefer loading DB data with DB_INPUT_TABLE then joining with EXT_HASH_JOIN.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6176,7 +6176,7 @@
     "type": "NORMALIZER",
     "shortDescription": "Normalizes data.",
     "description": "Receives data through connected input port, splits each data record into more records and sends all resulting records to all connected output ports.",
-    "usage":"When to use: Split ONE input record into a variable number of output records determined at runtime (e.g. expand a list field, unpack a delimited string into individual rows). CTL entry: count() returns how many records to produce, transform(integer idx) produces record at index idx.\nConstraints: Purpose-built for 1→N. Prefer over REFORMAT for this pattern — cleaner CTL, explicit count/transform separation.",
+    "usage": "When to use: Split ONE input record into a variable number of output records determined at runtime (e.g. expand a list field, unpack a delimited string into individual rows). CTL entry: count() returns how many records to produce, transform(integer idx) produces record at index idx.\nConstraints: Purpose-built for 1\u2192N. Prefer over REFORMAT for this pattern \u2014 cleaner CTL, explicit count/transform separation.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6253,7 +6253,7 @@
     "type": "DENORMALIZER",
     "shortDescription": "Denormalizes data.",
     "description": "Denormalizes input records - ie composes one output record from several input records using user-specified transformation. One group is defined with the same value on the given field(s) or has the fixed size. The transformation is supposed to implement interface RecordDenormalize.\nSends all resulting records to all connected output ports.",
-    "usage":"When to use: Collapse N consecutive input records into exactly 1 output record per group. Simpler than ROLLUP for the pure N→1 case.\nConstraints: Input MUST be sorted on key. Exactly one output record per group (unlike ROLLUP which can emit multiple). Use ROLLUP if you need to emit multiple output records per group or need more complex state.",
+    "usage": "When to use: Collapse N consecutive input records into exactly 1 output record per group. Simpler than ROLLUP for the pure N\u21921 case.\nConstraints: Input MUST be sorted on key. Exactly one output record per group (unlike ROLLUP which can emit multiple). Use ROLLUP if you need to emit multiple output records per group or need more complex state.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6397,7 +6397,7 @@
     "type": "ROLLUP",
     "shortDescription": "Executes a rollup transform.",
     "description": "Receives data through connected input port, groups incoming records by their key values and lets user transformation arbitrarily create new data records from the group by aggregating, composing or splitting. Sends these new data records through the connected output port(s) as specified by the transformation. Rollup function is superset for (De)Normalizer components.",
-    "usage": "When to use: Custom group processing logic that AGGREGATE can't express — e.g. conditional aggregation, producing multiple output records per group, or accumulating complex state. Full CTL2 control via initGroup/updateGroup/finishGroup/transform functions.\nConstraints: Requires CTL2 code. Input must be sorted on groupKeyFields by default.\nMore complex to write than AGGREGATE. Use AGGREGATE if built-in aggregation functions cover the need.",
+    "usage": "When to use: Custom group processing logic that AGGREGATE can't express \u2014 e.g. conditional aggregation, producing multiple output records per group, or accumulating complex state. Full CTL2 control via initGroup/updateGroup/finishGroup/transform functions.\nConstraints: Requires CTL2 code. Input must be sorted on groupKeyFields by default.\nMore complex to write than AGGREGATE. Use AGGREGATE if built-in aggregation functions cover the need.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7129,7 +7129,7 @@
     "type": "XML_EXTRACT",
     "shortDescription": "Reads data from XML files.",
     "description": "Reads data from XML files, converts elements matched by mapping along with their children to data records and sends them to different connected output ports as defined by mapping.",
-    "usage":"When to use: Large files (streaming SAX parser — low memory). Hierarchical extraction to multiple output ports using parentKey/generatedKey to propagate parent keys to child records. Best for XML/JSON→DB pipelines with parent-child relationships.\nConstraints: CloverDX Mappings XML syntax (not XPath). Less expressive than XPath for complex path conditions.",
+    "usage": "When to use: Large files (streaming SAX parser \u2014 low memory). Hierarchical extraction to multiple output ports using parentKey/generatedKey to propagate parent keys to child records. Best for XML/JSON\u2192DB pipelines with parent-child relationships.\nConstraints: CloverDX Mappings XML syntax (not XPath). Less expressive than XPath for complex path conditions.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7279,7 +7279,7 @@
     "type": "JSON_EXTRACT",
     "shortDescription": "Reads data from JSON files.",
     "description": "Reads data from JSON files, converts elements matched by mapping along with their children to data records and sends them to different connected output ports as defined by mapping.",
-    "usage":"When to use: Large JSON files (streaming SAX parser — low memory footprint). Hierarchical extraction to multiple output ports using parentKey/generatedKey to propagate parent identifiers to child records. Best for JSON→DB pipelines with nested object/array relationships where the full document should not be loaded into memory.\nConstraints: CloverDX Mappings XML syntax — not JSONPath. Less expressive than JSONPath for complex conditional path filters. Use JSON_READER instead for smaller files where JSONPath expressions are clearer than the Mappings syntax.",
+    "usage": "When to use: Large JSON files (streaming SAX parser \u2014 low memory footprint). Hierarchical extraction to multiple output ports using parentKey/generatedKey to propagate parent identifiers to child records. Best for JSON\u2192DB pipelines with nested object/array relationships where the full document should not be loaded into memory.\nConstraints: CloverDX Mappings XML syntax \u2014 not JSONPath. Less expressive than JSONPath for complex conditional path filters. Use JSON_READER instead for smaller files where JSONPath expressions are clearer than the Mappings syntax.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7395,7 +7395,7 @@
     "defaultVisibility": "etlGraph",
     "shortDescription": "Reads data from XML.",
     "description": "Reads data from XML, converts properties matched by XPath defined in mapping along with their direct children to data records and sends them into different connected output ports as defined by mapping.",
-    "usage":"When to use: Smaller/medium files where entire document fits in memory (DOM).Complex or irregular structure better expressed with XPath.\nConstraints: Loads entire document into RAM — avoid for large (>>5M) files.",
+    "usage": "When to use: Smaller/medium files where entire document fits in memory (DOM).Complex or irregular structure better expressed with XPath.\nConstraints: Loads entire document into RAM \u2014 avoid for large (>>5M) files.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -8495,67 +8495,67 @@
     ]
   },
   {
-  "category": "dataQuality",
-  "name": "Validator",
-  "type": "VALIDATOR",
-  "shortDescription": "Validates data based on specified rules.",
-  "description": "Allows you to specify a set of rules and check the validity of incoming data based on these rules. Receives data records through connected input port, valid data are sent to first output port, invalid on the second output port.",
-  "inputPorts": [
-    {
-      "type": "singlePort",
-      "name": "0",
-      "required": true
-    }
-  ],
-  "outputPorts": [
-    {
-      "type": "singlePort",
-      "name": "0",
-      "required": true,
-      "label": "valid"
-    },
-    {
-      "type": "singlePort",
-      "name": "1",
-      "required": false,
-      "label": "invalid",
-      "metadata": {
-        "id": "Validator_InvalidRecords"
+    "category": "dataQuality",
+    "name": "Validator",
+    "type": "VALIDATOR",
+    "shortDescription": "Validates data based on specified rules.",
+    "description": "Allows you to specify a set of rules and check the validity of incoming data based on these rules. Receives data records through connected input port, valid data are sent to first output port, invalid on the second output port.",
+    "inputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true
       }
-    }
-  ],
-  "properties": [
-    {
-      "name": "rules",
-      "label": "Validation rules",
-      "modifiable": true,
-      "nullable": true,
-      "required": "!externalRulesURL",
-      "redundant": "externalRulesURL",
-      "primaryAttribute": true,
-      "type": "validatorRules"
-    },
-    {
-      "name": "externalRulesURL",
-      "label": "Validation rules URL",
-      "modifiable": true,
-      "nullable": true,
-      "required": "!rules",
-      "redundant": "rules",
-      "delegate": "rules",
-      "type": "file",
-      "selectionMode": "file_only"
-    },
-    {
-      "name": "errorMapping",
-      "label": "Error output mapping",
-      "modifiable": true,
-      "nullable": true,
-      "type": "validatorErrorMapping",
-      "outputPortName": "1"
-    }
-  ]
-},
+    ],
+    "outputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true,
+        "label": "valid"
+      },
+      {
+        "type": "singlePort",
+        "name": "1",
+        "required": false,
+        "label": "invalid",
+        "metadata": {
+          "id": "Validator_InvalidRecords"
+        }
+      }
+    ],
+    "properties": [
+      {
+        "name": "rules",
+        "label": "Validation rules",
+        "modifiable": true,
+        "nullable": true,
+        "required": "!externalRulesURL",
+        "redundant": "externalRulesURL",
+        "primaryAttribute": true,
+        "type": "validatorRules"
+      },
+      {
+        "name": "externalRulesURL",
+        "label": "Validation rules URL",
+        "modifiable": true,
+        "nullable": true,
+        "required": "!rules",
+        "redundant": "rules",
+        "delegate": "rules",
+        "type": "file",
+        "selectionMode": "file_only"
+      },
+      {
+        "name": "errorMapping",
+        "label": "Error output mapping",
+        "modifiable": true,
+        "nullable": true,
+        "type": "validatorErrorMapping",
+        "outputPortName": "1"
+      }
+    ]
+  },
   {
     "category": "dataQuality",
     "name": "EmailFilter",
@@ -9215,7 +9215,7 @@
     "type": "FAST_SORT",
     "shortDescription": "Sorts incoming data. This commercial version uses an improved version of external sort and is up to 2.5 times faster than ExtSort.",
     "description": "Receives data records through connected input port, sorts them according to specified sort key and sends them to output port. Sort key is name or combination of names of field(s) of incoming records. Sort order can be either ascending (default) or descending. Any number of records can be sorted. If internal buffer is full, external sorting is performed. FastSort can be up to 2.5 times faster than ExtSort. Can work well with international characters.",
-    "usage" : "When to use: Dataset fits comfortably in memory. Significantly faster than EXT_SORT for in-memory data.\nConstraints: No disk spill — will fail or degrade if data exceeds available RAM. Does not guarantee sort stability. Use EXT_SORT if size is of concern or sort stability is required.",
+    "usage": "When to use: Dataset fits comfortably in memory. Significantly faster than EXT_SORT for in-memory data.\nConstraints: No disk spill \u2014 will fail or degrade if data exceeds available RAM. Does not guarantee sort stability. Use EXT_SORT if size is of concern or sort stability is required.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9510,7 +9510,7 @@
     "type": "RELATIONAL_JOIN",
     "shortDescription": "Joins data records that are not equal with respect to a given join key and operator.",
     "description": "Receives sorted data through both connected input ports, for each join key value contained in data records incoming through the first input port (drivers) searches corresponding data records incoming through the second input port (slaves) with the key values specified by one of the five possible join relation operators (e.g., non-equal, greater than, etc.). Thus, joining is performed based on these relations instead the exact matching required in the other joiners. For each join relation, sort order is strictly defined and must be the same for both inputs. Every combination of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port.",
-    "usage" : "When to use: Non-equality join conditions (range, inequality, BETWEEN-style). e.g. join records where date falls within an interval.\nConstraints: Both inputs must be sorted. Very specialized — use equality joiners for standard key-based joins.",
+    "usage": "When to use: Non-equality join conditions (range, inequality, BETWEEN-style). e.g. join records where date falls within an interval.\nConstraints: Both inputs must be sorted. Very specialized \u2014 use equality joiners for standard key-based joins.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -10928,7 +10928,7 @@
     "type": "JSON_READER",
     "shortDescription": "Reads data from JSON.",
     "description": "Reads data from JSON, converts properties matched by XPath defined in mapping along with their direct children to data records and sends them into different connected output ports as defined by mapping.",
-    "usage":"When to use: Smaller or medium-sized JSON files where the entire document fits comfortably in memory (DOM parser). Complex or irregular JSON structure that is more naturally expressed with JSONPath than with CloverDX Mappings XML syntax.\nConstraints: Loads the entire document into RAM — avoid for large files (practical limit ~5–10 MB depending on available heap). Use JSON_EXTRACT instead for large files or when hierarchical multi-port extraction with parentKey/generatedKey is needed.",
+    "usage": "When to use: Smaller or medium-sized JSON files where the entire document fits comfortably in memory (DOM parser). Complex or irregular JSON structure that is more naturally expressed with JSONPath than with CloverDX Mappings XML syntax.\nConstraints: Loads the entire document into RAM \u2014 avoid for large files (practical limit ~5\u201310 MB depending on available heap). Use JSON_EXTRACT instead for large files or when hierarchical multi-port extraction with parentKey/generatedKey is needed.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13425,7 +13425,7 @@
     "type": "LOAD_BALANCING_PARTITION",
     "shortDescription": "Splits incoming data flow to available output ports.",
     "description": "Receives data through connected input port, splits incoming data flow into more flows to ensure all output ports are balanced employed.",
-    "usage":"When to use: Distribute records evenly across N parallel processing branches where content doesn't determine destination — pure throughput scaling. Round-robin distribution.\nConstraints: No content awareness — do NOT use when record destination must depend on field values. Use PARTITION for content-based routing.",
+    "usage": "When to use: Distribute records evenly across N parallel processing branches where content doesn't determine destination \u2014 pure throughput scaling. Round-robin distribution.\nConstraints: No content awareness \u2014 do NOT use when record destination must depend on field values. Use PARTITION for content-based routing.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -16139,7 +16139,7 @@
       }
     ]
   },
-    {
+  {
     "category": "aiml",
     "name": "AIAnonymizer",
     "type": "AI_ANONYMIZER",
@@ -16906,6 +16906,500 @@
         "nullable": true,
         "category": "errorHandling",
         "type": "int"
+      }
+    ]
+  },
+  {
+    "category": "readers",
+    "name": "SpreadsheetDataReader",
+    "type": "SPREADSHEET_READER",
+    "shortDescription": "Reads data from Excel files (.xls, .xlsx).",
+    "description": "Reads specified sheets of Excel files, converts their contents to data records and sends them to connected output port. Mapping of sheet content to output metadata must be defined.",
+    "inputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": false,
+        "label": "input"
+      }
+    ],
+    "outputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true,
+        "label": "output"
+      },
+      {
+        "type": "singlePort",
+        "name": "1",
+        "label": "logs",
+        "metadata": {
+          "id": "SpreadsheetReader_Error"
+        }
+      }
+    ],
+    "properties": [
+      {
+        "name": "fileURL",
+        "label": "File URL",
+        "modifiable": true,
+        "nullable": true,
+        "required": true,
+        "category": "basic",
+        "type": "file",
+        "selectionMode": "file_only"
+      },
+      {
+        "name": "sheet",
+        "label": "Sheet",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "0",
+        "category": "basic",
+        "type": "spreadsheetSheetName"
+      },
+      {
+        "name": "mapping",
+        "label": "Mapping",
+        "modifiable": true,
+        "primaryAttribute": true,
+        "redundant": "mappingURL",
+        "category": "basic",
+        "type": "spreadsheetMapping"
+      },
+      {
+        "name": "mappingURL",
+        "label": "Mapping URL",
+        "modifiable": true,
+        "nullable": true,
+        "redundant": "mapping",
+        "delegate": "mapping",
+        "category": "basic",
+        "type": "file"
+      },
+      {
+        "name": "dataPolicy",
+        "label": "Data policy",
+        "modifiable": true,
+        "nullable": true,
+        "category": "deprecated",
+        "type": "enum",
+        "values": [
+          {
+            "value": "strict",
+            "label": "Strict"
+          },
+          {
+            "value": "controlled",
+            "label": "Controlled"
+          },
+          {
+            "value": "lenient",
+            "label": "Lenient"
+          }
+        ]
+      },
+      {
+        "name": "attitude",
+        "label": "Read mode",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "Stream",
+        "category": "advanced",
+        "type": "enum",
+        "values": [
+          {
+            "value": "IN_MEMORY",
+            "label": "In-memory"
+          },
+          {
+            "value": "STREAM",
+            "label": "Stream"
+          }
+        ]
+      },
+      {
+        "name": "skipRecords",
+        "label": "Number of skipped records",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "numRecords",
+        "label": "Max number of records",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "skipSourceRecords",
+        "label": "Number of skipped records per source",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "numSourceRecords",
+        "label": "Max number of records per source",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "skipSheetRecords",
+        "label": "Number of skipped records per spreadsheet",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "numSheetRecords",
+        "label": "Max number of records per spreadsheet",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "maxErrorCount",
+        "label": "Max error count",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "(unlimited)",
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "incrementalFile",
+        "label": "Incremental file",
+        "modifiable": true,
+        "nullable": true,
+        "required": "incrementalKey",
+        "category": "advanced",
+        "type": "file"
+      },
+      {
+        "name": "incrementalKey",
+        "label": "Incremental key",
+        "modifiable": true,
+        "nullable": true,
+        "required": "incrementalFile",
+        "category": "advanced",
+        "type": "string"
+      },
+      {
+        "name": "password",
+        "label": "Encryption password",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "advanced",
+        "type": "password"
+      }
+    ]
+  },
+  {
+    "category": "writers",
+    "name": "SpreadsheetDataWriter",
+    "type": "SPREADSHEET_WRITER",
+    "shortDescription": "Writes data to Excel files (.xls, .xlsx).",
+    "description": "Writes into specified sheets of Excel files. Mapping of input metadata to sheet content must be defined.",
+    "inputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": true,
+        "label": "input"
+      }
+    ],
+    "outputPorts": [
+      {
+        "type": "singlePort",
+        "name": "0",
+        "required": false,
+        "label": "output"
+      }
+    ],
+    "properties": [
+      {
+        "name": "fileURL",
+        "label": "File URL",
+        "modifiable": true,
+        "nullable": true,
+        "required": true,
+        "category": "basic",
+        "type": "file",
+        "selectionMode": "file_only"
+      },
+      {
+        "name": "sheet",
+        "label": "Sheet",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "Create new sheet",
+        "category": "basic",
+        "type": "spreadsheetSheetName"
+      },
+      {
+        "name": "mapping",
+        "label": "Mapping",
+        "modifiable": true,
+        "primaryAttribute": true,
+        "redundant": "mappingURL",
+        "category": "basic",
+        "type": "spreadsheetMapping"
+      },
+      {
+        "name": "mappingURL",
+        "label": "Mapping URL",
+        "modifiable": true,
+        "nullable": true,
+        "redundant": "mapping",
+        "delegate": "mapping",
+        "category": "basic",
+        "type": "file"
+      },
+      {
+        "name": "writeMode",
+        "label": "Write mode",
+        "modifiable": true,
+        "nullable": false,
+        "category": "basic",
+        "type": "enum",
+        "values": [
+          {
+            "value": "OVERWRITE_SHEET_IN_MEMORY",
+            "label": "Overwrite in sheet (in-memory)"
+          },
+          {
+            "value": "OVERWRITE_SHEET_IN_STREAM",
+            "label": "Overwrite sheet (streaming - XLSX only)"
+          },
+          {
+            "value": "INSERT_INTO_SHEET_IN_MEMORY",
+            "label": "Insert into sheet (in-memory)"
+          },
+          {
+            "value": "APPEND_TO_SHEET_IN_MEMORY",
+            "label": "Append to sheet (in-memory)"
+          },
+          {
+            "value": "CREATE_FILE_IN_MEMORY",
+            "label": "Create new file (in-memory)"
+          },
+          {
+            "value": "CREATE_FILE_IN_STREAM",
+            "label": "Create new file (streaming - XLSX only)"
+          }
+        ]
+      },
+      {
+        "name": "existingSheetsActions",
+        "label": "Actions on existing sheets",
+        "modifiable": true,
+        "nullable": false,
+        "category": "basic",
+        "type": "enum",
+        "values": [
+          {
+            "value": "DO_NOTHING",
+            "label": "Do nothing, keep existing sheets and data"
+          },
+          {
+            "value": "CLEAR_SHEETS",
+            "label": "Clear target sheet(s)"
+          },
+          {
+            "value": "REMOVE_SHEETS",
+            "label": "Replace all existing sheets"
+          }
+        ]
+      },
+      {
+        "name": "templateFileURL",
+        "label": "Template File URL",
+        "modifiable": true,
+        "nullable": true,
+        "required": false,
+        "category": "advanced",
+        "type": "file",
+        "selectionMode": "file_only"
+      },
+      {
+        "name": "makeDirs",
+        "label": "Create directories",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": false,
+        "category": "advanced",
+        "type": "bool"
+      },
+      {
+        "name": "numFileRecords",
+        "label": "Records per file",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "skipRecords",
+        "label": "Number of skipped records",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "numRecords",
+        "label": "Max number of records",
+        "modifiable": true,
+        "nullable": true,
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "excludeFields",
+        "label": "Exclude fields",
+        "modifiable": true,
+        "nullable": true,
+        "redundant": "mapping|mappingURL",
+        "category": "advanced",
+        "type": "key",
+        "rightLabel": "Exclude fields:"
+      },
+      {
+        "name": "partitionKey",
+        "label": "Partition key",
+        "modifiable": true,
+        "nullable": true,
+        "required": "partition",
+        "category": "advanced",
+        "type": "key",
+        "inputPortName": "0",
+        "rightLabel": "Partition key:"
+      },
+      {
+        "name": "partition",
+        "label": "Partition lookup table",
+        "modifiable": true,
+        "nullable": true,
+        "required": "partitionOutFields",
+        "category": "advanced",
+        "type": "lookupTableID"
+      },
+      {
+        "name": "partitionFileTag",
+        "label": "Partition file tag",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "Number file tag",
+        "category": "advanced",
+        "type": "enum",
+        "values": [
+          {
+            "value": "numberFileTag",
+            "label": "Number file tag"
+          },
+          {
+            "value": "keyNameFileTag",
+            "label": "Key file tag"
+          }
+        ]
+      },
+      {
+        "name": "partitionOutFields",
+        "label": "Partition output fields",
+        "modifiable": true,
+        "nullable": true,
+        "required": "partition",
+        "category": "advanced",
+        "type": "key",
+        "rightLabel": "Partition output fields:"
+      },
+      {
+        "name": "partitionUnassignedFileName",
+        "label": "Partition unassigned file name",
+        "modifiable": true,
+        "nullable": true,
+        "redundant": "!partition",
+        "category": "advanced",
+        "type": "string"
+      },
+      {
+        "name": "formatterType",
+        "label": "Type of formatter",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "Auto",
+        "category": "advanced",
+        "type": "enum",
+        "values": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "XLS",
+            "label": "XLS"
+          },
+          {
+            "value": "XLSX",
+            "label": "XLSX"
+          }
+        ]
+      },
+      {
+        "name": "sortedInput",
+        "label": "Sorted input",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": false,
+        "category": "advanced",
+        "type": "bool"
+      },
+      {
+        "name": "createEmptyFiles",
+        "label": "Create empty files",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": true,
+        "category": "advanced",
+        "type": "bool"
+      },
+      {
+        "name": "windowSize",
+        "label": "Streaming window size",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "10",
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "maxCached",
+        "label": "Cache size",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": "1000",
+        "category": "advanced",
+        "type": "int"
+      },
+      {
+        "name": "evaluateFormulaCell",
+        "label": "Evaluate formula cell",
+        "modifiable": true,
+        "nullable": true,
+        "defaultHint": true,
+        "category": "advanced",
+        "type": "bool"
       }
     ]
   }

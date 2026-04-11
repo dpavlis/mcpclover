@@ -92,18 +92,19 @@ Back up before any significant fix:
 copy_file("graph/MyGraph.grf", sandbox, "graph/MyGraph.bak.grf", sandbox)
 ```
 
-Use `set_graph_element_attribute` for targeted attribute and CTL changes:
+Use `graph_edit_properties` for targeted attribute and CTL changes:
 ```
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="ORDER_VALIDATOR",
     attribute_name="attr:rules", value="...corrected rules XML...")
 
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="TRANSFORM",
     attribute_name="attr:transform", value="//#CTL2\n...")
 ```
 
-Use `patch_file` (with `dry_run=true` first) for structural additions.
+Use `graph_edit_structure` for adding/deleting elements (Metadata, Node, Edge, Phase, etc.).
+Use `patch_file` (with `dry_run=true` first) for non-graph text files.
 Use `write_file` for large rewrites or when the file is already malformed.
 
 After every fix, re-read the file before the next change, then re-validate:
@@ -289,7 +290,7 @@ components to test parts of the graph in isolation. Every component has an
 
 **Disable as Trash — isolate the first half of a graph:**
 ```
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="ORDER_VALIDATOR",
     attribute_name="enabled", value="trash")
 ```
@@ -300,7 +301,7 @@ disabled component.
 
 **Disable (pass-through) — skip a component but keep downstream running:**
 ```
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="MY_FILTER",
     attribute_name="enabled", value="disabled")
 ```
@@ -311,17 +312,17 @@ problem — if the graph works with it disabled, the issue is in that component.
 By default, pass-through uses input port 0 and output port 0. If you need
 data to flow through a different port pair, set:
 ```
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="MY_COMPONENT",
     attribute_name="passThroughInputPort", value="0")
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="MY_COMPONENT",
     attribute_name="passThroughOutputPort", value="1")
 ```
 
 **After debugging, always re-enable the component:**
 ```
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="ORDER_VALIDATOR",
     attribute_name="enabled", value="enabled")
 ```
@@ -387,7 +388,7 @@ Only store genuine discoveries — not routine facts already in the reference do
 - [ ] `validate_graph` called — result is `overall: PASS` with no errors or warnings
 - [ ] Used `think` to diagnose any validation errors before fixing
 - [ ] Used `validate_CTL` for CTL compilation errors to get detailed diagnosis
-- [ ] All fixes used `set_graph_element_attribute` for attribute/CTL changes
+- [ ] All fixes used `graph_edit_properties` for attribute/CTL changes
 - [ ] Backed up graph before significant fixes (`copy_file`)
 - [ ] Re-read file between multiple fixes — never edited from stale state
 - [ ] Re-validated after every fix — repeated until clean PASS

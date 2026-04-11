@@ -384,7 +384,7 @@ enabled so records are visible in the execution log:
 
 Or set it via:
 ```
-set_graph_element_attribute(..., element_id="TRASH_DEBUG",
+graph_edit_properties(..., element_id="TRASH_DEBUG",
     attribute_name="debugPrint", value="true")
 ```
 
@@ -442,22 +442,22 @@ consult the `validate_and_run` workflow guide:
 get_workflow_guide("validate_and_run")
 ```
 
-### 3.8 Use `set_graph_element_attribute` for targeted changes
-Prefer `set_graph_element_attribute` over `patch_file` for all graph modifications:
+### 3.8 Use `graph_edit_properties` for targeted changes
+Prefer `graph_edit_properties` over `patch_file` for all graph modifications:
 
 ```
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="DATA_GENERATOR",
     attribute_name="recordsNumber", value="100")
 
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="TRANSFORM",
     attribute_name="attr:transform",
     value="//#CTL2\nfunction integer transform() {...}")
 ```
 
-Use `patch_file` only for structural changes that `set_graph_element_attribute`
-cannot handle (e.g. adding a new Node or Edge element). Always use `dry_run=true` first.
+Use `graph_edit_structure` for adding, deleting, or moving elements.
+Use `patch_file` only for non-graph text files. Always use `dry_run=true` first.
 
 ### 3.9 Nested CDATA escaping — most common breakage source
 Any `]]>` inside an outer CDATA block must be escaped as:
@@ -567,7 +567,7 @@ Only store genuine discoveries — not routine facts already in the reference do
 - [ ] After each execution: `get_graph_tracking` called and record counts verified as sensible
 - [ ] No stage produces 0 records unexpectedly
 - [ ] Port split ratios are correct (valid + invalid = total, accepted + rejected = total, etc.)
-- [ ] Used `set_graph_element_attribute` for targeted attribute/CTL changes
+- [ ] Used `graph_edit_properties` for targeted attribute/CTL changes
 - [ ] Escaped nested CDATA as `]]]]><![CDATA[>` where needed
 - [ ] Edge outPort strings match exactly the names from `get_component_info`
 - [ ] No non-existent components used (no ROUTER, no FILTER)

@@ -70,8 +70,8 @@ Before any lookup or edit, call `think` to reason explicitly:
 think("What exactly needs to change? Which components, attributes, edges,
       or CTL blocks are affected? What are the dependencies — does removing
       or changing this component break any downstream edge or metadata?
-      Is this a small targeted fix (set_graph_element_attribute / patch_file)
-      or a structural change (write_file)?")
+      Is this a small targeted fix (graph_edit_properties / patch_file)
+      or a structural change (graph_edit_structure / write_file)?")
 ```
 
 **If the edit is large** — adding multiple new components, designing new metadata,
@@ -198,33 +198,37 @@ become runtime failures. Fix any issues before proceeding.
 
 ### 2.3 Choose the right editing tool
 
-**`set_graph_element_attribute` — default for all attribute and CTL changes:**
+**`graph_edit_properties` -- default for all attribute and CTL changes:**
 ```
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="ORDER_VALIDATOR",
     attribute_name="enabled", value="disabled")
 
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Node", element_id="TRANSFORM",
     attribute_name="attr:transform",
     value="//#CTL2\nfunction integer transform() {...}")
 
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="Metadata", element_id="MetaOrder",
     attribute_name="record",
     value='<Record fieldDelimiter="," ...>...</Record>')
 
-set_graph_element_attribute(graph_path, sandbox,
+graph_edit_properties(graph_path, sandbox,
     element_type="GraphParameter", element_id="INPUT_FILE",
     attribute_name="value", value="${DATAIN_DIR}/NewInput.xlsx")
 ```
 
-This is DOM-based — no line numbers, no anchor ambiguity, no CDATA escaping
+This is DOM-based -- no line numbers, no anchor ambiguity, no CDATA escaping
 accidents. Use it for any change to an existing element's attribute or content.
 
-**`patch_file` — for structural additions only:**
-Use when adding a new `<Node>` or `<Edge>` element that doesn't yet exist.
-Always run `dry_run=true` first. Anchor strings must be unique — use
+**`graph_edit_structure` -- for adding, deleting, or moving elements:**
+Use when adding a new Metadata, Node, Edge, Phase, Connection, etc.
+or when deleting/moving existing elements.
+
+**`patch_file` -- for non-graph text files only:**
+Use for .ctl, .prm, .csv, .sql, etc. Do NOT use for .grf files.
+Always run `dry_run=true` first. Anchor strings must be unique -- use
 `anchor_occurrence` if the same string appears multiple times.
 
 **`write_file` — for large structural rewrites:**
@@ -232,7 +236,7 @@ Use when adding multiple new components and edges, or when the file is already
 malformed. A clean full rewrite guarantees no orphaned content.
 
 ### 2.4 Re-read between changes
-After every successful `write_file`, `patch_file`, or `set_graph_element_attribute`,
+After every successful `write_file`, `patch_file`, or `graph_edit_properties`/`graph_edit_structure`,
 your in-context copy is stale. **Re-read before computing the next change.**
 Editing from a stale mental model causes structural corruption.
 
@@ -246,7 +250,7 @@ containing `<expression>` elements), inner `]]>` must be escaped as:
 ```
 ]]]]><![CDATA[>
 ```
-Note: `set_graph_element_attribute` handles CDATA wrapping automatically for
+Note: `graph_edit_properties` handles CDATA wrapping automatically for
 `attr:` child elements — you do NOT need to wrap the value yourself.
 This escaping rule applies when writing raw XML via `write_file` or `patch_file`.
 
@@ -273,7 +277,7 @@ Use exact strings from `get_component_info` — not guesses:
 
 ### 3.1 Validate immediately after every write
 Always call `validate_graph` right after every `write_file`, `patch_file`,
-or `set_graph_element_attribute`. Never present an edit as done without a clean pass:
+or `graph_edit_properties`/`graph_edit_structure`. Never present an edit as done without a clean pass:
 
 ```
 validate_graph("graph/MyGraph.grf", sandbox)
@@ -405,12 +409,13 @@ Only store genuine discoveries — not routine facts already in the reference do
 - [ ] Called `list_linked_assets` before writing new CTL, connections, or metadata inline
 - [ ] Backed up graph before significant edits (`copy_file`)
 - [ ] Used `generate_CTL` for new transforms and `validate_CTL` to check CTL before embedding
-- [ ] Used `set_graph_element_attribute` for attribute/CTL/metadata changes (not patch_file)
-- [ ] Used `patch_file` (dry_run first) only for structural additions of new elements
+- [ ] Used `graph_edit_properties` for attribute/CTL/metadata changes (not patch_file)
+- [ ] Used `graph_edit_structure` for adding/deleting/moving graph elements
+- [ ] Used `patch_file` (dry_run first) only for non-graph text files
 - [ ] Re-read file between multiple changes — never edited from stale state
 - [ ] No non-existent components introduced (no ROUTER, no FILTER)
 - [ ] CTL user-defined functions: `function returnType name(...)` not `returnType function name(...)`
-- [ ] Escaped nested CDATA as `]]]]><![CDATA[>` for raw XML writes (not needed for set_graph_element_attribute)
+- [ ] Escaped nested CDATA as `]]]]><![CDATA[>` for raw XML writes (not needed for graph_edit_properties)
 - [ ] Edge outPort strings match exactly the names from `get_component_info`
 - [ ] `validate_graph` called after every write — result is `overall: PASS`
 - [ ] `execute_graph` + `await_graph_completion` + `get_graph_tracking` called after changes affecting data flow

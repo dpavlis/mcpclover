@@ -110,7 +110,25 @@ Quick verification after deployment:
 - Call `get_edge_debug_data` for one edge.
 - If service endpoints are missing, the tool call fails even when debug data was captured.
 
-## 6) Quick local sanity check (optional)
+## 6) IMPORTANT: Create the KB sandbox on the target CloverDX server
+
+The `kb_store`, `kb_search`, and `kb_read` tools persist knowledge-base entries as markdown files inside a dedicated CloverDX sandbox. The sandbox must exist before those tools can be used.
+
+Create a sandbox named exactly:
+
+```
+CLV_MCP_KWBASE
+```
+
+How to create it: log in to the CloverDX Server web UI → **Sandboxes** → **Add sandbox**, set the code to `CLV_MCP_KWBASE`.
+
+Notes:
+
+- The sandbox name is case-sensitive. `clv_mcp_kwbase` or `CLV_MCP_Kwbase` will not work.
+- KB entries are stored as `.md` files under a `kb/` folder inside this sandbox.
+- If the sandbox is missing, any call to `kb_store` will fail with a sandbox-not-found error; `kb_search` and `kb_read` will return empty results.
+
+## 7) Quick local sanity check (optional)
 
 With your venv activated:
 
@@ -128,6 +146,7 @@ If it starts without import errors, dependencies are installed correctly.
 - Self-signed HTTPS certs: set `CLOVERDX_VERIFY_SSL` to `false`.
 - More logs: set `CLOVERDX_LOG_LEVEL` to `DEBUG`.
 - `get_edge_debug_data` fails: confirm `DebugRead.rjob` and `DebugReadCSV.rjob` from `data_service/` are deployed as server DataServices.
+- `kb_store` fails / `kb_search` returns nothing: confirm the `CLV_MCP_KWBASE` sandbox exists on the server (see step 6).
 
 ## 8) Maintain `requirements.txt`
 

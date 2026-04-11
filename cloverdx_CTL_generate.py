@@ -289,11 +289,15 @@ def validate_CTL(
     code:
         CTL2 transform code to validate (plain text, not XML-escaped).
     input_metadata:
-        Optional CloverDX metadata for input ports in XML serialization format.
-        This metadata is used only for $in.N field references.
+        Optional CloverDX metadata for input ports. Must be in CloverDX XML format:
+        one or more ``<Metadata id="..."><Record ...><Field .../></Record></Metadata>``
+        blocks, labeled by port role (e.g. ``Port 0 (master): <Metadata ...>``).
+        Used only for $in.N field references.
     output_metadata:
-        Optional CloverDX metadata for output ports in XML serialization format.
-        This metadata is used only for $out.N field references.
+        Optional CloverDX metadata for output ports. Must be in CloverDX XML format:
+        one or more ``<Metadata id="..."><Record ...><Field .../></Record></Metadata>``
+        blocks, labeled by port role (e.g. ``Port 0 (rejected): <Metadata ...>``).
+        Used only for $out.N field references.
     query:
         Optional additional instruction or question appended to the user
         message, e.g. "Focus on the replace() calls in the transform function."
@@ -355,11 +359,15 @@ def generate_CTL(
         What to generate: component transform code, an expression snippet,
         or other CTL functionality.
     input_metadata:
-        Optional CloverDX metadata for input ports in XML serialization format.
-        This metadata is used only for $in.N field references.
+        Optional CloverDX metadata for input ports. Must be in CloverDX XML format:
+        one or more ``<Metadata id="..."><Record ...><Field .../></Record></Metadata>``
+        blocks, labeled by port role (e.g. ``Port 0 (master): <Metadata ...>``).
+        Used only for $in.N field references.
     output_metadata:
-        Optional CloverDX metadata for output ports in XML serialization format.
-        This metadata is used only for $out.N field references.
+        Optional CloverDX metadata for output ports. Must be in CloverDX XML format:
+        one or more ``<Metadata id="..."><Record ...><Field .../></Record></Metadata>``
+        blocks, labeled by port role (e.g. ``Port 0 (rejected): <Metadata ...>``).
+        Used only for $out.N field references.
     timeout:
         HTTP request timeout in seconds.
     """
