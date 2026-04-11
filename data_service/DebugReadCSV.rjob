@@ -4,9 +4,10 @@
 <EndpointSettings>
 <UrlPath>/debugReadCSV</UrlPath>
 <RequestMethod name="GET"/>
-<RequestParameter id="RestJobParameter0" location="query" name="runID" type="string"/>
-<RequestParameter id="RestJobParameter1" location="query" name="edgeID" type="string"/>
-<RequestParameter id="RestJobParameter2" location="query" name="numRec" type="string"/>
+<RequestParameter id="RestJobParameter0" location="query" name="runID" required="true" type="string"/>
+<RequestParameter id="RestJobParameter1" location="query" name="edgeID" required="true" type="string"/>
+<RequestParameter defaultValue="50" id="RestJobParameter2" location="query" name="numRec" type="string"/>
+<RequestParameter defaultValue="0" id="RestJobParameter3" location="query" name="fromRec" type="string"/>
 </EndpointSettings>
 <RestJobResponseStatus>
 <JobError>
@@ -50,11 +51,22 @@ function string getValue() {
 <Dictionary/>
 </Global>
 <Phase number="0">
-<Node fileURL="${TMP_DIR}/clover_temp_node01/${runID}/clover-debug/${runID}-${runID}-${edgeID}.dbg" guiName="CloverDataReader" guiX="345" guiY="50" id="CLOVER_DATA_READER" type="CLOVER_READER"/>
-<Node guiName="Dedup" guiX="670" guiY="50" id="DEDUP" keep="first" noDupRecord="${numRec}" type="DEDUP"/>
+<Node fileURL="${TMP_DIR}/clover_temp_node01/${runID}/clover-debug/${runID}-${runID}-${edgeID}.dbg" guiName="CloverDataReader" guiX="345" guiY="50" id="CLOVER_DATA_READER" numRecords="${numRec}" skipRows="${fromRec}" type="CLOVER_READER"/>
 <Node guiName="Input" guiX="70" guiY="25" id="RESTJOB_INPUT0" requestFormat="STRING" restJobInput="true" type="RESTJOB_INPUT"/>
 <Node attachment="false" contentType="text/csv" guiName="Output" guiX="1135" guiY="25" id="RESTJOB_OUTPUT0" metadataName="false" responseFormat="CSV" restJobOutput="true" topLevelArray="true" type="RESTJOB_OUTPUT"/>
-<Edge fromNode="CLOVER_DATA_READER:0" guiBendpoints="" guiRouter="Manhattan" id="Edge1" inPort="Port 0 (in)" outPort="Port 0 (out)" toNode="DEDUP:0"/>
-<Edge fromNode="DEDUP:0" guiBendpoints="" guiRouter="Manhattan" id="Edge2" inPort="Port 0 (in)" outPort="Port 0 (unique)" toNode="RESTJOB_OUTPUT0:0"/>
+<Node guiName="GetJobInput" guiX="270" guiY="25" id="RequestParametersValidator" restJobInput="true" type="GET_JOB_INPUT">
+<attr name="mapping"><![CDATA[//#CTL2
+// Transforms input record into output record.
+function integer transform() {
+	if (isEmpty(getRequestParameter("runID"))) { 
+		raiseError("Missing required request parameter: 'runID'");
+	}
+	if (isEmpty(getRequestParameter("edgeID"))) { 
+		raiseError("Missing required request parameter: 'edgeID'");
+	}
+	return ALL;
+}]]></attr>
+</Node>
+<Edge fromNode="CLOVER_DATA_READER:0" guiBendpoints="" guiRouter="Manhattan" id="Edge1" inPort="Port 0 (in)" outPort="Port 0 (out)" toNode="RESTJOB_OUTPUT0:0"/>
 </Phase>
 </Graph>
