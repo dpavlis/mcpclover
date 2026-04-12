@@ -12,7 +12,7 @@ CloverDX graphs are XML documents. The root element is `<Graph>`. File extension
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<Graph author="author" created="2024-01-01" description="Description" guiVersion="6.0.0" id="GRAPH_ID" licenseCode="" name="GraphName" revision="1.0">
+<Graph author="LLM_GENERATED" created="Sun Apr 12 11:00:33 CEST 2026" guiVersion="MCP_LLM_CREATED"  id="1776022138502" licenseCode="" name="GraphName" revision="1.0" showComponentDetails="true">
   <Global>
     <GraphParameters>
       <GraphParameter name="PROJECT" value="."/>

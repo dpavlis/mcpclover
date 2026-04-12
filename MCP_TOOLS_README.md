@@ -1,6 +1,6 @@
 # CloverDX MCP Tools Reference
 
-This document describes all 33 tools exposed by the CloverDX Graph Builder MCP server.
+This document describes all 31 tools exposed by the CloverDX Graph Builder MCP server.
 Each tool maps to one or more CloverDX Server operations (SOAP WebService or REST API).
 
 ---
@@ -234,27 +234,13 @@ Returns per-phase and per-component execution metrics for a completed run: timin
 
 ---
 
-### `get_edge_debug_info`
-Lists edge debug data availability for a specific edge of a debug run. Returns whether data was captured and the writer/reader node IDs.  
-**Why:** Before calling `get_edge_debug_data`, the LLM must confirm that debug data was captured for the specific edge.  
-**Backend:** SOAP `GetEdgeDebugDetails` (with retry)
-
----
-
-### `get_edge_debug_metadata`
-Returns the field schema (names and types) for data flowing through a specific edge of a debug run.  
-**Why:** The actual edge data is binary (CLVI format) and cannot be read as text. The metadata schema tells the LLM what fields exist so it can reason about the data structure.  
-**Backend:** SOAP `GetEdgeDebugMetadata`
-
----
-
 ### `get_edge_debug_data`
-Fetches decoded debug records for a run edge using `run_id` + `edge_id` (optional `record_count` maps to REST `numRec`). Supports `format="json"` (default) or `format="csv"`. CSV output is pipe-delimited and columns are ordered by edge metadata from `get_edge_debug_metadata`.  
+Fetches decoded debug records for a run edge using `run_id` + `edge_id` (optional `record_count` maps to REST `numRec`, optional `from_rec` maps to REST `fromRec`). Always returns JSON. Optional `sandbox` + `graph_path` include field metadata (names/types) in the response.  
 **Why:** Allows the LLM to inspect mid-graph data to diagnose transformation logic errors — e.g. checking what values reached a Lookup component's reject port.  
-**Prerequisite:** The target CloverDX server must have the two debug DataServices installed (`debugRead` and `debugReadCSV`) from this repository's `data_service`/`data_services` folder. If these DataServices are not deployed, reading edge debug data for debug runs will fail.
+**Prerequisite:** The target CloverDX server must have the debug DataService installed (`debugRead`) from this repository's `data_service` folder. If not deployed, reading edge debug data for debug runs will fail.
 **Backend:**
-- JSON: REST `GET /data-service/debugRead?runID=...&edgeID=...&numRec=...`
-- CSV: REST `GET /data-service/debugReadCSV?runID=...&edgeID=...&numRec=...`
+- Records: REST `GET /data-service/debugRead?runID=...&edgeID=...&numRec=...&fromRec=...`
+- Optional metadata enrichment: SOAP `GetEdgeDebugMetadata`
 
 ---
 

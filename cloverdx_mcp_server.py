@@ -39,9 +39,7 @@ WebServices and exposes the following tools:
   get_graph_run_status    – Check the status of a single run by run ID
   get_graph_execution_log – Fetch the execution log for a run
   get_graph_tracking      – Fetch graph tracking metrics for a run
-  get_edge_debug_info     – List edge debug availability/details for a run edge
-  get_edge_debug_metadata – Fetch edge debug metadata XML for a run edge
-  get_edge_debug_data     – Fetch edge debug data summary for a run edge (requires debug DataServices installed)
+  get_edge_debug_data     – Fetch sample records (+ optional field metadata) from an edge of a debug run
   graph_edit_structure     – Add/delete/move whole elements in a graph (Metadata, Phase, Node, Edge, etc.)
   graph_edit_properties    – Set/replace an attribute or <attr> child on an existing graph element (DOM-based)
 
@@ -2223,45 +2221,12 @@ async def handle_list_tools() -> List[types.Tool]:
             },
         ),
         types.Tool(
-            name="get_edge_debug_info",
-            description=(
-                "Check if edge debug data is available for a specific edge (requires debug=true run). "
-                "Returns availability status and writer/reader node IDs."
-            ),
-            inputSchema={
-                "type": "object",
-                "required": ["sandbox", "graph_path", "run_id", "edge_id"],
-                "properties": {
-                    "sandbox":    {"type": "string", "description": "Sandbox code"},
-                    "graph_path": {"type": "string", "description": "Path to the .grf file"},
-                    "run_id":     {"type": "string", "description": "Run ID returned by execute_graph"},
-                    "edge_id":    {"type": "string", "description": "Edge ID as defined in the graph XML (the 'id' attribute of an <Edge> element)"},
-                },
-            },
-        ),
-        types.Tool(
-            name="get_edge_debug_metadata",
-            description=(
-                "Get field schema (names/types) for an edge from a debug run. "
-                "Returns metadata XML. Requires debug=true execution."
-            ),
-            inputSchema={
-                "type": "object",
-                "required": ["sandbox", "graph_path", "run_id", "edge_id"],
-                "properties": {
-                    "sandbox":    {"type": "string", "description": "Sandbox code"},
-                    "graph_path": {"type": "string", "description": "Path to the .grf file"},
-                    "run_id":     {"type": "string", "description": "Run ID returned by execute_graph"},
-                    "edge_id":    {"type": "string", "description": "Edge ID as defined in the graph XML"},
-                },
-            },
-        ),
-        types.Tool(
             name="get_edge_debug_data",
             description=(
-                "Fetch sample records from an edge of a debug run. "
-                "Returns JSON (default) or CSV (pipe-delimited). Requires debug=true execution."
-                "Use to inspect mid-graph data for diagnosing transformation logic errors — e.g. checking what values reached a component's reject port."
+                "Fetch sample records that flowed through an edge during a debug run. "
+                "Use to inspect mid-graph data for diagnosing transformation logic — e.g. checking what values reached a component's reject port. "
+                "Requires the graph to have been executed with debug=true. "
+                "Optionally includes field metadata (names and types) when sandbox and graph_path are provided."
             ),
             inputSchema={
                 "type": "object",
@@ -2271,7 +2236,8 @@ async def handle_list_tools() -> List[types.Tool]:
                     "edge_id":          {"type": "string",  "description": "Edge ID as defined in the graph XML"},
                     "record_count":     {"type": "integer", "description": "Max number of records to return (default: 50)."},
                     "from_rec":         {"type": "integer", "description": "Zero-based index of the first record to return (default: 0)."},
-                    "format":           {"type": "string",  "enum": ["json", "csv"], "description": "Output format. 'json' (default), 'csv' pipe-delimited rows in edge metadata column order."},
+                    "sandbox":          {"type": "string",  "description": "Sandbox code. When provided together with graph_path, field metadata (names/types) is included in the response."},
+                    "graph_path":       {"type": "string",  "description": "Path to the .grf file. When provided together with sandbox, field metadata (names/types) is included in the response."},
                 },
             },
         ),
@@ -3665,29 +3631,54 @@ async def tool_get_graph_tracking(args: Dict) -> List[types.TextContent]:
         return _text(f"ERROR: {e}")
 
 
-async def tool_get_edge_debug_info(args: Dict) -> List[types.TextContent]:
-    try:
-        items = get_soap_client().get_edge_debug_info(
-            args["sandbox"], args["graph_path"], args["run_id"], args["edge_id"]
-        )
-        if not items:
-            return _text(
-                f"No edge debug data found for edge '{args['edge_id']}' in run {args['run_id']}.\n"
-                "Ensure the graph was executed with debug=true."
+async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
+    """Combined edge debug tool: fetches sample records and optionally field metadata."""
+    run_id   = args["run_id"]
+    edge_id  = args["edge_id"]
+    sandbox    = (args.get("sandbox") or "").strip()
+    graph_path = (args.get("graph_path") or "").strip()
+    record_count = int(args.get("record_count", 50))
+    from_rec     = int(args.get("from_rec", 0))
+
+    parts: List[str] = []
+
+    # ── Optional: fetch field metadata when sandbox + graph_path given ──
+    if sandbox and graph_path:
+        try:
+            meta_xml = get_soap_client().get_edge_debug_metadata(
+                sandbox, graph_path, run_id, edge_id
             )
-        return _text(json.dumps(items, indent=2))
-    except Exception as e:
-        return _text(f"ERROR: {e}")
+            if meta_xml and meta_xml.strip() and not meta_xml.startswith("No edge debug"):
+                parts.append("## Field Metadata\n")
+                parts.append(meta_xml.strip())
+                parts.append("")
+        except Exception as meta_err:
+            parts.append(f"(metadata unavailable: {meta_err})\n")
 
-
-async def tool_get_edge_debug_metadata(args: Dict) -> List[types.TextContent]:
+    # ── Fetch actual records ───────────────────────────────────────────
     try:
-        xml = get_soap_client().get_edge_debug_metadata(
-            args["sandbox"], args["graph_path"], args["run_id"], args["edge_id"]
+        data = get_soap_client().get_edge_debug_data(
+            run_id=run_id,
+            edge_id=edge_id,
+            record_count=max(1, record_count),
+            from_rec=max(0, from_rec),
+            data_format="json",
         )
-        return _text(xml)
     except Exception as e:
-        return _text(f"ERROR: {e}")
+        if parts:
+            parts.append(f"ERROR fetching records: {e}")
+            return _text("\n".join(parts))
+        return _text(
+            f"ERROR: {e}\n"
+            "Ensure the graph was executed with debug=true and that the "
+            "debug DataServices (DebugRead) are deployed on the server."
+        )
+
+    if parts:
+        parts.append("## Records\n")
+        parts.append(data)
+        return _text("\n".join(parts))
+    return _text(data)
 
 
 async def tool_list_resources(_args: Dict) -> List[types.TextContent]:
@@ -3724,20 +3715,6 @@ async def tool_get_workflow_guide(args: Dict) -> List[types.TextContent]:
 
     cache_key = f"workflow:{task}"
     return _text(_load_reference(cache_key, guide_path))
-
-
-async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
-    try:
-        data = get_soap_client().get_edge_debug_data(
-            run_id=args["run_id"],
-            edge_id=args["edge_id"],
-            record_count=int(args.get("record_count", 50)),
-            from_rec=int(args.get("from_rec", 0)),
-            data_format=str(args.get("format", "json")),
-        )
-        return _text(data)
-    except Exception as e:
-        return _text(f"ERROR: {e}")
 
 
 async def tool_modify_graph_structure(args: Dict) -> List[types.TextContent]:
@@ -4090,8 +4067,6 @@ _TOOL_MAP = {
     "kb_search":               tool_kb_search,
     "kb_read":                 tool_kb_read,
     "get_graph_tracking":      tool_get_graph_tracking,
-    "get_edge_debug_info":     tool_get_edge_debug_info,
-    "get_edge_debug_metadata": tool_get_edge_debug_metadata,
     "get_edge_debug_data":     tool_get_edge_debug_data,
     "graph_edit_structure":     tool_modify_graph_structure,
     "graph_edit_properties":     tool_set_graph_element_attribute,
