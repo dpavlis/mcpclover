@@ -1051,6 +1051,7 @@ async def handle_list_tools() -> List[types.Tool]:
                 "Patch a sandbox file using anchor-based line replacements. "
                 "Each patch locates an anchor string, applies from_offset/to_offset to define the "
                 "replacement range, then all patches are applied bottom-up. "
+                "Anchor matching is literal against the raw file content after UTF-8 decode; no HTML/XML entity decoding or escaping is applied. "
                 "Supports dry_run=true for preview.\n\n"
                 "USE FOR: non-graph text files (.ctl, .prm, .csv, .sql, etc.).\n"
                 "DO NOT USE FOR graph (.grf) files -- use the graph_edit_* tools instead:\n"
@@ -1071,7 +1072,7 @@ async def handle_list_tools() -> List[types.Tool]:
                             "type": "object",
                             "required": ["anchor", "from_offset", "to_offset", "new_content"],
                             "properties": {
-                                "anchor": {"type": "string", "description": "Unique substring used to locate the target line. Matching is trim-insensitive."},
+                                "anchor": {"type": "string", "description": "Unique literal substring used to locate the target line. Matching is trim-insensitive and does not perform HTML/XML entity decoding."},
                                 "from_offset": {"type": "integer", "description": "Line offset from anchor line to start of replacement"},
                                 "to_offset": {"type": "integer", "description": "Line offset from anchor line to end of replacement (inclusive)"},
                                 "new_content": {"type": "string", "description": "Replacement text. Empty string deletes the target range."},
@@ -2829,8 +2830,15 @@ async def tool_patch_file(args: Dict) -> List[types.TextContent]:
             return False
         return anchor in line or anchor.strip() in line.strip()
 
+    client = get_soap_client()
+
     try:
-        original_content = get_soap_client().download_file(sandbox, path)
+        if hasattr(client, "download_file_bytes"):
+            original_bytes = client.download_file_bytes(sandbox, path)
+            original_content = original_bytes.decode("utf-8", errors="surrogateescape")
+        else:
+            original_content = client.download_file(sandbox, path)
+            original_bytes = original_content.encode("utf-8")
     except Exception as e:
         if _is_file_not_found_error(e):
             return _json_result({
@@ -2845,8 +2853,8 @@ async def tool_patch_file(args: Dict) -> List[types.TextContent]:
             })
         return _text(f"ERROR: {e}")
 
-    line_sep = "\r\n" if "\r\n" in original_content else "\n"
-    had_trailing_newline = original_content.endswith("\n") or original_content.endswith("\r")
+    line_sep = "\r\n" if b"\r\n" in original_bytes else "\n"
+    had_trailing_newline = original_bytes.endswith((b"\n", b"\r"))
     lines = original_content.splitlines()
 
     resolved_patches: List[Dict[str, Any]] = []
@@ -2968,11 +2976,11 @@ async def tool_patch_file(args: Dict) -> List[types.TextContent]:
 
     dir_path, filename = os.path.split(path)
     try:
-        get_soap_client().upload_file(
+        client.upload_file(
             sandbox=sandbox,
             dir_path=dir_path,
             filename=filename,
-            content=updated_content,
+            content=updated_content.encode("utf-8", errors="surrogateescape"),
         )
     except Exception as e:
         return _text(f"ERROR: {e}")

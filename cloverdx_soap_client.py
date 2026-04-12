@@ -10,7 +10,7 @@ import logging
 import os
 import struct
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
 import requests
@@ -148,8 +148,12 @@ class CloverDXSoapClient:
         resp = self._call("DownloadFileContent", sandboxCode=sandbox, filePath=path)
         return self._decode_content(resp)
 
-    def upload_file(self, sandbox: str, dir_path: str, filename: str, content: str, append: bool = False):
-        content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    def upload_file(self, sandbox: str, dir_path: str, filename: str, content: Union[str, bytes], append: bool = False):
+        if isinstance(content, str):
+            payload = content.encode("utf-8")
+        else:
+            payload = bytes(content)
+        content_b64 = base64.b64encode(payload).decode("ascii")
         full_path = f"{dir_path.rstrip('/')}/{filename}"
         try:
             kwargs: Dict[str, Any] = {
