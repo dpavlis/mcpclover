@@ -2,6 +2,7 @@
 """SOAP/REST client for CloverDX server operations."""
 
 import base64
+import codecs
 from datetime import datetime
 import fnmatch
 import json
@@ -122,16 +123,26 @@ class CloverDXSoapClient:
             raise
 
     @staticmethod
-    def _decode_content(raw) -> str:
+    def _decode_content_bytes(raw) -> bytes:
         content = getattr(raw, "fileContent", raw)
         if isinstance(content, (bytes, bytearray)):
-            return content.decode("utf-8")
+            return bytes(content)
         if isinstance(content, str):
             try:
-                return base64.b64decode(content).decode("utf-8")
+                return base64.b64decode(content)
             except Exception:
-                return content
+                return content.encode("utf-8")
         raise RuntimeError(f"Unexpected file content type: {type(content)}")
+
+    @staticmethod
+    def _decode_content(raw, encoding: str = "utf-8") -> str:
+        codecs.lookup(encoding)
+        payload = CloverDXSoapClient._decode_content_bytes(raw)
+        return payload.decode(encoding)
+
+    def download_file_bytes(self, sandbox: str, path: str) -> bytes:
+        resp = self._call("DownloadFileContent", sandboxCode=sandbox, filePath=path)
+        return self._decode_content_bytes(resp)
 
     def download_file(self, sandbox: str, path: str) -> str:
         resp = self._call("DownloadFileContent", sandboxCode=sandbox, filePath=path)

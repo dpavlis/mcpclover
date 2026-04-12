@@ -86,6 +86,7 @@ Dependencies
 """
 
 import asyncio
+import codecs
 from datetime import date
 import glob as _glob
 import json
@@ -107,6 +108,11 @@ from cloverdx_soap_client import CloverDXSoapClient
 from cloverdx_CTL_generate import validate_CTL as _ctl_validate
 from cloverdx_CTL_generate import generate_CTL as _ctl_generate
 from cloverdx_CTL_generate import LLM_ALLOW
+
+try:
+    from charset_normalizer import from_bytes as _charset_from_bytes
+except Exception:
+    _charset_from_bytes = None
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -951,6 +957,8 @@ async def handle_list_tools() -> List[types.Tool]:
                 "Read a file from a sandbox (.grf, .fmt, .prm, .ctl, etc.). "
                 "Optionally read a line range via start_line + line_count. "
                 "start_line: 1-based; negative counts from end (-1 = last line). "
+                "Optional encoding (defaults to utf-8). "
+                "Set encoding='detect' to return detected encoding instead of file content. "
                 "Max response: 1 MiB."
             ),
             inputSchema={
@@ -966,6 +974,10 @@ async def handle_list_tools() -> List[types.Tool]:
                     "line_count": {
                         "type": "integer",
                         "description": "Optional number of lines to read. Must be provided together with start_line.",
+                    },
+                    "encoding": {
+                        "type": "string",
+                        "description": "Optional text encoding used to decode file content (default: utf-8). Use 'detect' to return only the detected encoding information.",
                     },
                 },
                 "additionalProperties": False,
@@ -2508,11 +2520,215 @@ async def tool_get_sandbox_parameters(args: Dict) -> List[types.TextContent]:
 
 
 async def tool_read_file(args: Dict) -> List[types.TextContent]:
+    def _canonical_detect_label(name: str) -> Optional[str]:
+        normalized = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+        aliases = {
+            "utf8": "utf-8",
+            "utf8sig": "utf-8-sig",
+            "utf16": "utf-16",
+            "utf16le": "utf-16-le",
+            "utf16be": "utf-16-be",
+            "utf32": "utf-32",
+            "utf32le": "utf-32-le",
+            "utf32be": "utf-32-be",
+            "iso88591": "ISO-8859-1",
+            "latin1": "ISO-8859-1",
+            "l1": "ISO-8859-1",
+            "iso88592": "ISO-8859-2",
+            "latin2": "ISO-8859-2",
+            "l2": "ISO-8859-2",
+            "windows1250": "Windows-1250",
+            "cp1250": "Windows-1250",
+            "windows1252": "Windows-1252",
+            "cp1252": "Windows-1252",
+            "iso88595": "ISO-8859-5",
+            "windows1251": "Windows-1251",
+            "cp1251": "Windows-1251",
+            "cp500": "EBCDIC-CP500",
+            "ibm500": "EBCDIC-CP500",
+            "cp037": "EBCDIC-CP500",
+            "ibm037": "EBCDIC-CP500",
+            "ebcdiccp500": "EBCDIC-CP500",
+        }
+        return aliases.get(normalized)
+
+    def _looks_ebcdic(raw_bytes: bytes) -> bool:
+        if not raw_bytes:
+            return False
+        ascii_printable = sum(1 for b in raw_bytes if b in (9, 10, 13) or 32 <= b <= 126)
+        ascii_ratio = ascii_printable / len(raw_bytes)
+        space_40 = raw_bytes.count(0x40)
+        space_20 = raw_bytes.count(0x20)
+        try:
+            ebcdic_text = raw_bytes.decode("cp500", errors="ignore")
+        except Exception:
+            return False
+        if not ebcdic_text:
+            return False
+        ebcdic_printable = sum(1 for ch in ebcdic_text if ch in "\r\n\t" or ch.isprintable())
+        ebcdic_ratio = ebcdic_printable / len(ebcdic_text)
+        return ascii_ratio < 0.2 and ebcdic_ratio > 0.9 and space_40 > 0 and space_40 > (space_20 * 2)
+
+    def _decoded_quality_score(text: str) -> float:
+        if not text:
+            return 0.0
+        controls = sum(1 for ch in text if ord(ch) < 32 and ch not in "\r\n\t")
+        non_printable = sum(1 for ch in text if not (ch in "\r\n\t" or ch.isprintable()))
+        replacement = text.count("\ufffd")
+        nul_count = text.count("\x00")
+        return controls * 8.0 + non_printable * 6.0 + replacement * 10.0 + nul_count * 8.0
+
+    def _count_chars(text: str, chars: str) -> int:
+        bag = set(chars)
+        return sum(1 for ch in text if ch in bag)
+
+    def _detect_text_encoding(raw_bytes: bytes) -> str:
+        if raw_bytes.startswith(b"\xef\xbb\xbf"):
+            return "utf-8-sig"
+        if raw_bytes.startswith(b"\xff\xfe\x00\x00"):
+            return "utf-32-le"
+        if raw_bytes.startswith(b"\x00\x00\xfe\xff"):
+            return "utf-32-be"
+        if raw_bytes.startswith(b"\xff\xfe"):
+            return "utf-16-le"
+        if raw_bytes.startswith(b"\xfe\xff"):
+            return "utf-16-be"
+
+        if not raw_bytes:
+            return "utf-8"
+
+        try:
+            raw_bytes.decode("utf-8")
+            return "utf-8"
+        except UnicodeDecodeError:
+            pass
+
+        # Heuristic for UTF-16 without BOM using NUL byte distribution.
+        even_nuls = raw_bytes[0::2].count(0)
+        odd_nuls = raw_bytes[1::2].count(0)
+        nul_threshold = max(1, len(raw_bytes) // 10)
+        if odd_nuls > even_nuls and odd_nuls >= nul_threshold:
+            return "utf-16-le"
+        if even_nuls > odd_nuls and even_nuls >= nul_threshold:
+            return "utf-16-be"
+
+        if _looks_ebcdic(raw_bytes):
+            return "EBCDIC-CP500"
+
+        detector_hint: Optional[str] = None
+        if _charset_from_bytes is not None:
+            try:
+                best = _charset_from_bytes(raw_bytes).best()
+                if best and best.encoding:
+                    mapped = _canonical_detect_label(best.encoding)
+                    if mapped:
+                        detector_hint = mapped
+            except Exception:
+                pass
+
+        # Best-effort scoring for common legacy single-byte encodings.
+        candidates = [
+            ("ISO-8859-1", "iso-8859-1"),
+            ("ISO-8859-2", "iso-8859-2"),
+            ("Windows-1250", "cp1250"),
+            ("Windows-1252", "cp1252"),
+            ("ISO-8859-5", "iso-8859-5"),
+            ("Windows-1251", "cp1251"),
+            ("EBCDIC-CP500", "cp500"),
+        ]
+
+        cyrillic_pref = "оеаинтсрвлкмдпуяыьгзбчйхжшюцщэфъё"
+        latin2_pref = "ąćęłńóśźżčďěňřšťůžĄĆĘŁŃÓŚŹŻČĎĚŇŘŠŤŮŽ"
+        latin1_pref = "àáâãäåæçèéêëìíîïñòóôõöøùúûüýþÿÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝÞ"
+
+        best_label = "ISO-8859-1"
+        best_score = float("inf")
+        has_c1_bytes = any(0x80 <= b <= 0x9F for b in raw_bytes)
+        ascii_alpha = sum(1 for b in raw_bytes if 65 <= b <= 90 or 97 <= b <= 122)
+        ascii_alpha_ratio = ascii_alpha / max(1, len(raw_bytes))
+        cp1252_signature_bytes = {
+            0x80, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89,
+            0x8B, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9B,
+        }
+        cp1250_signature_bytes = {0x8A, 0x8C, 0x8D, 0x8E, 0x9A, 0x9C, 0x9D, 0x9E, 0x9F}
+        cp1252_signature_count = sum(1 for b in raw_bytes if b in cp1252_signature_bytes)
+        cp1250_signature_count = sum(1 for b in raw_bytes if b in cp1250_signature_bytes)
+
+        for label, codec_name in candidates:
+            try:
+                text = raw_bytes.decode(codec_name)
+            except Exception:
+                continue
+
+            score = _decoded_quality_score(text)
+
+            cyr_score = _count_chars(text.lower(), cyrillic_pref)
+            latin2_score = _count_chars(text, latin2_pref)
+            latin1_score = _count_chars(text, latin1_pref)
+
+            if label in {"Windows-1251", "ISO-8859-5"} and cyr_score > 0:
+                score -= min(6.0, cyr_score / 3.0)
+            if label in {"Windows-1250", "ISO-8859-2"} and latin2_score > 0:
+                score -= min(6.0, latin2_score / 3.0)
+            if label == "ISO-8859-1" and latin1_score > 0:
+                score -= min(4.0, latin1_score / 4.0)
+
+            if ascii_alpha_ratio > 0.28 and label in {"Windows-1251", "ISO-8859-5"}:
+                score += 4.0
+            if ascii_alpha_ratio < 0.12 and label in {"ISO-8859-1", "ISO-8859-2", "Windows-1250", "Windows-1252"}:
+                score += 2.0
+
+            if has_c1_bytes:
+                if label == "Windows-1252" and cp1252_signature_count > 0:
+                    score -= min(3.0, cp1252_signature_count * 0.7)
+                if label == "Windows-1250" and cp1250_signature_count > 0:
+                    score -= min(3.0, cp1250_signature_count * 0.7)
+                if label == "Windows-1251" and cp1252_signature_count == 0 and cp1250_signature_count == 0 and ascii_alpha_ratio < 0.18:
+                    score -= 1.5
+            else:
+                if label == "ISO-8859-2" and latin2_score > 0:
+                    score -= 0.8
+                if label == "ISO-8859-5" and cyr_score > 0:
+                    score -= 0.8
+
+            if has_c1_bytes and label in {"ISO-8859-1", "ISO-8859-2", "ISO-8859-5"}:
+                # C1 bytes often indicate Windows code pages rather than ISO-8859 variants.
+                score += 1.5
+
+            if detector_hint and label == detector_hint:
+                score -= 0.5
+
+            if score < best_score:
+                best_score = score
+                best_label = label
+
+        return best_label
+
     try:
-        content = get_soap_client().download_file(args["sandbox"], args["path"])
+        raw_content = get_soap_client().download_file_bytes(args["sandbox"], args["path"])
 
         def _is_over_limit(text: str) -> bool:
             return len(text.encode("utf-8")) > READ_FILE_MAX_RESPONSE_BYTES
+
+        encoding = str(args.get("encoding", "utf-8"))
+        if not encoding:
+            encoding = "utf-8"
+
+        if encoding.lower() == "detect":
+            return _text(_detect_text_encoding(raw_content))
+
+        try:
+            codecs.lookup(encoding)
+        except LookupError:
+            return _text(f"ERROR: unknown encoding '{encoding}'.")
+
+        try:
+            content = raw_content.decode(encoding)
+        except UnicodeDecodeError as e:
+            return _text(
+                "ERROR: could not decode file with encoding "
+                f"'{encoding}': {e}. Try encoding='detect' to inspect the file encoding."
+            )
 
         start_line = args.get("start_line")
         line_count = args.get("line_count")
