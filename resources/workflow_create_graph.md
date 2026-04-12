@@ -2,6 +2,14 @@
 
 > LLM-only guide. Execute phases in order. Do not write XML until Phase 2 is complete.
 
+> **MANDATORY COMPLETION RULE — `validate_graph` loop:**
+> The task is **never finished** until `validate_graph` has been called and returns
+> `overall: PASS` with no unresolved errors. If validation reports problems, you
+> **must** fix every issue and re-run `validate_graph`. Repeat this fix → re-validate
+> cycle until the result is clean. Do **not** present the graph as complete, summarise
+> results to the user, or move on while any validation errors remain outstanding.
+> This applies after every write — not just at the end.
+
 ---
 
 ## PHASE 0 — Read authoritative context and check knowledge base
@@ -537,9 +545,12 @@ graph_edit_structure(graph_path, sandbox,
   XML/CTL details
 - Keep it useful for someone opening the graph for the first time
 
-### 4.3 Validate after every write
-Always call `validate_graph` immediately after every write. Never present a
-graph as done without a clean pass.
+### 4.3 Validate after every write — MANDATORY
+Always call `validate_graph` immediately after every write. **The graph is not
+complete until `validate_graph` returns `overall: PASS` with zero errors.**
+If validation reports problems, fix them and call `validate_graph` again.
+Repeat until the result is clean. Never present the graph as done, summarise
+results, or stop working while validation errors remain.
 
 ```
 validate_graph("graph/MyGraph.grf", sandbox)
@@ -643,5 +654,6 @@ If it only helps re-build the exact same graph, skip it.
 - [ ] CTL user-defined functions: `function returnType name(...)` not `returnType function name(...)`
 - [ ] TRASH terminals replaced with real destinations for final graph
 - [ ] Added a `RichTextNote` with a concise business-level summary of the graph's purpose
+- [ ] **Final `validate_graph` returns `overall: PASS` — if not, keep fixing and re-validating until it does**
 - [ ] Final full graph: validate_graph PASS + execute_graph SUCCESS + tracking verified
 - [ ] Used `kb_store` to persist any new discoveries for future sessions

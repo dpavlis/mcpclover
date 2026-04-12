@@ -112,7 +112,7 @@ Key `<Edge>` attributes:
 - `fromNode`: `NodeID:portNumber` (output port of source)
 - `toNode`: `NodeID:portNumber` (input port of target)
 - `id`: unique edge identifier
-- `metadata`: references `<Metadata id="...">` — describes data structure flowing through edge
+- `metadata`: *(optional)* references `<Metadata id="...">` — describes data structure flowing through this edge.  If omitted, CloverDX resolves it via **metadata propagation** from connected edges or component port templates (see §4 "Metadata Propagation").  When generating new graphs, prefer setting it explicitly on edges where the record structure is first established or changes.
 - `edgeType`: *(optional)* CloverDX automatically determines the optimal edge type when it loads and analyses the graph. You do not need to set this attribute manually.
 
 Port numbering starts at `0`. Format: `NODE_ID:0`, `NODE_ID:1`, etc.
@@ -198,6 +198,46 @@ One-line description.
 ## 4. Metadata
 
 Metadata describes the record structure flowing through an edge.
+
+### Metadata Propagation (auto-detected metadata)
+
+CloverDX can **auto-propagate** metadata through the graph so that not every edge
+needs an explicit `metadata` attribute in the XML.  When the server loads a graph
+it resolves metadata on each edge using these rules, in priority order:
+
+1. **Explicitly assigned** — the edge has a `metadata="..."` attribute pointing
+   to a `<Metadata>` definition.  This always wins.
+2. **Auto-propagated from a connected edge** — if a neighbouring edge (through
+   a component) already has known metadata and the component propagates it,
+   that metadata flows to the unassigned edge.
+3. **Component port template** — some components inject metadata on specific
+   ports automatically (e.g. error-port metadata on readers, ListFiles output).
+
+#### How components propagate metadata
+
+| Component behaviour | Examples | Propagation |
+|---|---|---|
+| **Pass-through** — record structure unchanged | SimpleCopy, Filter (EXT_FILTER), Sort (EXT_SORT), Dedup, Gather, Concatenate, Partition | Propagates metadata **bidirectionally** between all ports (input ↔ output). |
+| **Transform** — output structure differs from input | Reformat (MAP), Normalizer, Denormalizer, Rollup | Propagates **input→input** across ports on the same side; output metadata must be explicitly defined or comes from another source. |
+| **Joiner** — multiple inputs, one output | EXT_HASH_JOIN, EXT_MERGE_JOIN, LOOKUP_JOIN, DBJOIN | Each input port propagates independently; output metadata must be defined. |
+| **Template port** — component injects metadata | SpreadsheetDataReader (error port 1), ListFiles, Subgraph components | The component itself is the source — metadata propagates outward from that port. |
+
+> At least **some** metadata in the graph must be explicitly assigned or come from
+> a component template.  Propagation cannot resolve metadata if there is no
+> source anywhere in the connected subgraph.
+
+#### Practical guidance for generating graph XML
+
+- **Define metadata explicitly** on edges where the record structure is
+  **established or changes**: after readers, after transform components that
+  reshape records, and on joiner output ports.
+- **Omit `metadata`** on edges between pass-through components when the same
+  record structure is already defined on an adjacent edge — the server will
+  propagate it automatically.
+- When **reading existing graphs**, edges without a `metadata` attribute are
+  normal — they rely on propagation.  Do not treat this as an error.
+- When in doubt, explicitly assigning metadata to every edge is always safe
+  and never causes a conflict.
 
 ### Internal Metadata (defined inside graph)
 
@@ -1767,7 +1807,7 @@ Each `SUBGRAPH_INPUT` node with a different `inputPortIndex` creates an addition
 
 ## 16. Key Rules and Constraints
 
-1. **Every edge must have metadata assigned** — `metadata` attribute references a `<Metadata id>`.
+1. **Every edge must have metadata** — either explicitly via the `metadata` attribute or auto-propagated by CloverDX (see §4 "Metadata Propagation").  Best practice: assign `metadata` explicitly on edges where the record structure is first established or changes; propagation handles the rest.
 2. **Port numbers are 0-indexed.** Edge format: `NODE_ID:portNumber`.
 3. **Each `<Node>` and `<Edge>` must have a unique `id`** within the graph.
 4. **Phase numbers must be non-decreasing** in a data flow path.

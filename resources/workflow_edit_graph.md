@@ -3,6 +3,14 @@
 > LLM-only guide. Core rules: read current server state before editing;
 > think before acting; validate AND execute after every meaningful change.
 
+> **MANDATORY COMPLETION RULE — `validate_graph` loop:**
+> The task is **never finished** until `validate_graph` has been called and returns
+> `overall: PASS` with no unresolved errors. If validation reports problems, you
+> **must** fix every issue and re-run `validate_graph`. Repeat this fix → re-validate
+> cycle until the result is clean. Do **not** present the edit as complete, summarise
+> results to the user, or move on while any validation errors remain outstanding.
+> This applies after every write — not just at the end.
+
 ---
 
 ## PHASE 0 — Read authoritative context and check knowledge base
@@ -317,9 +325,13 @@ Use exact strings from `get_component_info` — not guesses:
 
 ## PHASE 3 — Validate and verify after every change
 
-### 3.1 Validate immediately after every write
+### 3.1 Validate immediately after every write — MANDATORY
 Always call `validate_graph` right after every `write_file`, `patch_file`,
-or `graph_edit_properties`/`graph_edit_structure`. Never present an edit as done without a clean pass:
+or `graph_edit_properties`/`graph_edit_structure`. **The edit is not complete
+until `validate_graph` returns `overall: PASS` with zero errors.** If validation
+reports problems, fix them and call `validate_graph` again. Repeat until the
+result is clean. Never present the edit as done, summarise results, or stop
+working while validation errors remain.
 
 ```
 validate_graph("graph/MyGraph.grf", sandbox)
@@ -475,7 +487,7 @@ If it only helps re-build the exact same graph, skip it.
 - [ ] Escaped nested CDATA as `]]]]><![CDATA[>` for raw XML writes (not needed for graph_edit_properties)
 - [ ] Edge outPort strings match exactly the names from `get_component_info`
 - [ ] Updated `RichTextNote` content to reflect current business logic (if note exists in the graph)
-- [ ] `validate_graph` called after every write — result is `overall: PASS`
+- [ ] **`validate_graph` called after every write — if not `overall: PASS`, kept fixing and re-validating until it passed**
 - [ ] `execute_graph` + `await_graph_completion` + `get_graph_tracking` called after changes affecting data flow
 - [ ] Record counts and port split ratios verified as sensible
 - [ ] No component shows 0 records unexpectedly after the change
