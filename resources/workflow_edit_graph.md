@@ -278,7 +278,32 @@ function <returnType> <functionName>(<params>) { ... }
 ```
 Not `returnType function name(...)`.
 
-### 2.8 Edge port names must match component docs exactly
+### 2.8 Update the RichTextNote if present
+After applying changes, check whether the graph contains a `RichTextNote`.
+If it does, update its content to reflect the current business logic of the
+graph — incorporating what the edit changed.
+
+Read the graph to find existing notes, then update:
+```
+graph_edit_properties(graph_path, sandbox,
+    element_type="RichTextNote", element_id="Note0",
+    attribute_name="content",
+    value="Reads daily order data, validates required fields and date ranges, "
+          "filters by region (added: excludes inactive regions), enriches with "
+          "customer tier from the lookup table, and writes valid orders to the "
+          "DWH staging table. Rejected records are logged with rejection reasons "
+          "to an error file.")
+```
+
+**Guidelines for updated note text:**
+- Keep the same business-level style — what data flows in, what rules apply, what comes out
+- Reflect the full current graph logic, not just the delta
+- One short paragraph (2–4 sentences)
+- No component names, edge IDs, or technical XML/CTL details
+
+If no `RichTextNote` exists in the graph, skip this step.
+
+### 2.9 Edge port names must match component docs exactly
 Use exact strings from `get_component_info` — not guesses:
 
 | Component | Exact `outPort` |
@@ -404,7 +429,22 @@ kb_store(
 )
 ```
 
-Only store genuine discoveries — not routine facts already in the reference docs.
+**What to store — generally reusable knowledge only:**
+- Component behaviours that are non-obvious or underdocumented
+- CTL patterns, gotchas, or workarounds that apply broadly
+- Correction of a wrong assumption that an LLM would likely make again
+- Configuration interactions between component attributes that caused a subtle bug
+
+**What NOT to store:**
+- Step-by-step instructions for processing one specific file or dataset
+- Facts already in the reference docs or `get_component_info` output
+- Task-specific metadata schemas, file paths, or connection details
+- Anything that only applies to one particular graph and would not help in a
+  different context
+
+The test: *would this knowledge help someone building a completely different
+graph that happens to use the same component or CTL pattern?* If yes, store it.
+If it only helps re-build the exact same graph, skip it.
 
 ---
 
@@ -434,6 +474,7 @@ Only store genuine discoveries — not routine facts already in the reference do
 - [ ] CTL user-defined functions: `function returnType name(...)` not `returnType function name(...)`
 - [ ] Escaped nested CDATA as `]]]]><![CDATA[>` for raw XML writes (not needed for graph_edit_properties)
 - [ ] Edge outPort strings match exactly the names from `get_component_info`
+- [ ] Updated `RichTextNote` content to reflect current business logic (if note exists in the graph)
 - [ ] `validate_graph` called after every write — result is `overall: PASS`
 - [ ] `execute_graph` + `await_graph_completion` + `get_graph_tracking` called after changes affecting data flow
 - [ ] Record counts and port split ratios verified as sensible

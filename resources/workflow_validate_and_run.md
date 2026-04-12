@@ -400,7 +400,25 @@ kb_store(
 )
 ```
 
-Only store genuine discoveries — not routine facts already in the reference docs.
+**What to store — generally reusable knowledge only:**
+- Component behaviours that are non-obvious or underdocumented
+  (e.g. VALIDATOR silently rejects all records when field type is string instead of date)
+- CTL patterns, gotchas, or workarounds that apply broadly
+  (e.g. multi-step parsing strategy for non-standard CSV with embedded delimiters)
+- Correction of a wrong assumption that an LLM would likely make again
+- Configuration interactions between component attributes that caused a subtle bug
+
+**What NOT to store:**
+- Step-by-step instructions for processing one specific file or dataset
+  (e.g. "parse Acme_Orders_2026.csv by splitting on pipe then re-joining columns 3–5")
+- Facts already in the reference docs or `get_component_info` output
+- Task-specific metadata schemas, file paths, or connection details
+- Anything that only applies to one particular graph and would not help in a
+  different context
+
+The test: *would this knowledge help someone building a completely different
+graph that happens to use the same component or CTL pattern?* If yes, store it.
+If it only helps re-build the exact same graph, skip it.
 
 ---
 

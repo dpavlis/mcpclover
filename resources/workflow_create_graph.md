@@ -505,7 +505,39 @@ Only after all stages are verified do you replace TRASH nodes with real output
 components. After replacement, run the full validate + execute + tracking cycle
 one final time on the complete graph.
 
-### 4.2 Validate after every write
+### 4.2 Add a RichTextNote summarising the graph
+Every new graph must include a `RichTextNote` that describes its purpose in
+business terms. Add it via `graph_edit_structure` as part of the final graph:
+
+```
+graph_edit_structure(graph_path, sandbox,
+    operation="add",
+    element_type="RichTextNote",
+    element_id="Note0",
+    attributes={
+        "backgroundColor": "255;255;200",
+        "folded": "false",
+        "height": "150",
+        "width": "350",
+        "guiX": "20",
+        "guiY": "20",
+        "textFontSize": "10"
+    },
+    content="Reads daily order file from DATAIN, validates required fields "
+            "and date ranges, enriches orders with customer tier from the "
+            "lookup table, and writes valid orders to the DWH staging table. "
+            "Rejected records are logged with rejection reasons to an error file.")
+```
+
+**Guidelines for note text:**
+- Describe the business purpose: what data comes in, what rules/logic apply,
+  what comes out
+- One short paragraph (2–4 sentences)
+- Concise and business-oriented — no component names, edge IDs, or technical
+  XML/CTL details
+- Keep it useful for someone opening the graph for the first time
+
+### 4.3 Validate after every write
 Always call `validate_graph` immediately after every write. Never present a
 graph as done without a clean pass.
 
@@ -555,7 +587,25 @@ kb_store(
 )
 ```
 
-Only store genuine discoveries — not routine facts already in the reference docs.
+**What to store — generally reusable knowledge only:**
+- Component behaviours that are non-obvious or underdocumented
+  (e.g. VALIDATOR silently rejects all records when field type is string instead of date)
+- CTL patterns, gotchas, or workarounds that apply broadly
+  (e.g. multi-step parsing strategy for non-standard CSV with embedded delimiters)
+- Correction of a wrong assumption that an LLM would likely make again
+- Configuration interactions between component attributes that caused a subtle bug
+
+**What NOT to store:**
+- Step-by-step instructions for processing one specific file or dataset
+  (e.g. "parse Acme_Orders_2026.csv by splitting on pipe then re-joining columns 3–5")
+- Facts that are already in the reference docs or `get_component_info` output
+- Task-specific metadata schemas, file paths, or connection details
+- Anything that only applies to one particular graph and would not help in a
+  different context
+
+The test: *would this knowledge help someone building a completely different
+graph that happens to use the same component or CTL pattern?* If yes, store it.
+If it only helps re-build the exact same graph, skip it.
 
 ---
 
@@ -592,5 +642,6 @@ Only store genuine discoveries — not routine facts already in the reference do
 - [ ] No non-existent components used (no ROUTER, no FILTER)
 - [ ] CTL user-defined functions: `function returnType name(...)` not `returnType function name(...)`
 - [ ] TRASH terminals replaced with real destinations for final graph
+- [ ] Added a `RichTextNote` with a concise business-level summary of the graph's purpose
 - [ ] Final full graph: validate_graph PASS + execute_graph SUCCESS + tracking verified
 - [ ] Used `kb_store` to persist any new discoveries for future sessions
