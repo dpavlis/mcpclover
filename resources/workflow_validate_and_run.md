@@ -50,9 +50,13 @@ think("Stage 1 error at line 176: element type 'attr' must be terminated by
       as ]]]]><![CDATA[>.")
 ```
 
-### 1.4 Use `validate_CTL` for CTL-related errors
-When validation reports CTL compilation errors, extract the CTL code and run
-it through `validate_CTL` for a more detailed diagnosis:
+### 1.4 Diagnose CTL-related errors
+When validation reports CTL compilation errors, use `validate_CTL` if available
+for a more detailed diagnosis. If `validate_CTL` is not available (user may have
+disabled it), diagnose manually using the error message, the CTL2 reference
+(`cloverdx://reference/ctl2`), and `think`.
+
+**When `validate_CTL` is available:**
 
 ```
 read_file("graph/MyGraph.grf", sandbox)    -- find the CTL block
@@ -67,6 +71,13 @@ validate_CTL(
 `validate_CTL` checks field references against metadata, type mismatches,
 undeclared variables, scope issues, and logic errors — often pinpointing the
 exact line and cause faster than reading the raw compile error.
+
+**When `validate_CTL` is NOT available:**
+
+Read the full compile error from `validate_graph`, extract the CTL block from
+the graph file, and use `think` to diagnose. Cross-reference against the CTL2
+reference for correct syntax, entry point signatures, and available built-in
+functions. Fix the code, re-embed it, and re-validate.
 
 #### Stage 1 — XML errors
 
@@ -334,9 +345,11 @@ graph_edit_properties(graph_path, sandbox,
 4. Repeat until you find the stage where data goes wrong
 5. Re-enable all components when debugging is complete
 
-### 3.5 Use `validate_CTL` to diagnose CTL runtime errors
+### 3.5 Diagnose CTL runtime errors
 When a runtime error points to a CTL issue (null dereference, type mismatch,
-wrong function call), extract the CTL code and validate it:
+wrong function call), extract the CTL code and diagnose the problem.
+
+**When `validate_CTL` is available:**
 
 ```
 validate_CTL(
@@ -349,6 +362,14 @@ validate_CTL(
 
 This can catch issues like inverted null checks, missing null guards on slave
 ports, and field reference mismatches that cause runtime failures.
+
+**When `validate_CTL` is NOT available:**
+
+Extract the CTL block from the graph, read the runtime error message and stack
+trace from `get_graph_execution_log`, and use `think` to reason through the
+cause. Cross-reference against the CTL2 reference (`cloverdx://reference/ctl2`)
+for correct function signatures, null handling patterns, and type coercion rules.
+Fix the code, re-embed with `graph_edit_properties`, re-validate, and re-execute.
 
 ### 3.6 Common execution problems and diagnosis paths
 
@@ -387,7 +408,7 @@ Only store genuine discoveries — not routine facts already in the reference do
 
 - [ ] `validate_graph` called — result is `overall: PASS` with no errors or warnings
 - [ ] Used `think` to diagnose any validation errors before fixing
-- [ ] Used `validate_CTL` for CTL compilation errors to get detailed diagnosis
+- [ ] Used `validate_CTL` for CTL compilation errors if available; otherwise diagnosed manually using error messages, CTL2 reference, and `think`
 - [ ] All fixes used `graph_edit_properties` for attribute/CTL changes
 - [ ] Backed up graph before significant fixes (`copy_file`)
 - [ ] Re-read file between multiple fixes — never edited from stale state
@@ -400,7 +421,7 @@ Only store genuine discoveries — not routine facts already in the reference do
 - [ ] No component shows 0 records unexpectedly
 - [ ] If run status not `FINISHED_OK`: `get_graph_execution_log` consulted and root cause identified
 - [ ] Used `think` to reason through unexpected counts before attempting fixes
-- [ ] Used `validate_CTL` to diagnose CTL runtime errors when applicable
+- [ ] Used `validate_CTL` to diagnose CTL runtime errors if available; otherwise diagnosed manually using execution log, CTL2 reference, and `think`
 - [ ] If edge debug used: `get_edge_debug_info` confirmed data available first
 - [ ] Used `get_edge_debug_data` to inspect actual record values at edges
 - [ ] If isolating a problem: disabled components with `enabled="trash"` or `enabled="disabled"`

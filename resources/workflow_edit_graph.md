@@ -173,8 +173,12 @@ copy_file("graph/MyGraph.grf", sandbox, "graph/MyGraph.bak.grf", sandbox)
 For small targeted changes (one attribute, one CTL block), backup is optional
 but recommended whenever the file contains complex CDATA nesting.
 
-### 2.2 Use `generate_CTL` and `validate_CTL` for CTL changes
-When writing or rewriting CTL transforms, use the LLM-powered tools:
+### 2.2 Write or update CTL code
+If the `generate_CTL` and `validate_CTL` tools are available, use them.
+If they are not available (user may have disabled them), write CTL manually
+following the CTL2 reference from `read_resource("cloverdx://reference/ctl2")`.
+
+**When `generate_CTL` / `validate_CTL` are available:**
 
 ```
 generate_CTL(
@@ -184,7 +188,7 @@ generate_CTL(
 )
 ```
 
-**Always validate CTL before embedding it in the graph:**
+Always validate CTL before embedding it in the graph:
 ```
 validate_CTL(
     code="...generated or hand-written CTL...",
@@ -195,6 +199,19 @@ validate_CTL(
 
 This catches field name mismatches, type issues, and logic errors before they
 become runtime failures. Fix any issues before proceeding.
+
+**When `generate_CTL` / `validate_CTL` are NOT available:**
+
+Write CTL code manually, strictly following the CTL2 reference document
+(`cloverdx://reference/ctl2`). Pay special attention to:
+- Correct entry point signatures for the component type
+- `$in.N` / `$out.N` port variable syntax for field access
+- `function returnType name(...)` ordering — not `returnType function name(...)`
+- Null handling — use `isnull()` before accessing nullable fields
+- Return codes: `OK`, `SKIP`, `STOP` constants
+
+Rely on `validate_graph` and `execute_graph` to catch CTL compilation and
+runtime errors in lieu of `validate_CTL`.
 
 ### 2.3 Choose the right editing tool
 
@@ -408,7 +425,7 @@ Only store genuine discoveries — not routine facts already in the reference do
 - [ ] Used `think` to evaluate reference graph patterns before deciding to follow them
 - [ ] Called `list_linked_assets` before writing new CTL, connections, or metadata inline
 - [ ] Backed up graph before significant edits (`copy_file`)
-- [ ] Used `generate_CTL` for new transforms and `validate_CTL` to check CTL before embedding
+- [ ] Used `generate_CTL` + `validate_CTL` if available; otherwise wrote CTL manually per the CTL2 reference and verified via `validate_graph` + `execute_graph`
 - [ ] Used `graph_edit_properties` for attribute/CTL/metadata changes (not patch_file)
 - [ ] Used `graph_edit_structure` for adding/deleting/moving graph elements
 - [ ] Used `patch_file` (dry_run first) only for non-graph text files

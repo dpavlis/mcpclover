@@ -308,9 +308,15 @@ Before writing any graph file that already exists, create a backup:
 copy_file("graph/MyGraph.grf", sandbox, "graph/MyGraph.bak.grf", sandbox)
 ```
 
-### 3.2 Use `generate_CTL` for transform code
-When writing CTL transforms, use the LLM-powered code generator. Provide
-input and output metadata for accurate field references:
+### 3.2 Write CTL transform code
+If the `generate_CTL` and `validate_CTL` tools are available, use them.
+If they are not available (user may have disabled them), write CTL manually
+following the CTL2 reference from `read_resource("cloverdx://reference/ctl2")`.
+
+**When `generate_CTL` / `validate_CTL` are available:**
+
+Use the LLM-powered code generator. Provide input and output metadata for
+accurate field references:
 
 ```
 generate_CTL(
@@ -321,7 +327,7 @@ generate_CTL(
 )
 ```
 
-**Always validate generated CTL before embedding it in the graph:**
+Always validate generated CTL before embedding it in the graph:
 ```
 validate_CTL(
     code="...generated CTL...",
@@ -332,6 +338,19 @@ validate_CTL(
 
 Fix any issues flagged by `validate_CTL` before proceeding. If the generated
 code has errors, correct it and re-validate — do not embed unvalidated CTL.
+
+**When `generate_CTL` / `validate_CTL` are NOT available:**
+
+Write CTL code manually, strictly following the CTL2 reference document
+(`cloverdx://reference/ctl2`). Pay special attention to:
+- Correct entry point signatures for the component type (see section 2.2)
+- `$in.N` / `$out.N` port variable syntax for field access
+- `function returnType name(...)` ordering — not `returnType function name(...)`
+- Null handling — use `isnull()` before accessing nullable fields
+- Return codes: `OK`, `SKIP`, `STOP` constants
+
+Rely on `validate_graph` (Phase 3.3 step 2) and `execute_graph` (step 3) to
+catch CTL compilation and runtime errors in lieu of `validate_CTL`.
 
 ### 3.3 The incremental build loop
 Repeat this loop for each stage added to the graph:
@@ -562,7 +581,7 @@ Only store genuine discoveries — not routine facts already in the reference do
 - [ ] Called `note_read()` before `plan_graph` to refresh findings
 - [ ] Called `plan_graph` — reviewed layout warnings; genuine errors fixed; false-positive warnings documented in risks[] and consciously accepted
 - [ ] Backed up any existing graph before overwriting
-- [ ] Used `generate_CTL` for transform code and `validate_CTL` to check it before embedding
+- [ ] Used `generate_CTL` + `validate_CTL` if available; otherwise wrote CTL manually per the CTL2 reference and verified via `validate_graph` + `execute_graph`
 - [ ] Built incrementally: each stage validated (validate_graph) AND executed (execute_graph + await_graph_completion) before adding the next
 - [ ] After each execution: `get_graph_tracking` called and record counts verified as sensible
 - [ ] No stage produces 0 records unexpectedly
