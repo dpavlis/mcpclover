@@ -20,6 +20,8 @@ WebServices and exposes the following tools:
   patch_file              – Patch a sandbox file using anchor-based line ranges
   write_file              – Upload, overwrite, or append to a file
   delete_file             – Delete a file from a sandbox
+  create_directory        – Create a directory in a sandbox
+  delete_directory        – Delete a directory from a sandbox
 
   Resource access
   ───────────────
@@ -1286,6 +1288,38 @@ async def handle_list_tools() -> List[types.Tool]:
                     "sandbox": {"type": "string", "description": "Sandbox code"},
                     "path":    {"type": "string", "description": "Full file path to delete (e.g. 'graph/OldGraph.grf')"},
                 },
+            },
+        ),
+        types.Tool(
+            name="create_directory",
+            description=(
+                "Create a directory in a CloverDX sandbox. "
+                "Parent directory must already exist."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "path"],
+                "properties": {
+                    "sandbox": {"type": "string", "description": "Sandbox code"},
+                    "path":    {"type": "string", "description": "Directory path to create (e.g. 'graph/archive')."},
+                },
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="delete_directory",
+            description=(
+                "Delete a directory from a CloverDX sandbox. "
+                "Use with caution — this is irreversible and may remove nested content."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["sandbox", "path"],
+                "properties": {
+                    "sandbox": {"type": "string", "description": "Sandbox code"},
+                    "path":    {"type": "string", "description": "Directory path to delete (e.g. 'graph/archive')."},
+                },
+                "additionalProperties": False,
             },
         ),
 
@@ -3015,6 +3049,22 @@ async def tool_delete_file(args: Dict) -> List[types.TextContent]:
         return _text(f"ERROR: {e}")
 
 
+async def tool_create_directory(args: Dict) -> List[types.TextContent]:
+    try:
+        get_soap_client().create_directory(args["sandbox"], args["path"])
+        return _text(f"OK: Directory '{args['path']}' created in sandbox '{args['sandbox']}'.")
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
+async def tool_delete_directory(args: Dict) -> List[types.TextContent]:
+    try:
+        get_soap_client().delete_directory(args["sandbox"], args["path"])
+        return _text(f"OK: Directory '{args['path']}' deleted from sandbox '{args['sandbox']}'.")
+    except Exception as e:
+        return _text(f"ERROR: {e}")
+
+
 async def tool_validate_graph(args: Dict) -> List[types.TextContent]:
     sandbox    = args["sandbox"]
     graph_path = args["graph_path"]
@@ -4019,6 +4069,8 @@ _TOOL_MAP = {
     "patch_file":              tool_patch_file,
     "write_file":              tool_write_file,
     "delete_file":             tool_delete_file,
+    "create_directory":        tool_create_directory,
+    "delete_directory":        tool_delete_directory,
     "validate_graph":          tool_validate_graph,
     "execute_graph":           tool_execute_graph,
     "await_graph_completion":  tool_await_graph_completion,

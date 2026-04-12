@@ -289,6 +289,36 @@ class CloverDXSoapClient:
     def delete_file(self, sandbox: str, path: str):
         self._call("DeleteFile", sandboxCode=sandbox, filePath=path)
 
+    def create_directory(self, sandbox: str, path: str):
+        last_error: Optional[Exception] = None
+        for kwargs in (
+            {"sandboxCode": sandbox, "folderPath": path},
+            {"sandboxCode": sandbox, "directoryPath": path},
+            {"sandboxCode": sandbox, "path": path},
+        ):
+            try:
+                self._call("CreateFolder", **kwargs)
+                return
+            except Exception as e:
+                last_error = e
+        if last_error is not None:
+            raise last_error
+
+    def delete_directory(self, sandbox: str, path: str):
+        last_error: Optional[Exception] = None
+        for kwargs in (
+            {"sandboxCode": sandbox, "folderPath": path},
+            {"sandboxCode": sandbox, "directoryPath": path},
+            {"sandboxCode": sandbox, "path": path},
+        ):
+            try:
+                self._call("DeleteDirectory", **kwargs)
+                return
+            except Exception as e:
+                last_error = e
+        if last_error is not None:
+            raise last_error
+
     def get_sandboxes(self) -> List[Dict]:
         resp = self._call("GetSandboxes")
         raw = zeep_helpers.serialize_object(resp, target_cls=dict)
