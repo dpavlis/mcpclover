@@ -15784,7 +15784,7 @@
     "category": "writers",
     "name": "TransactionalDataSetWriter",
     "type": "DATA_SET_WRITER",
-    "shortDescription": "Writes data to transactional data set.",
+    "shortDescription": "Writes data to transactional data set of Data Manager.",
     "description": "Writes records to the specified transactional data set in the Data Manager.",
     "inputPorts": [
       {
@@ -15872,8 +15872,8 @@
     "category": "writers",
     "name": "TransactionalDataSetCommit",
     "type": "DATA_SET_COMMIT",
-    "shortDescription": "Commits approved records in transactional data set.",
-    "description": "Commits records that were previously approved in the selected transactional data set in the data manager.",
+    "shortDescription": "Commits approved records in transactional data set of Data Manager.",
+    "description": "Commits records that were previously approved in the selected transactional data set in the Data Manager.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -15919,7 +15919,7 @@
     "category": "readers",
     "name": "TransactionalDataSetReader",
     "type": "DATA_SET_READER",
-    "shortDescription": "Reads data from transactional data set.",
+    "shortDescription": "Reads data from transactional data set of Data Manager.",
     "description": "Reads records from the specified transactional data set in the Data Manager.",
     "inputPorts": [],
     "outputPorts": [
@@ -16015,7 +16015,7 @@
     "category": "writers",
     "name": "ReferenceDataSetWriter",
     "type": "REFERENCE_DATA_SET_WRITER",
-    "shortDescription": "Writes data to reference data set.",
+    "shortDescription": "Writes data to reference data set of Data Manager.",
     "description": "Writes new changes to the selected reference data set in the Data Manager. The changes must be approved in the Data Manager before they can be read.",
     "inputPorts": [
       {
@@ -16083,7 +16083,7 @@
     "category": "readers",
     "name": "ReferenceDataSetReader",
     "type": "REFERENCE_DATA_SET_READER",
-    "shortDescription": "Reads data from reference data set.",
+    "shortDescription": "Reads data from reference data set of Data Manager.",
     "description": "Reads published rows from the selected reference data set in the Data Manager.",
     "inputPorts": [],
     "outputPorts": [
