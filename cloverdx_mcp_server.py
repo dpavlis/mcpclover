@@ -18,7 +18,7 @@ WebServices and exposes the following tools:
   rename_file             – Rename a file within a sandbox (RenameSandboxFile)
   copy_file               – Copy a file within/across sandboxes
   patch_file              – Patch a sandbox file using anchor-based line ranges
-  write_file              – Upload, overwrite, or append to a file
+    write_file              – Upload a file with overwrite, append, insert, or replace modes
   delete_file             – Delete a file from a sandbox
   create_directory        – Create a directory in a sandbox
   delete_directory        – Delete a directory from a sandbox
@@ -1280,9 +1280,9 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="write_file",
             description=(
-                "Create or overwrite a file in a sandbox. "
-                "Set append=true to append content to an existing file (useful for chunked large writes). "
-                "Append mode adds raw content — no automatic separators or newlines."
+                "Write a file in a sandbox using one of four modes: overwrite (default), append, insert, replace. "
+                "insert requires start_line and shifts existing lines down. "
+                "replace requires start_line + line_count and replaces that line range with the provided content."
             ),
             inputSchema={
                 "type": "object",
@@ -1291,8 +1291,20 @@ async def handle_list_tools() -> List[types.Tool]:
                     "sandbox":  {"type": "string", "description": "Sandbox code"},
                     "path":     {"type": "string", "description": "Directory path within the sandbox (e.g. 'graph')"},
                     "filename": {"type": "string", "description": "File name including extension (e.g. 'MyGraph.grf')"},
-                    "content":  {"type": "string", "description": "UTF-8 text to write. In overwrite mode this is the full file content; in append mode this chunk is appended as-is."},
-                    "append":   {"type": "boolean", "description": "If true, append content to the target file instead of overwriting it (default: false)."},
+                    "content":  {"type": "string", "description": "UTF-8 text to write. For insert/replace, content is inserted by lines."},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["overwrite", "append", "insert", "replace"],
+                        "description": "Write mode (default: overwrite).",
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "1-based line position. Required for insert and replace.",
+                    },
+                    "line_count": {
+                        "type": "integer",
+                        "description": "Number of lines to replace. Required for replace only.",
+                    },
                 },
             },
         ),
@@ -3014,9 +3026,21 @@ async def tool_patch_file(args: Dict) -> List[types.TextContent]:
 
 async def tool_write_file(args: Dict) -> List[types.TextContent]:
     try:
-        append = bool(args.get("append", False))
         client = get_soap_client()
-        if append:
+
+        mode_raw = str(args.get("mode") or "").strip().lower()
+        mode = mode_raw or "overwrite"
+
+        if mode not in {"overwrite", "append", "insert", "replace"}:
+            return _text("ERROR: 'mode' must be one of: overwrite, append, insert, replace")
+
+        start_line_arg = args.get("start_line")
+        line_count_arg = args.get("line_count")
+
+        if mode in {"overwrite", "append"} and (start_line_arg is not None or line_count_arg is not None):
+            return _text("ERROR: start_line/line_count are only supported for insert and replace modes.")
+
+        if mode == "append":
             client.append_file(
                 sandbox=args["sandbox"],
                 dir_path=args["path"],
@@ -3027,13 +3051,81 @@ async def tool_write_file(args: Dict) -> List[types.TextContent]:
                 f"OK: Content appended to '{args['path']}/{args['filename']}' in sandbox '{args['sandbox']}'."
             )
 
+        if mode == "overwrite":
+            client.upload_file(
+                sandbox=args["sandbox"],
+                dir_path=args["path"],
+                filename=args["filename"],
+                content=args["content"],
+            )
+            return _text(f"OK: File '{args['path']}/{args['filename']}' written to sandbox '{args['sandbox']}'.")
+
+        if start_line_arg is None:
+            return _text("ERROR: 'start_line' is required for insert and replace modes.")
+
+        try:
+            start_line = int(start_line_arg)
+        except (TypeError, ValueError):
+            return _text("ERROR: 'start_line' must be an integer.")
+
+        if start_line <= 0:
+            return _text("ERROR: 'start_line' must be a positive 1-based integer.")
+
+        if mode == "insert" and line_count_arg is not None:
+            return _text("ERROR: 'line_count' is only valid for replace mode.")
+
+        line_count = 0
+        if mode == "replace":
+            if line_count_arg is None:
+                return _text("ERROR: 'line_count' is required for replace mode.")
+            try:
+                line_count = int(line_count_arg)
+            except (TypeError, ValueError):
+                return _text("ERROR: 'line_count' must be an integer.")
+            if line_count < 0:
+                return _text("ERROR: 'line_count' must be a non-negative integer.")
+
+        full_path = f"{args['path'].rstrip('/')}/{args['filename']}"
+        try:
+            existing_content = client.download_file(args["sandbox"], full_path)
+        except Exception as exc:
+            return _text(f"ERROR: Could not read target file for {mode} mode: {exc}")
+
+        line_sep = "\r\n" if "\r\n" in existing_content else "\n"
+        had_trailing_newline = existing_content.endswith(("\n", "\r"))
+
+        existing_lines = existing_content.splitlines()
+        new_lines = str(args["content"]).splitlines()
+
+        start_index = min(start_line - 1, len(existing_lines))
+
+        if mode == "insert":
+            updated_lines = existing_lines[:start_index] + new_lines + existing_lines[start_index:]
+        else:
+            end_index = min(start_index + line_count, len(existing_lines))
+            updated_lines = existing_lines[:start_index] + new_lines + existing_lines[end_index:]
+
+        updated_content = line_sep.join(updated_lines)
+        if had_trailing_newline:
+            updated_content += line_sep
+
         client.upload_file(
             sandbox=args["sandbox"],
             dir_path=args["path"],
             filename=args["filename"],
-            content=args["content"],
+            content=updated_content,
         )
-        return _text(f"OK: File '{args['path']}/{args['filename']}' written to sandbox '{args['sandbox']}'.")
+
+        if mode == "insert":
+            return _text(
+                f"OK: Content inserted into '{args['path']}/{args['filename']}' at line {start_line} "
+                f"in sandbox '{args['sandbox']}'."
+            )
+
+        return _text(
+            f"OK: Replaced {line_count} line(s) in '{args['path']}/{args['filename']}' starting at line {start_line} "
+            f"in sandbox '{args['sandbox']}'."
+        )
     except Exception as e:
         return _text(f"ERROR: {e}")
 

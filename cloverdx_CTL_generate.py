@@ -147,13 +147,6 @@ PORT METADATA INTERPRETATION
         Port 2 (slave2), Port 0 (rejected), or Port 1 (error output) instead of
         redundant labels such as Port 0 (input) or Port 0 (output).
 
-REGEX-UNSAFE OPERATORS
-  The ?= operator and the replace() function treat their right-hand operand as a
-  Java regex pattern.  Any literal that contains regex meta-characters –
-  { } [ ] ( ) . * + ? ^ $ | \\ – will cause a runtime PatternSyntaxException.
-  Warn whenever a string literal containing these characters is used as the right
-  operand of ?= or as the first (pattern) argument of replace().
-
 FIELD REFERENCE MISMATCHES
   When CloverDX metadata XML is provided, every $in.N.fieldName and
   $out.N.fieldName reference in the code must correspond to a <Field name="...">
@@ -171,19 +164,6 @@ SCOPE ISSUES
 TYPE MISMATCHES
   Flag obvious type coercion issues, e.g. assigning a string expression to an
   integer field without an explicit conversion call.
-
-evalExpression() USAGE
-  evalExpression() evaluates a CTL expression string at runtime and returns a
-  variant.  It CAN access $in/$out port records and local variables in scope.
-  Key concerns to flag:
-  - The expression must be a single expression that returns a value — statements
-    (for, if, variable declarations) are not allowed inside the expression string.
-  - evalExpression() is expensive — warn if it appears inside a per-record
-    transform() without justification (e.g. dynamic user-provided expressions
-    from getParamValue() are a valid use case).
-  - Error handling: expressions from external sources (parameters, files) should
-    be wrapped in try/catch with CTLException to prevent runtime crashes from
-    invalid input.
 
 MISSING RETURN / UNREACHABLE CODE
   Warn if a transform() function has a code path that never returns, or if
@@ -251,8 +231,7 @@ def _build_port_metadata_section(
     parts = [
         "## Component Ports Metadata",
         "Interpret the following metadata before reading the CTL2 code or request.",
-        "### Input Ports Metadata",
-        "Use this group only for $in.N.* references.",
+        "### Input Ports Metadata"
     ]
     if input_cleaned:
         parts.append(input_cleaned)
@@ -261,8 +240,7 @@ def _build_port_metadata_section(
 
     parts.extend(
         [
-            "### Output Ports Metadata",
-            "Use this group only for $out.N.* references.",
+            "### Output Ports Metadata"
         ]
     )
     if output_cleaned:
