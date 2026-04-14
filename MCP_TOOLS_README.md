@@ -136,6 +136,8 @@ Fetches the full content of a reference resource by its URI.
 - `cloverdx://reference/graph-xml` — Authoritative guide for CloverDX graph XML (`.grf` format)
 - `cloverdx://reference/ctl2` — CloverDX CTL2 transformation language reference
 - `cloverdx://reference/subgraphs` — Authoritative reference for CloverDX subgraphs (`.sgrf` format)
+- `cloverdx://reference/data-service` — Authoritative reference for CloverDX data services (`.rjob` format)
+- `cloverdx://reference/components` — Non-deprecated CloverDX component catalog with ports and properties
 
 **Why:** Gives the LLM access to CloverDX-specific domain knowledge (XML structure rules, CTL2 syntax) at any point during a task.  
 **Backend:** Local file read from `resources/` directory
@@ -358,6 +360,13 @@ Prompt behavior:
 - Metadata is sent before the generation request
 - Input Ports Metadata and Output Ports Metadata are emitted as separate groups
 - Missing direction-specific metadata is stated explicitly in the prompt
+
+CTL logging:
+- `validate_CTL` and `generate_CTL` write dedicated log events to a file when logging is enabled.
+- Env var: `CLOVERDX_LOG_PATH`
+- Default: `logs/ctl_tools.log` under this project
+- Set `CLOVERDX_LOG_PATH` to an empty string to disable CTL file logging
+- Logged events include tool call arguments, exact LLM query text, the full LLM request payload/message content, LLM response payload, and communication errors (connection/timeout/HTTP/invalid JSON)
 
 ### `in_graph_validate_ctl`
 Potential future tool for validating CTL in full graph context, where propagated metadata and graph assets are already resolved.

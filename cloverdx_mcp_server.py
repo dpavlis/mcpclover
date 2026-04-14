@@ -69,8 +69,9 @@ Resources exposed
 ─────────────────
   cloverdx://reference/graph-xml   – cloverdx-llm-reference.md
   cloverdx://reference/ctl2        – CTL2_Reference_for_LLM_compact.md
-  cloverdx://reference/subgraphs   – CLOVERDX_SUBGRAPHS.md
-  cloverdx://reference/components  – components.json (non-deprecated)
+    cloverdx://reference/subgraphs   – subgraph-reference.md
+    cloverdx://reference/data-service – data-service-reference.md
+    cloverdx://reference/components  – components.json (non-deprecated)
 
 Configuration (.env)
 ────────────────────
@@ -628,6 +629,22 @@ def _load_reference(uri_key: str, file_path: str) -> str:
     return _reference_cache[uri_key]
 
 
+def _load_reference_description(cache_key: str, file_path: str) -> str:
+    cache_id = f"description:{cache_key}"
+    if cache_id not in _reference_cache:
+        try:
+            with open(file_path, encoding="utf-8-sig") as f:
+                first_line = f.readline().strip()
+        except FileNotFoundError:
+            _reference_cache[cache_id] = f"[Reference file not found: {file_path}]"
+        else:
+            if first_line.lower().startswith("description:"):
+                _reference_cache[cache_id] = first_line.split(":", 1)[1].strip()
+            else:
+                _reference_cache[cache_id] = ""
+    return _reference_cache[cache_id]
+
+
 def _today_iso() -> str:
     return date.today().isoformat()
 
@@ -715,24 +732,30 @@ app = Server(SERVER_NAME)
 _RESOURCE_REGISTRY: Dict[str, Dict[str, str]] = {
     "cloverdx://reference/graph-xml": {
         "name":        "CloverDX Graph XML Reference",
-        "description": "Authoritative guide for creating CloverDX transformation graph XML (.grf files)",
         "mimeType":    "text/markdown",
+        "file_path":    os.path.join(_SCRIPT_DIR, "resources/cloverdx-llm-reference.md"),
     },
     "cloverdx://reference/ctl2": {
         "name":        "CloverDX CTL2 Transformation Language Reference",
-        "description": "Authoritative reference for CTL2, the scripting language used inside CloverDX transformations",
         "mimeType":    "text/markdown",
+        "file_path":    os.path.join(_SCRIPT_DIR, "resources/CTL2_Reference_for_LLM_compact.md"),
     },
     "cloverdx://reference/subgraphs": {
         "name":        "CloverDX Subgraphs Reference",
-        "description": "Authoritative reference for CloverDX subgraphs.",
         "mimeType":    "text/markdown",
+        "file_path":    os.path.join(_SCRIPT_DIR, "resources/subgraph-reference.md"),
     },
-    # "cloverdx://reference/components": {
-    #     "name":        "CloverDX Component Catalog",
-    #     "description": "All available CloverDX component types with their ports and properties (non-deprecated)",
-    #     "mimeType":    "application/json",
-    # },
+    "cloverdx://reference/data-service": {
+        "name":        "CloverDX Data Service Reference",
+        "mimeType":    "text/markdown",
+        "file_path":    os.path.join(_SCRIPT_DIR, "resources/data-service-reference.md"),
+    },
+    "cloverdx://reference/components": {
+        "name":             "CloverDX Component Catalog",
+        "mimeType":         "application/json",
+        "description_path": os.path.join(_SCRIPT_DIR, "resources/components-reference.md"),
+        "content_kind":     "components_catalog",
+    },
 }
 
 _WORKFLOW_GUIDE_FILES: Dict[str, str] = {
@@ -742,6 +765,30 @@ _WORKFLOW_GUIDE_FILES: Dict[str, str] = {
 }
 
 # ── Resources ──────────────────────────────────────────────────────────────────
+
+def _resolve_resource_meta(uri: str) -> Dict[str, str]:
+    meta = dict(_RESOURCE_REGISTRY[uri])
+    description_path = meta.get("description_path") or meta.get("file_path")
+    description = _load_reference_description(uri, description_path) if description_path else ""
+    meta["description"] = description or meta.get("description") or ""
+    return meta
+
+
+def _read_resource_content(uri_str: str) -> str:
+    if uri_str not in _RESOURCE_REGISTRY:
+        raise ValueError(f"Unknown resource URI: {uri_str}")
+
+    meta = _RESOURCE_REGISTRY[uri_str]
+    file_path = meta.get("file_path")
+    if file_path:
+        return _load_reference(uri_str, file_path)
+
+    if meta.get("content_kind") == "components_catalog":
+        cat = get_catalog()
+        non_dep = [c for c in cat._components if not cat._is_deprecated(c)]
+        return json.dumps(non_dep, indent=2)
+
+    raise ValueError(f"No content loader configured for resource URI: {uri_str}")
 
 @app.list_resources()
 async def handle_list_resources() -> List[types.Resource]:
@@ -753,38 +800,13 @@ async def handle_list_resources() -> List[types.Resource]:
             description=meta["description"],
             mimeType=meta["mimeType"],
         )
-        for uri, meta in _RESOURCE_REGISTRY.items()
+        for uri, meta in ((uri, _resolve_resource_meta(uri)) for uri in _RESOURCE_REGISTRY)
     ]
 
 
 @app.read_resource()
 async def handle_read_resource(uri) -> str:
-    uri_str = str(uri)
-
-    if uri_str.endswith("graph-xml"):
-        return _load_reference(
-            "graph-xml",
-            os.path.join(_SCRIPT_DIR, "resources/cloverdx-llm-reference.md")
-        )
-
-    if uri_str.endswith("ctl2"):
-        return _load_reference(
-            "ctl2",
-            os.path.join(_SCRIPT_DIR, "resources/CTL2_Reference_for_LLM_compact.md")
-        )
-
-    if uri_str.endswith("subgraphs"):
-        return _load_reference(
-            "subgraphs",
-            os.path.join(_SCRIPT_DIR, "resources/CLOVERDX_SUBGRAPHS.md")
-        )
-
-    if uri_str.endswith("components"):
-        cat    = get_catalog()
-        non_dep = [c for c in cat._components if not cat._is_deprecated(c)]
-        return json.dumps(non_dep, indent=2)
-
-    raise ValueError(f"Unknown resource URI: {uri_str}")
+    return _read_resource_content(str(uri))
 
 
 # ── Tools ──────────────────────────────────────────────────────────────────────
@@ -1338,7 +1360,8 @@ async def handle_list_tools() -> List[types.Tool]:
             description=(
                 "Fetch resource content by URI. "
                 "URIs: 'cloverdx://reference/graph-xml', 'cloverdx://reference/ctl2', "
-                "'cloverdx://reference/subgraphs', 'cloverdx://reference/components'. "
+                "'cloverdx://reference/subgraphs', 'cloverdx://reference/data-service', "
+                "'cloverdx://reference/components'. "
                 "Call list_resources first to see all available URIs."
             ),
             inputSchema={
@@ -3691,7 +3714,8 @@ async def tool_get_edge_debug_data(args: Dict) -> List[types.TextContent]:
 
 async def tool_list_resources(_args: Dict) -> List[types.TextContent]:
     lines = []
-    for uri, meta in _RESOURCE_REGISTRY.items():
+    for uri in _RESOURCE_REGISTRY:
+        meta = _resolve_resource_meta(uri)
         lines.append(f"{uri}")
         lines.append(f"  Name:     {meta['name']}")
         lines.append(f"  Desc:     {meta['description']}")
@@ -3708,7 +3732,7 @@ async def tool_read_resource(args: Dict) -> List[types.TextContent]:
         known = "\n".join(f"  {u}" for u in _RESOURCE_REGISTRY)
         return _text(f"ERROR: Unknown resource URI '{uri}'.\nAvailable URIs:\n{known}")
     try:
-        content = await handle_read_resource(uri)
+        content = _read_resource_content(uri)
         return _text(content)
     except Exception as e:
         return _text(f"ERROR: {e}")

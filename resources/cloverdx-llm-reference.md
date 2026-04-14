@@ -1,3 +1,5 @@
+description: Specification for generating and repairing CloverDX .grf XML: root Graph/Global/Phase/Node/Edge layout, mandatory attributes and child elements, metadata declaration patterns, graph-parameter wiring, and validation-critical structural constraints required for syntactically valid and server-checkable graphs.
+
 # CloverDX Transformation Graph Reference for LLMs
 
 > **Purpose:** Concise reference for generating valid CloverDX transformation graph XML (`.grf` files). Focuses on structure, syntax, and semantics — not UI/designer workflows.

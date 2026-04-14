@@ -1,3 +1,5 @@
+description: Dense CTL2 language reference for CloverDX transformations: valid syntax, typing and conversion rules, record and port access semantics, null handling, control flow, built-in function surface, and hard constraints needed to generate, lint, and repair executable CTL2 without inventing unsupported constructs.
+
 # CTL2 (Clover Transformation Language) — Reference
 
 > Authoritative CTL2 reference for CloverDX ETL. Use to generate, validate, review CTL2 code. Anything not documented here does NOT exist in CTL2.

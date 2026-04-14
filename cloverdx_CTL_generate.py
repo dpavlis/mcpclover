@@ -20,6 +20,9 @@ override them from the environment.
     CLOVERDX_LLM_TEMPERATURE – Overrides LLM_TEMPERATURE if defined.
     CLOVERDX_LLM_TOP_P   – Overrides LLM_TOP_P if defined.
     CLOVERDX_LLM_ALLOW   – Overrides LLM_ALLOW if defined (true/false).
+    CLOVERDX_LOG_PATH – File path for CTL tool logging.
+                            Default: <project>/logs/ctl_tools.log
+                            Set to an empty string to disable CTL tool file logging.
     LLM_ALLOW            – Alternate env name for enabling LLM-backed CTL tools.
 
     LLM_API_URL          – Full URL of the OpenAI-compatible /chat/completions endpoint.
@@ -44,6 +47,48 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_DEFAULT_CTL_LOG_PATH = os.path.join(_SCRIPT_DIR, "logs", "ctl_tools.log")
+CTL_TOOL_LOG_PATH = os.getenv("CLOVERDX_LOG_PATH", _DEFAULT_CTL_LOG_PATH)
+_CTL_FILE_LOG_ENABLED = bool((CTL_TOOL_LOG_PATH or "").strip())
+_ctl_tool_logger = logging.getLogger("cloverdx.ctl_tools")
+_ctl_tool_logger.propagate = False
+_ctl_logger_initialized = False
+_active_ctl_tool_name = "unknown"
+
+
+def _ensure_ctl_file_logger() -> None:
+    global _ctl_logger_initialized
+    if not _CTL_FILE_LOG_ENABLED or _ctl_logger_initialized:
+        return
+
+    log_path = CTL_TOOL_LOG_PATH.strip()
+    log_dir = os.path.dirname(log_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+
+    abs_log_path = os.path.abspath(log_path)
+    for handler in _ctl_tool_logger.handlers:
+        if isinstance(handler, logging.FileHandler) and getattr(handler, "baseFilename", "") == abs_log_path:
+            _ctl_logger_initialized = True
+            return
+
+    file_handler = logging.FileHandler(abs_log_path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s  %(message)s"))
+    _ctl_tool_logger.addHandler(file_handler)
+    _ctl_tool_logger.setLevel(logging.DEBUG)
+    _ctl_logger_initialized = True
+
+
+def _log_ctl_event(event: str, level: int = logging.DEBUG, **fields) -> None:
+    if not _CTL_FILE_LOG_ENABLED:
+        return
+    _ensure_ctl_file_logger()
+    payload = {"event": event, **fields}
+    _ctl_tool_logger.log(level, json.dumps(payload, ensure_ascii=True, default=str))
 
 
 def _env_float(name: str, default: float) -> float:
@@ -230,7 +275,12 @@ def _build_port_metadata_section(
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def _call_llm(user_message: str, system_prompt: str, timeout: int) -> str:
+def _call_llm(
+    user_message: str,
+    system_prompt: str,
+    timeout: int,
+) -> str:
+    tool_name = _active_ctl_tool_name
     payload = {
         "model": LLM_MODEL,
         "temperature": LLM_TEMPERATURE,
@@ -250,26 +300,92 @@ def _call_llm(user_message: str, system_prompt: str, timeout: int) -> str:
         )
         response.raise_for_status()
     except requests.exceptions.ConnectionError as exc:
+        _log_ctl_event(
+            "llm_communication_error",
+            level=logging.ERROR,
+            tool=tool_name,
+            error_type="ConnectionError",
+            error=str(exc),
+            llm_api_url=LLM_API_URL,
+        )
         raise RuntimeError(
             f"Cannot connect to LLM at {LLM_API_URL}. "
             "Ensure Ollama (or another OpenAI-compatible server) is running. "
             f"Detail: {exc}"
         ) from exc
     except requests.exceptions.Timeout:
+        _log_ctl_event(
+            "llm_communication_error",
+            level=logging.ERROR,
+            tool=tool_name,
+            error_type="Timeout",
+            error=f"Request timed out after {timeout}s",
+            llm_api_url=LLM_API_URL,
+        )
         raise RuntimeError(
             f"LLM request timed out after {timeout}s. "
             "Consider increasing the timeout or using a faster/smaller model."
         )
     except requests.exceptions.HTTPError as exc:
+        response = exc.response
+        status_code = response.status_code if response is not None else None
+        response_text = response.text[:400] if response is not None else ""
+        _log_ctl_event(
+            "llm_communication_error",
+            level=logging.ERROR,
+            tool=tool_name,
+            error_type="HTTPError",
+            status_code=status_code,
+            response_text=response_text,
+            llm_api_url=LLM_API_URL,
+        )
         raise RuntimeError(
-            f"LLM returned HTTP error: {exc.response.status_code} "
-            f"{exc.response.text[:400]}"
+            f"LLM returned HTTP error: {status_code} "
+            f"{response_text}"
         ) from exc
 
-    data = response.json()
     try:
-        return data["choices"][0]["message"]["content"]
+        data = response.json()
+    except ValueError as exc:
+        _log_ctl_event(
+            "llm_communication_error",
+            level=logging.ERROR,
+            tool=tool_name,
+            error_type="InvalidJSON",
+            response_text=response.text[:1000],
+            llm_api_url=LLM_API_URL,
+        )
+        raise RuntimeError(
+            f"LLM returned a non-JSON response: {response.text[:400]}"
+        ) from exc
+
+    _log_ctl_event(
+        "llm_response",
+        tool=tool_name,
+        status_code=response.status_code,
+        response_json=data,
+    )
+
+    try:
+        assistant_content = data["choices"][0]["message"]["content"]
+        _log_ctl_event(
+            "llm_conversation",
+            tool=tool_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": assistant_content},
+            ],
+        )
+        return assistant_content
     except (KeyError, IndexError) as exc:
+        _log_ctl_event(
+            "llm_communication_error",
+            level=logging.ERROR,
+            tool=tool_name,
+            error_type="UnexpectedResponseStructure",
+            response_json=data,
+        )
         raise RuntimeError(
             f"Unexpected LLM response structure: {json.dumps(data)[:500]}"
         ) from exc
@@ -332,6 +448,39 @@ def validate_CTL(
     parts.append(f"\n\n## CTL2 Code\n```\n{code}\n```")
 
     user_message = "\n".join(parts)
+    llm_payload = {
+        "model": LLM_MODEL,
+        "temperature": LLM_TEMPERATURE,
+        "top_p": LLM_TOP_P,
+        "messages": [
+            {"role": "system", "content": VALIDATE_SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+    }
+
+    _log_ctl_event(
+        "tool_called",
+        tool="validate_CTL",
+        timeout_s=timeout,
+        code=code,
+        input_metadata=input_metadata,
+        output_metadata=output_metadata,
+        query=query,
+    )
+    _log_ctl_event(
+        "llm_query",
+        tool="validate_CTL",
+        query=(query or ""),
+    )
+    _log_ctl_event(
+        "llm_request",
+        tool="validate_CTL",
+        llm_api_url=LLM_API_URL,
+        timeout_s=timeout,
+        payload=llm_payload,
+        system_prompt=VALIDATE_SYSTEM_PROMPT,
+        user_message=user_message,
+    )
 
     logger.info(
         "validate_CTL: calling LLM at %s (model=%s, code_len=%d, input_metadata=%s, output_metadata=%s, query=%s)",
@@ -342,7 +491,17 @@ def validate_CTL(
         "yes" if output_metadata else "no",
         repr(query[:60]) if query else "none",
     )
-    return _call_llm(user_message=user_message, system_prompt=VALIDATE_SYSTEM_PROMPT, timeout=timeout)
+    global _active_ctl_tool_name
+    previous_tool = _active_ctl_tool_name
+    _active_ctl_tool_name = "validate_CTL"
+    try:
+        return _call_llm(
+            user_message=user_message,
+            system_prompt=VALIDATE_SYSTEM_PROMPT,
+            timeout=timeout,
+        )
+    finally:
+        _active_ctl_tool_name = previous_tool
 
 
 def generate_CTL(
@@ -382,6 +541,38 @@ def generate_CTL(
     parts.append(f"\nRequest:\n{description.strip()}")
 
     user_message = "\n".join(parts)
+    llm_payload = {
+        "model": LLM_MODEL,
+        "temperature": LLM_TEMPERATURE,
+        "top_p": LLM_TOP_P,
+        "messages": [
+            {"role": "system", "content": GENERATE_SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+    }
+
+    _log_ctl_event(
+        "tool_called",
+        tool="generate_CTL",
+        timeout_s=timeout,
+        description=description,
+        input_metadata=input_metadata,
+        output_metadata=output_metadata,
+    )
+    _log_ctl_event(
+        "llm_query",
+        tool="generate_CTL",
+        query=description,
+    )
+    _log_ctl_event(
+        "llm_request",
+        tool="generate_CTL",
+        llm_api_url=LLM_API_URL,
+        timeout_s=timeout,
+        payload=llm_payload,
+        system_prompt=GENERATE_SYSTEM_PROMPT,
+        user_message=user_message,
+    )
 
     logger.info(
         "generate_CTL: calling LLM at %s (model=%s, desc_len=%d, input_metadata=%s, output_metadata=%s)",
@@ -391,4 +582,14 @@ def generate_CTL(
         "yes" if input_metadata else "no",
         "yes" if output_metadata else "no",
     )
-    return _call_llm(user_message=user_message, system_prompt=GENERATE_SYSTEM_PROMPT, timeout=timeout)
+    global _active_ctl_tool_name
+    previous_tool = _active_ctl_tool_name
+    _active_ctl_tool_name = "generate_CTL"
+    try:
+        return _call_llm(
+            user_message=user_message,
+            system_prompt=GENERATE_SYSTEM_PROMPT,
+            timeout=timeout,
+        )
+    finally:
+        _active_ctl_tool_name = previous_tool
