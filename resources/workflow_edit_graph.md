@@ -15,19 +15,14 @@
 
 ## PHASE 0 — Read authoritative context and check knowledge base
 
-### 0.1 Check the knowledge base
-Start by reviewing what you already know from previous sessions:
+### 0.1 List and read resources relevant to the edit
+First list the available authoritative MCP resources so you know exactly what can be consulted:
 
 ```
-kb_search()                               -- catalog of all knowledge entries
-kb_read("ctl2-isnull-vs-isNull")          -- load entries relevant to this edit
+list_resources()
 ```
 
-Skim the catalog; load any entries whose name or description relates to the
-components, CTL patterns, or data structures involved in the edit.
-
-### 0.2 Read resources relevant to the edit
-Read only what the edit actually touches — do not skip this step:
+Then read only what the edit actually touches — do not skip this step:
 
 ```
 read_resource("cloverdx://reference/graph-xml")   -- if structure changes
@@ -38,6 +33,22 @@ read_resource("cloverdx://reference/subgraphs")    -- if edit touches a .sgrf,
 ```
 
 Do not rely on training knowledge when a resource exists.
+
+If the edit also touches other CloverDX artefacts, read the corresponding
+authoritative resource(s) immediately after `list_resources()` and before making
+changes.
+
+### 0.2 Check the knowledge base
+Review what you already know from previous sessions:
+
+```
+kb_search()                               -- catalog of all knowledge entries
+kb_read("ctl2-isnull-vs-isNull")          -- load entries relevant to this edit
+```
+
+Skim the catalog; load any entries whose name or description relates to the
+components, CTL patterns, or data structures involved in the edit.
+
 
 ### 0.3 Read the current file from the server
 **Always read the current server copy before changing anything.**

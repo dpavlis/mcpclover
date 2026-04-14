@@ -14,20 +14,14 @@
 
 ## PHASE 0 — Read authoritative context and check knowledge base
 
-### 0.1 Check the knowledge base
-Start by reviewing what you already know from previous sessions:
+### 0.1 List and read authoritative resources
+First list the available authoritative MCP resources so you know exactly what can be consulted:
 
 ```
-kb_search()                               -- catalog of all knowledge entries
-kb_read("ctl2-isnull-vs-isNull")          -- load entries relevant to the task
-kb_read("aggregate-sort-requirement")
+list_resources()
 ```
 
-Skim the catalog; load any entries whose name or description relates to the
-components, CTL patterns, or data structures you expect to work with.
-
-### 0.2 Read resources
-Always read authoritative MCP resources before any other work:
+Then read the authoritative resources required for the task before any other work:
 
 ```
 read_resource("cloverdx://reference/graph-xml")
@@ -41,6 +35,23 @@ read_resource("cloverdx://reference/subgraphs")
 
 Do not rely on training knowledge when a resource exists. These are the authoritative
 source — they override anything you think you know.
+
+If the task touches other CloverDX artefacts beyond graph XML or CTL, read the
+matching authoritative resource(s) immediately after `list_resources()` and before
+planning or writing anything for those artefacts.
+
+### 0.2 Check the knowledge base
+Review what you already know from previous sessions:
+
+```
+kb_search()                               -- catalog of all knowledge entries
+kb_read("ctl2-isnull-vs-isNull")          -- load entries relevant to the task
+kb_read("aggregate-sort-requirement")
+```
+
+Skim the catalog; load any entries whose name or description relates to the
+components, CTL patterns, or data structures you expect to work with.
+
 
 ### 0.3 Resolve sandbox parameters
 Check what the standard path parameters resolve to in this sandbox:

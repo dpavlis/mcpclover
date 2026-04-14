@@ -6,6 +6,43 @@
 
 ---
 
+## PHASE 0 — Read authoritative context first
+
+### 0.1 List authoritative resources
+Before inspecting, validating, or running any CloverDX graph or related artefact,
+list the available authoritative MCP resources:
+
+```
+list_resources()
+```
+
+### 0.2 Read the authoritative resources relevant to the task
+Read the resources that apply before doing any validation or execution work:
+
+```
+read_resource("cloverdx://reference/graph-xml")   -- if inspecting graph structure or XML issues
+read_resource("cloverdx://reference/ctl2")         -- if validation may involve CTL compilation or runtime logic
+read_resource("cloverdx://reference/subgraphs")    -- if the task involves a .sgrf or SUBGRAPH behaviour
+```
+
+If the task involves other CloverDX artefacts, read the corresponding authoritative
+resource(s) immediately after `list_resources()` and before proceeding.
+
+Do not rely on training knowledge when a resource exists.
+
+### 0.3 Check the knowledge base
+Review what you already know from previous sessions:
+
+```
+kb_search()                               -- catalog of all knowledge entries
+kb_read("ctl2-isnull-vs-isNull")          -- load entries relevant to this edit
+```
+
+Skim the catalog; load any entries whose name or description relates to the
+components, CTL patterns, or data structures involved in the edit.
+
+---
+
 ## PHASE 1 — Validate the graph
 
 ### 1.1 Call `validate_graph`
