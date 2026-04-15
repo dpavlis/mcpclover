@@ -832,7 +832,7 @@ Date format patterns: Java SimpleDateFormat — `yyyy`, `MM`, `dd`, `HH`, `mm`, 
 
 | Function | Signature(s) | Description |
 |---|---|---|
-| `append` | `T[] append(T[], T element)` | Append to end. Returns modified list. |
+| `append` | `T[] append(T[], T element)` | Append to end. Returns modified list. `append(nullList, x)` is valid; `x` becomes the first item automatically. |
 | | `variant append(variant, variant)` | variant must contain list. |
 | `appendAll` | `T[] appendAll(T[] target, T[] source)` | Append all. Maps: merge (right overwrites). |
 | | `variant appendAll(variant target, variant source)` | variant must contain list or map. |

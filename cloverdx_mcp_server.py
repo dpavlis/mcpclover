@@ -18,7 +18,7 @@ WebServices and exposes the following tools:
   rename_file             – Rename a file within a sandbox (RenameSandboxFile)
   copy_file               – Copy a file within/across sandboxes
   patch_file              – Patch a sandbox file using anchor-based line ranges
-    write_file              – Upload a file with overwrite, append, insert, or replace modes
+  write_file              – Upload a file with overwrite, append, insert, or replace modes
   delete_file             – Delete a file from a sandbox
   create_directory        – Create a directory in a sandbox
   delete_directory        – Delete a directory from a sandbox
