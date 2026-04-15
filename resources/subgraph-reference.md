@@ -52,7 +52,7 @@ A reusable component whose logic is a graph (.sgrf file). Streams data in parall
 
 ### SUBGRAPH_INPUT — exactly one per .sgrf
 ```xml
-<Node guiName="SubgraphInput" guiX="50" guiY="10" id="SUBGRAPH_INPUT0" type="SUBGRAPH_INPUT">
+<Node guiName="SubgraphInput" guiX="50" guiY="25" id="SUBGRAPH_INPUT0" type="SUBGRAPH_INPUT">
   <Port guiY="100" name="0"/>
 </Node>
 ```
@@ -60,7 +60,7 @@ Each `<Port name="N"/>` = one input port on the resulting component. Required ev
 
 ### SUBGRAPH_OUTPUT — exactly one per .sgrf
 ```xml
-<Node guiName="SubgraphOutput" guiX="700" guiY="10" id="SUBGRAPH_OUTPUT0" type="SUBGRAPH_OUTPUT">
+<Node guiName="SubgraphOutput" guiX="700" guiY="25" id="SUBGRAPH_OUTPUT0" type="SUBGRAPH_OUTPUT">
   <Port guiY="100" name="0"/>
   <Port guiY="170" name="1"/>
 </Node>
@@ -112,7 +112,7 @@ Expose subgraph config to parent graph as component attributes.
 ## Using Subgraph in Parent Graph
 
 ```xml
-<Node id="EXTRACT" guiName="Extract" guiX="125" guiY="384"
+<Node id="EXTRACT" guiName="Extract" guiX="125" guiY="375"
       jobURL="${SUBGRAPH_DIR}/dwh-loader/readers/OrderFileReader.sgrf"
       __FILE_URL="${INPUT_FILE_URL}"
       type="SUBGRAPH">

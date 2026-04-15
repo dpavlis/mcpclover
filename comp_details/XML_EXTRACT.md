@@ -19,7 +19,7 @@
 ## COMPONENT SKELETON
 
 ```xml
-<Node charset="UTF-8" enabled="enabled" guiName="ReadXML" guiX="95" guiY="325" id="XML_EXTRACT0" schema="${DATAIN_DIR}/input.xsd" sourceUri="${DATAIN_DIR}/input.xml" type="XML_EXTRACT" useNestedNodes="true">
+<Node charset="UTF-8" enabled="enabled" guiName="ReadXML" guiX="100" guiY="325" id="XML_EXTRACT0" schema="${DATAIN_DIR}/input.xsd" sourceUri="${DATAIN_DIR}/input.xml" type="XML_EXTRACT" useNestedNodes="true">
     <attr name="mapping"><![CDATA[<Mappings>
     <Mapping element="rootElement">
         <Mapping element="record" outPort="0"/>
@@ -144,7 +144,7 @@ Overrides the schema-declared type of an element for the visual mapping editor. 
 
 **Graph node:**
 ```xml
-<Node charset="UTF-8" enabled="enabled" guiName="Read Movies.xml" guiX="95" guiY="325" id="XML_EXTRACT0" schema="${DATAIN_DIR}/others/movies.xsd" sourceUri="${DATAIN_DIR}/others/Movies.xml" type="XML_EXTRACT" useNestedNodes="true">
+<Node charset="UTF-8" enabled="enabled" guiName="Read Movies.xml" guiX="100" guiY="325" id="XML_EXTRACT0" schema="${DATAIN_DIR}/others/movies.xsd" sourceUri="${DATAIN_DIR}/others/Movies.xml" type="XML_EXTRACT" useNestedNodes="true">
     <attr name="mapping"><![CDATA[<Mappings>
     <Mapping element="movies">
         <Mapping element="movie" outPort="1">

@@ -87,7 +87,7 @@ Always include this standard block:
 ### RESTJOB_INPUT (Input component)
 
 ```xml
-<Node guiName="Input" guiX="80" guiY="10" id="RESTJOB_INPUT0"
+<Node guiName="Input" guiX="75" guiY="25" id="RESTJOB_INPUT0"
       restJobInput="true"
       type="RESTJOB_INPUT"
       requestFormat="JSON"/>   <!-- JSON (default since 5.12), STRING, or omit for BINARY -->
@@ -103,7 +103,7 @@ Always include this standard block:
 ### RESTJOB_OUTPUT (Output component)
 
 ```xml
-<Node guiName="Output" guiX="1100" guiY="10" id="RESTJOB_OUTPUT0"
+<Node guiName="Output" guiX="1100" guiY="25" id="RESTJOB_OUTPUT0"
       restJobOutput="true"
       type="RESTJOB_OUTPUT"
       responseFormat="JSON"       <!-- JSON, XML, CSV, CUSTOM, or FILE -->
@@ -449,7 +449,7 @@ Programmatic form value setting: `document.getElementById('paramName_input').val
 <Dictionary/>
 </Global>
 <Phase number="0">
-<Node guiName="Input" guiX="80" guiY="25" id="RESTJOB_INPUT0" restJobInput="true" type="RESTJOB_INPUT"/>
+<Node guiName="Input" guiX="75" guiY="25" id="RESTJOB_INPUT0" restJobInput="true" type="RESTJOB_INPUT"/>
 <Node guiName="Generate Response" guiX="400" guiY="200" id="GENERATE_RESPONSE" type="GET_JOB_INPUT">
   <attr name="mapping"><![CDATA[//#CTL2
 function integer transform() {
@@ -499,7 +499,7 @@ function integer transform() {
 <Dictionary/>
 </Global>
 <Phase number="0">
-<Node guiName="Input" guiX="80" guiY="25" id="RESTJOB_INPUT0"
+<Node guiName="Input" guiX="75" guiY="25" id="RESTJOB_INPUT0"
       restJobInput="true" type="RESTJOB_INPUT" requestFormat="JSON"/>
 <Node guiName="Process" guiX="400" guiY="200" id="PROCESS" type="REFORMAT">
   <attr name="transform"><![CDATA[//#CTL2
