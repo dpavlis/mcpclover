@@ -73,6 +73,7 @@ Resources exposed
   cloverdx://reference/ctl2        – CTL2_Reference_for_LLM_compact.md
     cloverdx://reference/subgraphs   – subgraph-reference.md
     cloverdx://reference/data-service – data-service-reference.md
+        cloverdx://reference/jobflow     – jobflow-reference.md
     cloverdx://reference/components  – components.json (non-deprecated)
 
 Configuration (.env)
@@ -756,6 +757,11 @@ _RESOURCE_REGISTRY: Dict[str, Dict[str, str]] = {
         "mimeType":    "text/markdown",
         "file_path":    os.path.join(_SCRIPT_DIR, "resources/data-service-reference.md"),
     },
+    "cloverdx://reference/jobflow": {
+        "name":        "CloverDX Jobflow Reference",
+        "mimeType":    "text/markdown",
+        "file_path":    os.path.join(_SCRIPT_DIR, "resources/jobflow-reference.md"),
+    },
     "cloverdx://reference/components": {
         "name":             "CloverDX Component Catalog",
         "mimeType":         "application/json",
@@ -1379,6 +1385,7 @@ async def handle_list_tools() -> List[types.Tool]:
                 "Fetch resource content by URI. "
                 "URIs: 'cloverdx://reference/graph-xml', 'cloverdx://reference/ctl2', "
                 "'cloverdx://reference/subgraphs', 'cloverdx://reference/data-service', "
+                "'cloverdx://reference/jobflow', "
                 "'cloverdx://reference/components'. "
                 "Call list_resources first to see all available URIs."
             ),
