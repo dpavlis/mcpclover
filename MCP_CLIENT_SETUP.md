@@ -180,7 +180,7 @@ Quick verification after deployment:
 
 ## 6) IMPORTANT: Create the KB sandbox on the target CloverDX server
 
-The `kb_store`, `kb_search`, and `kb_read` tools persist knowledge-base entries as markdown files inside a dedicated CloverDX sandbox. The sandbox must exist before those tools can be used.
+The `kb_store`, `kb_search`, and `kb_read` tools persist knowledge-base entries as markdown files inside a dedicated CloverDX sandbox. The sandbox must be installed before those tools can be used.
 
 Create a sandbox named exactly:
 
@@ -188,13 +188,28 @@ Create a sandbox named exactly:
 CLV_MCP_KWBASE
 ```
 
-How to create it: log in to the CloverDX Server web UI → **Sandboxes** → **Add sandbox**, set the code to `CLV_MCP_KWBASE`.
+Installation steps:
+
+1. Log in to the CloverDX Server web UI.
+2. Go to **Sandboxes** → **Add sandbox**.
+3. Create a sandbox with code exactly `CLV_MCP_KWBASE`.
+4. Unpack the bundled archive from this repository:
+
+```bash
+resources/CLV_MCP_KWBASE_sandbox_export.zip
+```
+
+5. Upload/move the extracted archive contents into the server sandbox `CLV_MCP_KWBASE`, preserving the folder structure.
+
+This is important because creating the sandbox alone is not sufficient. The bundled content provides the initial knowledge-base/reference material that the LLM and KB tools rely on.
 
 Notes:
 
 - The sandbox name is case-sensitive. `clv_mcp_kwbase` or `CLV_MCP_Kwbase` will not work.
 - KB entries are stored as `.md` files under a `kb/` folder inside this sandbox.
+- After creating the sandbox, make sure the extracted archive content is actually present on the server in that sandbox before starting the MCP client.
 - If the sandbox is missing, any call to `kb_store` will fail with a sandbox-not-found error; `kb_search` and `kb_read` will return empty results.
+- If the sandbox exists but the archive content was not uploaded, KB-backed guidance will be incomplete because the initial reference material will be missing.
 
 ## 7) Quick local sanity check (optional)
 
@@ -214,7 +229,7 @@ If it starts without import errors, dependencies are installed correctly.
 - Self-signed HTTPS certs: set `CLOVERDX_VERIFY_SSL` to `false`.
 - More logs: set `CLOVERDX_LOG_LEVEL` to `DEBUG`.
 - `get_edge_debug_data` fails: confirm `DebugRead.rjob` and `DebugReadCSV.rjob` from `data_service/` are deployed as server DataServices.
-- `kb_store` fails / `kb_search` returns nothing: confirm the `CLV_MCP_KWBASE` sandbox exists on the server (see step 6).
+- `kb_store` fails / `kb_search` returns nothing: confirm the `CLV_MCP_KWBASE` sandbox exists on the server and that the content from `resources/CLV_MCP_KWBASE_sandbox_export.zip` was unpacked and uploaded into it (see step 6).
 - Windows startup issues: verify `command` points to `venv\\Scripts\\python.exe` and that all paths in `args` and `env` use valid Windows absolute paths.
 
 ## 9) Maintain `requirements.txt`
