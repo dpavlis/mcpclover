@@ -110,7 +110,13 @@ If the file does not exist, create it. Add/merge this `mcpServers` block:
         "CLOVERDX_LLM_TEMPERATURE": "0.2",
         "CLOVERDX_LLM_TOP_P": "0.9",
         "CLOVERDX_LOG_PATH": "/Users/david/git/mcpclover/logs/ctl_tools.log",
-        "CLOVERDX_LOG_LEVEL": "INFO"
+        "CLOVERDX_LOG_LEVEL": "INFO",
+        "CLOVERDX_SUBAGENT_API_URL": "https://api.openai.com/v1/chat/completions",
+        "CLOVERDX_SUBAGENT_MODEL": "gpt-5.4",
+        "CLOVERDX_SUBAGENT_API_KEY": "sk-YOUR-KEY-HERE",
+        "CLOVERDX_SUBAGENT_TEMPERATURE": "0.2",
+        "CLOVERDX_SUBAGENT_MAX_TOKENS": "32768",
+        "CLOVERDX_SUBAGENT_TIMEOUT": "240"
       }
     }
   }
@@ -131,12 +137,19 @@ Environment variable notes:
 - Required: `CLOVERDX_BASE_URL`, `CLOVERDX_USERNAME`, `CLOVERDX_PASSWORD`
 - Common optional: `CLOVERDX_VERIFY_SSL` (default `false`), `CLOVERDX_LOG_LEVEL` (default `INFO`), `CLOVERDX_SESSION_TIMEOUT` (default `1500` seconds)
 - Optional CTL/LLM settings:
-  - `CLOVERDX_LLM_ALLOW` enables `validate_CTL` and `generate_CTL`.
+  - `CLOVERDX_LLM_ALLOW` enables `validate_CTL`, `generate_CTL`, `run_sub_agent`, and `suggest_components`.
     Enable this only when your configured model endpoint can reliably understand CloverDX CTL2 and produce valid CTL output.
     In practice this usually means a specialized/fine-tuned CTL-capable model.
     Most users should keep this set to `false`.
   - `CLOVERDX_LLM_API_URL`, `CLOVERDX_LLM_MODEL`, `CLOVERDX_LLM_TEMPERATURE`, `CLOVERDX_LLM_TOP_P`
   - `CLOVERDX_LOG_PATH` controls CTL tool file logging path (set empty string to disable file logging)
+- Optional sub-agent settings (used by `run_sub_agent` and `suggest_components` when `CLOVERDX_LLM_ALLOW=true`):
+  - `CLOVERDX_SUBAGENT_API_URL` — OpenAI-compatible chat completions endpoint (default: `https://api.openai.com/v1/chat/completions`)
+  - `CLOVERDX_SUBAGENT_MODEL` — model name to send in requests (default: `gpt-5.4`)
+  - `CLOVERDX_SUBAGENT_API_KEY` — API key for the sub-agent endpoint; leave empty for local endpoints (default: `""`)
+  - `CLOVERDX_SUBAGENT_TEMPERATURE` — sampling temperature (default: `0.2`)
+  - `CLOVERDX_SUBAGENT_MAX_TOKENS` — `max_completion_tokens` cap sent with each request (default: `32768`)
+  - `CLOVERDX_SUBAGENT_TIMEOUT` — per-request HTTP timeout in seconds (default: `240`)
 
 Restart Claude Desktop after saving the file.
 

@@ -66,7 +66,7 @@ SUBAGENT_API_URL: str = os.getenv(
 SUBAGENT_MODEL: str = os.getenv("CLOVERDX_SUBAGENT_MODEL", "gpt-5.4")
 SUBAGENT_API_KEY: str = os.getenv("CLOVERDX_SUBAGENT_API_KEY", "")
 SUBAGENT_TEMPERATURE: float = _env_float("CLOVERDX_SUBAGENT_TEMPERATURE", 0.2)
-SUBAGENT_MAX_TOKENS: int = _env_int("CLOVERDX_SUBAGENT_MAX_TOKENS", 131072)
+SUBAGENT_MAX_TOKENS: int = _env_int("CLOVERDX_SUBAGENT_MAX_TOKENS", 32768)
 SUBAGENT_TIMEOUT: int = _env_int("CLOVERDX_SUBAGENT_TIMEOUT", 240)
 
 # The generic sub-agent can only use read-only tools. Non-read-only names are ignored.
@@ -302,7 +302,7 @@ async def _run_llm_tool_loop(
         payload: Dict[str, Any] = {
             "model": SUBAGENT_MODEL,
             "temperature": SUBAGENT_TEMPERATURE,
-            "max_tokens": SUBAGENT_MAX_TOKENS,
+            "max_completion_tokens": SUBAGENT_MAX_TOKENS,
             "messages": messages,
             "tools": openai_tools,
             "tool_choice": "auto",

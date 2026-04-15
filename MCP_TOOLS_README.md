@@ -331,6 +331,46 @@ Reads a single KB entry by `name` and returns structured fields plus full markdo
 
 ---
 
+## Sub-agent Tools
+
+> These tools are only active when `CLOVERDX_LLM_ALLOW=true`. They require a working OpenAI-compatible endpoint configured via the `CLOVERDX_SUBAGENT_*` env vars.
+
+### `run_sub_agent`
+Delegates a sub-task to an inner LLM agent that can use only read-only MCP tools.  
+**Why:** Lets the outer agent offload investigation work (e.g. "find all graphs that use component X and summarise their patterns") without granting write access.  
+**Parameters:**
+- `task` *(required)* — the task to solve
+- `context` — optional additional context string
+- `system_prompt` — optional custom system prompt override
+- `allowed_tools` — optional allowlist of read-only tool names; non-read-only names are ignored
+- `max_iterations` — max LLM/tool-call rounds (default `10`)
+- `timeout` — per-request LLM timeout in seconds  
+**Backend:** OpenAI-compatible chat completions endpoint configured via `CLOVERDX_SUBAGENT_*`
+
+---
+
+### `suggest_components`
+Researched component recommendations for a data processing task. Internally queries the KB, resource references, the full component catalog, and detailed component docs before ranking candidates.  
+**Why:** Call this **before** selecting components — especially when multiple candidates could apply or the best fit is unclear. Returns JSON with ranked `recommendations[]` (config notes, CTL signatures, ports, prerequisites), `alternatives_considered[]`, `kb_insights[]` (entry names for `kb_read` follow-up), and `pattern_notes[]`.  
+**Parameters:**
+- `task` *(required)* — describe the data processing task. Include input data format/source, processing logic needed, and expected output. More detail produces better results.  
+**Backend:** `run_sub_agent` internally with a focused system prompt + read-only tools
+
+**Sub-agent environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `CLOVERDX_SUBAGENT_API_URL` | `https://api.openai.com/v1/chat/completions` | OpenAI-compatible chat completions endpoint |
+| `CLOVERDX_SUBAGENT_MODEL` | `gpt-5.4` | Model name sent in each request |
+| `CLOVERDX_SUBAGENT_API_KEY` | *(empty)* | API key; leave empty for local endpoints |
+| `CLOVERDX_SUBAGENT_TEMPERATURE` | `0.2` | Sampling temperature |
+| `CLOVERDX_SUBAGENT_MAX_TOKENS` | `32768` | `max_completion_tokens` cap per request |
+| `CLOVERDX_SUBAGENT_TIMEOUT` | `240` | Per-request HTTP timeout (seconds) |
+
+> **Note:** These tools use `max_completion_tokens` (not `max_tokens`) in the API payload to support modern OpenAI reasoning models (o1, o3, o4-mini, gpt-5.x).
+
+---
+
 ## CTL LLM Tools
 ### `validate_CTL`
 Validates CloverDX CTL2 code with LLM-assisted review.
