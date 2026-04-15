@@ -64,6 +64,8 @@ WebServices and exposes the following tools:
   ─────────
   validate_CTL            – Lint CTL2 code via an LLM (OpenAI-compatible API)
   generate_CTL            – Generate CTL2 code/snippets via an LLM (OpenAI-compatible API)
+    run_sub_agent           – Delegate a sub-task to a read-only inner LLM agent
+    suggest_components      – Suggest CloverDX components for a given task
 
 Resources exposed
 ─────────────────
@@ -79,7 +81,8 @@ Configuration (.env)
   CLOVERDX_USERNAME   clover
   CLOVERDX_PASSWORD   clover
   CLOVERDX_VERIFY_SSL false   (optional, default false)
-  CLOVERDX_LLM_ALLOW  false   (optional, default false; enables validate_CTL and generate_CTL tools)
+    CLOVERDX_LLM_ALLOW  false   (optional, default false; enables validate_CTL/generate_CTL/run_sub_agent/suggest_components tools)
+    CLOVERDX_SUBAGENT_* (optional; endpoint/model settings for run_sub_agent/suggest_components)
 
 Dependencies
 ────────────
@@ -106,9 +109,12 @@ import mcp.types as types
 from cloverdx_graph_validator import GraphValidator
 from cloverdx_graph_structure import GraphStructureService, VALID_ELEMENT_TYPES
 from cloverdx_soap_client import CloverDXSoapClient
-from cloverdx_CTL_generate import validate_CTL as _ctl_validate
-from cloverdx_CTL_generate import generate_CTL as _ctl_generate
-from cloverdx_CTL_generate import LLM_ALLOW
+from cloverdx_LLM_based_tools import validate_CTL as _ctl_validate
+from cloverdx_LLM_based_tools import generate_CTL as _ctl_generate
+from cloverdx_LLM_based_tools import suggest_components as _suggest_components
+from cloverdx_LLM_based_tools import LLM_ALLOW
+from cloverdx_sub_agent import READ_ONLY_SUBAGENT_TOOLS
+from cloverdx_sub_agent import run_sub_agent as _run_sub_agent
 
 try:
     from charset_normalizer import from_bytes as _charset_from_bytes
@@ -1708,6 +1714,77 @@ async def handle_list_tools() -> List[types.Tool]:
                             "description": "LLM request timeout in seconds (default: 120).",
                         },
                     },
+                },
+            ),
+            types.Tool(
+                name="run_sub_agent",
+                description=(
+                    "Delegate a sub-task to an inner LLM agent that can use only read-only tools. "
+                    "When allowed_tools is provided, non-read-only tool names are ignored."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["task"],
+                    "properties": {
+                        "task": {
+                            "type": "string",
+                            "description": "Task for the sub-agent to solve.",
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": "Optional additional context for the sub-agent.",
+                        },
+                        "system_prompt": {
+                            "type": "string",
+                            "description": "Optional custom system prompt for the sub-agent.",
+                        },
+                        "allowed_tools": {
+                            "type": "array",
+                            "description": (
+                                "Optional tool allowlist. Only read-only tools are accepted; "
+                                "all non-read-only names are ignored."
+                            ),
+                            "items": {"type": "string"},
+                        },
+                        "max_iterations": {
+                            "type": "integer",
+                            "description": "Max LLM/tool-call rounds (default: 10).",
+                            "default": 10,
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": "Per-request timeout in seconds for sub-agent LLM calls.",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            ),
+            types.Tool(
+                name="suggest_components",
+                description=(
+                    "Researched component recommendations for a task. Queries KB, resources, "
+                    "full component catalog, and detailed docs before recommending. "
+                    "Call BEFORE selecting components — especially when multiple candidates "
+                    "could apply or the best fit is unclear. "
+                    "Returns JSON: ranked recommendations[] (with config notes, CTL signatures, "
+                    "ports, prerequisites), alternatives_considered[], kb_insights[] "
+                    "(entry names for kb_read follow-up), pattern_notes[]."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["task"],
+                    "properties": {
+                        "task": {
+                            "type": "string",
+                            "description": (
+                                "Data processing task. Include: input data (format, source), "
+                                "processing/logic needed, expected output. More detail → better results. "
+                                "E.g. 'Join orders with customer lookup by customer_id, slave in memory, unsorted' "
+                                "or 'Call REST API per record, has OpenAPI spec, needs pagination'"
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
                 },
             ),
         ] if LLM_ALLOW else []),
@@ -3427,6 +3504,66 @@ async def tool_generate_CTL(args: Dict) -> List[types.TextContent]:
         return _text(f"ERROR: {exc}")
 
 
+async def tool_run_sub_agent(args: Dict) -> List[types.TextContent]:
+    task = str(args.get("task") or "").strip()
+    if not task:
+        return _text("ERROR: 'task' is required")
+
+    requested_tools = args.get("allowed_tools")
+    allowed_tools: Optional[List[str]]
+    if requested_tools is None:
+        allowed_tools = None
+    elif isinstance(requested_tools, list):
+        allowed_tools = [str(name).strip() for name in requested_tools if str(name).strip()]
+    else:
+        return _text("ERROR: 'allowed_tools' must be an array of tool names")
+
+    max_iterations = int(args.get("max_iterations") or 10)
+    timeout = args.get("timeout")
+    timeout_s = int(timeout) if timeout is not None else None
+    context = args.get("context")
+    system_prompt = args.get("system_prompt")
+
+    try:
+        result = await _run_sub_agent(
+            task=task,
+            tool_map=_TOOL_MAP,
+            mcp_tool_list=await handle_list_tools(),
+            allowed_tools=allowed_tools,
+            system_prompt=str(system_prompt) if system_prompt is not None else None,
+            max_iterations=max_iterations,
+            context=str(context) if context is not None else None,
+            timeout=timeout_s,
+        )
+    except Exception as exc:
+        return _text(f"ERROR: {exc}")
+
+    applied_allowed = sorted(
+        set(allowed_tools) & set(READ_ONLY_SUBAGENT_TOOLS)
+    ) if allowed_tools is not None else sorted(READ_ONLY_SUBAGENT_TOOLS)
+
+    return _text(json.dumps({
+        "effective_allowed_tools": applied_allowed,
+        "result": result,
+    }, indent=2))
+
+
+async def tool_suggest_components(args: Dict) -> List[types.TextContent]:
+    task = str(args.get("task") or "").strip()
+    if not task:
+        return _text("ERROR: 'task' is required")
+
+    try:
+        result = await _suggest_components(
+            task=task,
+            tool_map=_TOOL_MAP,
+            mcp_tool_list=await handle_list_tools(),
+        )
+        return _text(result)
+    except Exception as exc:
+        return _text(f"ERROR: {exc}")
+
+
 async def tool_think(args: Dict) -> List[types.TextContent]:
     thought = str(args.get("thought") or "").strip()
     if not thought:
@@ -4202,6 +4339,8 @@ _TOOL_MAP = {
 if LLM_ALLOW:
     _TOOL_MAP["validate_CTL"] = tool_validate_CTL
     _TOOL_MAP["generate_CTL"] = tool_generate_CTL
+    _TOOL_MAP["run_sub_agent"] = tool_run_sub_agent
+    _TOOL_MAP["suggest_components"] = tool_suggest_components
 
 
 # Keys whose values should never appear in logs (secrets / bulk data).

@@ -1,7 +1,7 @@
 """
-CloverDX CTL helper module
-==========================
-Provides two LLM-backed helpers over an OpenAI-compatible chat endpoint
+CloverDX LLM-based tools module
+===============================
+Provides LLM-backed helpers over OpenAI-compatible chat endpoints
 (e.g. local Ollama):
 
     validate_CTL(code, input_metadata, output_metadata, query, timeout)
@@ -9,6 +9,10 @@ Provides two LLM-backed helpers over an OpenAI-compatible chat endpoint
 
     generate_CTL(description, input_metadata, output_metadata, timeout)
         Generates CTL code snippets or component transform code.
+
+    suggest_components(task, tool_map, mcp_tool_list)
+        Suggests CloverDX components for a task using a static inner LLM agent
+        configured via CLOVERDX_SUBAGENT_* settings.
 
 Configuration
 -------------
@@ -39,10 +43,11 @@ override them from the environment.
 import json
 import logging
 import os
-from typing import Optional
+from typing import Any, Dict, Optional, Sequence
 
 import requests
 from dotenv import load_dotenv
+from cloverdx_sub_agent import suggest_etl_components as _suggest_components
 
 logger = logging.getLogger(__name__)
 
@@ -571,3 +576,24 @@ def generate_CTL(
         )
     finally:
         _active_ctl_tool_name = previous_tool
+
+
+async def suggest_components(
+    task: str,
+    tool_map: Dict[str, Any],
+    mcp_tool_list: Sequence[Any],
+) -> str:
+    """Suggest CloverDX components relevant for implementing a given task.
+
+    This helper delegates to the static component recommender agent that uses
+    CLOVERDX_SUBAGENT_* settings and a fixed read-only tool subset.
+    """
+    normalized_task = (task or "").strip()
+    if not normalized_task:
+        raise RuntimeError("'task' is required")
+
+    return await _suggest_components(
+        task_description=normalized_task,
+        tool_map=tool_map,
+        mcp_tool_list=mcp_tool_list,
+    )

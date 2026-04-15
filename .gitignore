@@ -10,4 +10,5 @@ server.crt
 server.key
 misc/
 test_*.py
+tests/
 logs/
