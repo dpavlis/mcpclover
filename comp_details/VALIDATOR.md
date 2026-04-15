@@ -12,7 +12,7 @@
 ## SKELETON
 
 ```xml
-<Node guiName="MyValidator" guiX="400" guiY="80" id="MY_VALIDATOR" type="VALIDATOR">
+<Node guiName="MyValidator" guiX="400" guiY="75" id="MY_VALIDATOR" type="VALIDATOR">
     <attr name="rules"><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <group conjunction="AND" description="" enabled="true" errorMessage="" errorMessageProducer="RULES" lazyEvaluation="false" name="All rules" statusCode="">
     <children>
@@ -61,7 +61,7 @@ function integer transform() {
 
 **Step 3 — Denormalizer to collapse multiple errors per record:**
 ```xml
-<Node guiName="Denormalizer" guiX="820" guiY="375" id="DENORMALIZER" key="recordNo(a)" type="DENORMALIZER">
+<Node guiName="Denormalizer" guiX="825" guiY="375" id="DENORMALIZER" key="recordNo(a)" type="DENORMALIZER">
     <attr name="denormalize"><![CDATA[//#CTL2
 string[] reasons = [];
 function integer append() {

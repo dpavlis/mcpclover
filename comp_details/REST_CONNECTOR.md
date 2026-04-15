@@ -35,7 +35,7 @@
 
 ```xml
 <Node apiRootUrl="https://restcountries.com/v3.1" endpoint="/alpha/{code}"
-      guiName="GetCountry" guiX="845" guiY="-50" id="REST_COUNTRY"
+      guiName="GetCountry" guiX="850" guiY="-50" id="REST_COUNTRY"
       openApiUrl="${DATAIN_DIR}/restCountriesOPENAPI.yaml"
       requestMethod="GET" requestParameters="code=&#13;&#10;"
       type="REST_CONNECTOR">
@@ -72,7 +72,7 @@ function integer transform() {
 
 ```xml
 <Node apiRootUrl="https://addressvalidation.googleapis.com" endpoint="v1:validateAddress"
-      guiName="ValidateAddress" guiX="399" guiY="122" id="VALIDATE_ADDR"
+      guiName="ValidateAddress" guiX="400" guiY="125" id="VALIDATE_ADDR"
       headerProperties="Accept=*/*&#10;"
       requestMethod="POST" type="REST_CONNECTOR">
     <attr name="inputMapping"><![CDATA[//#CTL2

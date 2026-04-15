@@ -538,8 +538,8 @@ graph_edit_structure(graph_path, sandbox,
         "folded": "false",
         "height": "150",
         "width": "350",
-        "guiX": "20",
-        "guiY": "20",
+        "guiX": "25",
+        "guiY": "25",
         "textFontSize": "10"
     },
     content="Reads daily order file from DATAIN, validates required fields "

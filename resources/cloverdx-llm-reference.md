@@ -29,10 +29,10 @@ CloverDX graphs are XML documents. The root element is `<Graph>`. File extension
     </Metadata>
   </Global>
   <Phase number="0">
-    <Node enabled="enabled" guiName="FlatFileReader" guiX="24" guiY="24" id="FLATFILEREADER0" type="DATA_READER">
+    <Node enabled="enabled" guiName="FlatFileReader" guiX="25" guiY="25" id="FLATFILEREADER0" type="DATA_READER">
       <attr name="fileURL"><![CDATA[${DATAIN_DIR}/input.csv]]></attr>
     </Node>
-    <Node enabled="enabled" guiName="FlatFileWriter" guiX="300" guiY="24" id="FLATFILEWRITER0" type="DATA_WRITER">
+    <Node enabled="enabled" guiName="FlatFileWriter" guiX="300" guiY="25" id="FLATFILEWRITER0" type="DATA_WRITER">
       <attr name="fileURL"><![CDATA[${DATAOUT_DIR}/output.csv]]></attr>
     </Node>
     <Edge fromNode="FLATFILEREADER0:0" guiRouter="Manhattan" id="Edge0" inPort="Port 0 (in)" metadata="Metadata0" outPort="Port 0 (out)" toNode="FLATFILEWRITER0:0"/>
@@ -127,21 +127,23 @@ Port numbering starts at `0`. Format: `NODE_ID:0`, `NODE_ID:1`, etc.
 
 Required for Designer rendering; ignored at runtime. Origin = top-left (x increases right, y increases down). Negative y is valid (used for notes above pipeline).
 
-**Single-lane horizontal pipeline** — same `guiY` for all nodes, stride `guiX` by 200–220 px:
+**Single-lane horizontal pipeline** — same `guiY` for all nodes, stride `guiX` by 200–225 px:
 ```xml
-<Node guiX="60"  guiY="160" id="DATA_READER0" .../>
-<Node guiX="280" guiY="160" id="EXT_FILTER0"  .../>
-<Node guiX="500" guiY="160" id="REFORMAT0"    .../>
-<Node guiX="720" guiY="160" id="AGGREGATE0"   .../>
-<Node guiX="940" guiY="160" id="DATA_WRITER0" .../>
+<Node guiX="50"  guiY="150" id="DATA_READER0" .../>
+<Node guiX="275" guiY="150" id="EXT_FILTER0"  .../>
+<Node guiX="500" guiY="150" id="REFORMAT0"    .../>
+<Node guiX="725" guiY="150" id="AGGREGATE0"   .../>
+<Node guiX="950" guiY="150" id="DATA_WRITER0" .../>
 ```
 
-**Multi-lane** — separate Y bands per lane, 140–180 px apart; converge at join node centred between input Y values:
+**Multi-lane** — separate Y bands per lane, 150–175 px apart; converge at join node centred between input Y values:
 ```xml
-<Node guiX="60"  guiY="80"  id="DATA_READER0"   .../>  <!-- lane 1 -->
-<Node guiX="60"  guiY="240" id="DB_INPUT_TABLE0" .../>  <!-- lane 2 -->
-<Node guiX="280" guiY="160" id="EXT_HASH_JOIN0"  .../>  <!-- convergence -->
+<Node guiX="50"  guiY="75"  id="DATA_READER0"   .../>  <!-- lane 1 -->
+<Node guiX="50"  guiY="250" id="DB_INPUT_TABLE0" .../>  <!-- lane 2 -->
+<Node guiX="275" guiY="150" id="EXT_HASH_JOIN0"  .../>  <!-- convergence -->
 ```
+
+**Grid snapping:** always use `guiX` and `guiY` values that are multiples of 25 (divisible by 25). The same rule applies to `x` and `y` on `<RichTextNote>` elements. This keeps the layout aligned to Designer's snap grid.
 
 ### `<RichTextNote>`
 
@@ -150,8 +152,8 @@ Visual annotation only; no runtime effect. Declared inside `<Global>` (not insid
 ```xml
 <RichTextNote
     id="Note0"
-    x="60"    y="20"
-    width="1200"  height="80"
+    x="50"    y="25"
+    width="1200"  height="75"
     backgroundColor="FAF6D6"
     textColor="444444"
     fontSize="medium"
@@ -702,7 +704,7 @@ Example: `$0.customerId=$1.id#$0.type=$1.type`
 Reads CSV, TSV, fixed-width, and mixed text files.
 
 ```xml
-<Node enabled="enabled" guiName="FlatFileReader" guiX="24" guiY="24"
+<Node enabled="enabled" guiName="FlatFileReader" guiX="25" guiY="25"
       id="DATA_READER0" type="DATA_READER">
   <attr name="fileURL"><![CDATA[${DATAIN_DIR}/input.csv]]></attr>
   <attr name="charset"><![CDATA[UTF-8]]></attr>
@@ -724,7 +726,7 @@ Reads from database via JDBC.
 
 ```xml
 <Node dbConnection="DBConnection0" enabled="enabled" guiName="DatabaseReader"
-      guiX="24" guiY="24" id="DB_INPUT_TABLE0" type="DB_INPUT_TABLE">
+      guiX="25" guiY="25" id="DB_INPUT_TABLE0" type="DB_INPUT_TABLE">
   <attr name="sqlQuery"><![CDATA[SELECT id, name, salary FROM employees WHERE active = 1]]></attr>
   <!-- Or use queryURL for external SQL file -->
 </Node>
@@ -737,7 +739,7 @@ Use `sqlQuery` for inline SQL or `queryURL` for external `.sql` file. `fetchSize
 #### JSON_READER (JSONReader)
 
 ```xml
-<Node enabled="enabled" guiName="JSONReader" guiX="24" guiY="24"
+<Node enabled="enabled" guiName="JSONReader" guiX="25" guiY="25"
       id="JSON_READER0" type="JSON_READER">
   <attr name="fileURL"><![CDATA[${DATAIN_DIR}/data.json]]></attr>
   <attr name="mapping"><![CDATA[
@@ -755,7 +757,7 @@ Use `sqlQuery` for inline SQL or `queryURL` for external `.sql` file. `fetchSize
 #### XML_EXTRACT (XMLExtract)
 
 ```xml
-<Node enabled="enabled" guiName="XMLExtract" guiX="24" guiY="24"
+<Node enabled="enabled" guiName="XMLExtract" guiX="25" guiY="25"
       id="XML_EXTRACT0" type="XML_EXTRACT">
   <attr name="sourceUri"><![CDATA[${DATAIN_DIR}/data.xml]]></attr>
   <attr name="mapping"><![CDATA[
@@ -813,7 +815,7 @@ The same selection rule applies as for XML: prefer `JSON_EXTRACT` for large file
 #### SPREADSHEET_READER (SpreadsheetDataReader)
 
 ```xml
-<Node enabled="enabled" guiName="SpreadsheetDataReader" guiX="24" guiY="24"
+<Node enabled="enabled" guiName="SpreadsheetDataReader" guiX="25" guiY="25"
       id="SPREADSHEET_READER0" type="SPREADSHEET_READER">
   <attr name="fileURL"><![CDATA[${DATAIN_DIR}/data.xlsx]]></attr>
   <attr name="sheetName"><![CDATA[Sheet1]]></attr>
@@ -828,7 +830,7 @@ The same selection rule applies as for XML: prefer `JSON_EXTRACT` for large file
 Generates synthetic data using CTL transform.
 
 ```xml
-<Node enabled="enabled" guiName="DataGenerator" guiX="24" guiY="24"
+<Node enabled="enabled" guiName="DataGenerator" guiX="25" guiY="25"
       id="DATA_GENERATOR0" type="DATA_GENERATOR">
   <attr name="recordsNumber"><![CDATA[100]]></attr>
   <attr name="transform"><![CDATA[
@@ -849,7 +851,7 @@ function integer generate() {
 #### DATA_WRITER (FlatFileWriter / UniversalDataWriter)
 
 ```xml
-<Node enabled="enabled" guiName="FlatFileWriter" guiX="300" guiY="24"
+<Node enabled="enabled" guiName="FlatFileWriter" guiX="300" guiY="25"
       id="DATA_WRITER0" type="DATA_WRITER">
   <attr name="fileURL"><![CDATA[${DATAOUT_DIR}/output.csv]]></attr>
   <attr name="charset"><![CDATA[UTF-8]]></attr>
@@ -867,7 +869,7 @@ Key attrs: `fileURL` (required), `charset` (default UTF-8), `append` (`true`/`fa
 
 ```xml
 <Node dbConnection="DBConnection0" enabled="enabled" guiName="DatabaseWriter"
-      guiX="300" guiY="24" id="DB_OUTPUT_TABLE0" type="DB_OUTPUT_TABLE">
+      guiX="300" guiY="25" id="DB_OUTPUT_TABLE0" type="DB_OUTPUT_TABLE">
   <attr name="sqlQuery"><![CDATA[insert into employees (id, name) values ($id:=id, $name:=name)]]></attr>
   <!-- Or use dbTable for auto-mapping by field name: -->
   <!-- <attr name="dbTable"><![CDATA[employees]]></attr> -->
@@ -885,7 +887,7 @@ Ports: Input 0 (data), Output 0 (rejected records, optional), Output 1 (auto-gen
 Discards all incoming records. 1 input, 0 outputs. No configuration required.
 
 ```xml
-<Node enabled="enabled" guiName="Trash" guiX="300" guiY="24" id="TRASH0" type="TRASH"/>
+<Node enabled="enabled" guiName="Trash" guiX="300" guiY="25" id="TRASH0" type="TRASH"/>
 ```
 
 **TRASH serves two common purposes:**
@@ -899,7 +901,7 @@ Discards all incoming records. 1 input, 0 outputs. No configuration required.
 **2. Iterative / work-in-progress development.** While building a graph incrementally, use TRASH as a temporary terminal for data that has no final destination yet. By default records are silently discarded; set `debugPrint="true"` to print each record to the graph console for quick inspection:
 
 ```xml
-<Node enabled="enabled" guiName="Trash" guiX="300" guiY="24" id="TRASH0" type="TRASH">
+<Node enabled="enabled" guiName="Trash" guiX="300" guiY="25" id="TRASH0" type="TRASH">
   <attr name="debugPrint"><![CDATA[true]]></attr>
 </Node>
 ```
@@ -937,7 +939,7 @@ Similar pattern — `fileURL` is the primary required attribute.
 One input, one or more outputs. Transforms records via CTL or Java.
 
 ```xml
-<Node enabled="enabled" guiName="Map" guiX="150" guiY="24" id="REFORMAT0" type="REFORMAT">
+<Node enabled="enabled" guiName="Map" guiX="150" guiY="25" id="REFORMAT0" type="REFORMAT">
   <attr name="transform"><![CDATA[
 //#CTL2
 function integer transform() {
@@ -963,7 +965,7 @@ Return `ALL` to send to all ports; return port number to route selectively.
 1 input, up to 2 outputs. Port 0 = accepted, Port 1 = rejected.
 
 ```xml
-<Node enabled="enabled" guiName="Filter" guiX="150" guiY="24" id="EXT_FILTER0" type="EXT_FILTER">
+<Node enabled="enabled" guiName="Filter" guiX="150" guiY="25" id="EXT_FILTER0" type="EXT_FILTER">
   <attr name="filterExpression"><![CDATA[//#CTL2
 $in.0.salary > 30000 && !isNull($in.0.name)]]></attr>
 </Node>
@@ -976,7 +978,7 @@ $in.0.salary > 30000 && !isNull($in.0.name)]]></attr>
 Sort key syntax: `field1(a);field2(d)` — `a` = ascending, `d` = descending.
 
 ```xml
-<Node enabled="enabled" guiName="ExtSort" guiX="150" guiY="24" id="EXT_SORT0" type="EXT_SORT">
+<Node enabled="enabled" guiName="ExtSort" guiX="150" guiY="25" id="EXT_SORT0" type="EXT_SORT">
   <attr name="sortKey"><![CDATA[lastName(a);firstName(a)]]></attr>
   <attr name="bufferCapacity"><![CDATA[8000]]></attr>
 </Node>
@@ -989,7 +991,7 @@ Sort key syntax: `field1(a);field2(d)` — `a` = ascending, `d` = descending.
 In-memory sort, faster than ExtSort for datasets fitting in memory.
 
 ```xml
-<Node enabled="enabled" guiName="FastSort" guiX="150" guiY="24" id="FAST_SORT0" type="FAST_SORT">
+<Node enabled="enabled" guiName="FastSort" guiX="150" guiY="25" id="FAST_SORT0" type="FAST_SORT">
   <attr name="sortKey"><![CDATA[date(d);amount(d)]]></attr>
 </Node>
 ```
@@ -1001,7 +1003,7 @@ In-memory sort, faster than ExtSort for datasets fitting in memory.
 Groups and aggregates records.
 
 ```xml
-<Node enabled="enabled" guiName="Aggregate" guiX="150" guiY="24" id="AGGREGATE0" type="AGGREGATE">
+<Node enabled="enabled" guiName="Aggregate" guiX="150" guiY="25" id="AGGREGATE0" type="AGGREGATE">
   <attr name="aggregateKey"><![CDATA[department]]></attr>
   <attr name="mapping"><![CDATA[
 $out.0.department:=$in.0.department;
@@ -1024,7 +1026,7 @@ Aggregate functions: `count()`, `sum()`, `avg()`, `min()`, `max()`, `first()`, `
 Copies each record to ALL connected output ports. 1 input, N outputs.
 
 ```xml
-<Node enabled="enabled" guiName="SimpleCopy" guiX="150" guiY="24" id="SIMPLE_COPY0" type="SIMPLE_COPY"/>
+<Node enabled="enabled" guiName="SimpleCopy" guiX="150" guiY="25" id="SIMPLE_COPY0" type="SIMPLE_COPY"/>
 ```
 
 ---
@@ -1034,7 +1036,7 @@ Copies each record to ALL connected output ports. 1 input, N outputs.
 Merges multiple inputs (same metadata) into single output. N inputs, 1 output.
 
 ```xml
-<Node enabled="enabled" guiName="SimpleGather" guiX="150" guiY="24" id="SIMPLE_GATHER0" type="SIMPLE_GATHER"/>
+<Node enabled="enabled" guiName="SimpleGather" guiX="150" guiY="25" id="SIMPLE_GATHER0" type="SIMPLE_GATHER"/>
 ```
 
 ---
@@ -1044,7 +1046,7 @@ Merges multiple inputs (same metadata) into single output. N inputs, 1 output.
 Removes consecutive duplicate records. Input must be sorted. 1 input, 1-2 outputs.
 
 ```xml
-<Node enabled="enabled" guiName="Dedup" guiX="150" guiY="24" id="DEDUP0" type="DEDUP">
+<Node enabled="enabled" guiName="Dedup" guiX="150" guiY="25" id="DEDUP0" type="DEDUP">
   <attr name="key"><![CDATA[id]]></attr>
   <attr name="keep"><![CDATA[First]]></attr>  <!-- First | Last | Unique -->
 </Node>
@@ -1057,7 +1059,7 @@ Removes consecutive duplicate records. Input must be sorted. 1 input, 1-2 output
 Routes records to different output ports. 1 input, N outputs.
 
 ```xml
-<Node enabled="enabled" guiName="Partition" guiX="150" guiY="24" id="PARTITION0" type="PARTITION">
+<Node enabled="enabled" guiName="Partition" guiX="150" guiY="25" id="PARTITION0" type="PARTITION">
   <!-- Option A: ranges -->
   <attr name="ranges"><![CDATA[<Ranges>
     <Range fromValue="0" toValue="30000" portIndex="0"/>
@@ -1076,7 +1078,7 @@ Routes records to different output ports. 1 input, N outputs.
 One input record → multiple output records. 1 input, 1 output.
 
 ```xml
-<Node enabled="enabled" guiName="Normalizer" guiX="150" guiY="24" id="NORMALIZER0" type="NORMALIZER">
+<Node enabled="enabled" guiName="Normalizer" guiX="150" guiY="25" id="NORMALIZER0" type="NORMALIZER">
   <attr name="transform"><![CDATA[
 //#CTL2
 integer count;
@@ -1100,7 +1102,7 @@ function integer transform(integer idx) {
 Multiple input records → one output record. Requires sorted input. 1 input, 1 output.
 
 ```xml
-<Node enabled="enabled" guiName="Denormalizer" guiX="150" guiY="24" id="DENORMALIZER0" type="DENORMALIZER">
+<Node enabled="enabled" guiName="Denormalizer" guiX="150" guiY="25" id="DENORMALIZER0" type="DENORMALIZER">
   <attr name="key"><![CDATA[customerId]]></attr>
   <attr name="transform"><![CDATA[
 //#CTL2
@@ -1125,7 +1127,7 @@ function integer transform() {
 Grouped aggregation with full CTL control. 1 input, N outputs.
 
 ```xml
-<Node enabled="enabled" guiName="Rollup" guiX="150" guiY="24" id="ROLLUP0" type="ROLLUP">
+<Node enabled="enabled" guiName="Rollup" guiX="150" guiY="25" id="ROLLUP0" type="ROLLUP">
   <attr name="groupKeyFields"><![CDATA[department]]></attr>
   <attr name="transform"><![CDATA[
 //#CTL2
@@ -1155,7 +1157,7 @@ All joiners: Port 0 = master (driver), Port 1+ = slave(s).
 General-purpose in-memory join on equality key. Unsorted input.
 
 ```xml
-<Node enabled="enabled" guiName="ExtHashJoin" guiX="200" guiY="24" id="EXT_HASH_JOIN0" type="EXT_HASH_JOIN">
+<Node enabled="enabled" guiName="ExtHashJoin" guiX="200" guiY="25" id="EXT_HASH_JOIN0" type="EXT_HASH_JOIN">
   <attr name="joinKey"><![CDATA[$0.customerId=$1.id]]></attr>
   <attr name="joinType"><![CDATA[inner]]></attr>   <!-- inner | leftOuter | fullOuter -->
   <attr name="transform"><![CDATA[
@@ -1180,7 +1182,7 @@ Multiple slave ports: `$0.id=$1.customerId#$0.type=$1.type`.
 Join on sorted data. Both master and slave must be pre-sorted on join key.
 
 ```xml
-<Node enabled="enabled" guiName="ExtMergeJoin" guiX="200" guiY="24" id="EXT_MERGE_JOIN0" type="EXT_MERGE_JOIN">
+<Node enabled="enabled" guiName="ExtMergeJoin" guiX="200" guiY="25" id="EXT_MERGE_JOIN0" type="EXT_MERGE_JOIN">
   <attr name="joinKey"><![CDATA[$0.id=$1.customerId]]></attr>
   <attr name="joinType"><![CDATA[inner]]></attr>
   <attr name="transform"><![CDATA[
@@ -1201,7 +1203,7 @@ function integer transform() {
 Join with a lookup table (acts as virtual slave). 1-2 outputs: port 0 = matched, port 1 = unmatched master.
 
 ```xml
-<Node enabled="enabled" guiName="LookupJoin" guiX="200" guiY="24" id="LOOKUP_JOIN0" type="LOOKUP_JOIN">
+<Node enabled="enabled" guiName="LookupJoin" guiX="200" guiY="25" id="LOOKUP_JOIN0" type="LOOKUP_JOIN">
   <attr name="joinKey"><![CDATA[customerId]]></attr>
   <attr name="lookupTable"><![CDATA[LookupTable0]]></attr>
   <attr name="transform"><![CDATA[
@@ -1223,7 +1225,7 @@ Join with database table (acts as virtual slave via SQL). 1-2 outputs.
 
 ```xml
 <Node dbConnection="DBConnection0" enabled="enabled" guiName="DBJoin"
-      guiX="200" guiY="24" id="DB_JOIN0" type="DB_JOIN">
+      guiX="200" guiY="25" id="DB_JOIN0" type="DB_JOIN">
   <attr name="sqlQuery"><![CDATA[SELECT name, city FROM customers WHERE id = ?]]></attr>
   <attr name="joinKey"><![CDATA[customerId]]></attr>
   <attr name="transform"><![CDATA[
@@ -1244,7 +1246,7 @@ function integer transform() {
 Cartesian product of all inputs. All input combinations → output.
 
 ```xml
-<Node enabled="enabled" guiName="CrossJoin" guiX="200" guiY="24" id="CROSS_JOIN0" type="CROSS_JOIN">
+<Node enabled="enabled" guiName="CrossJoin" guiX="200" guiY="25" id="CROSS_JOIN0" type="CROSS_JOIN">
   <attr name="transform"><![CDATA[
 //#CTL2
 function integer transform() {
@@ -1265,7 +1267,7 @@ function integer transform() {
 Runs another graph as a child process.
 
 ```xml
-<Node enabled="enabled" guiName="ExecuteGraph" guiX="150" guiY="24" id="EXECUTE_GRAPH0" type="EXECUTE_GRAPH">
+<Node enabled="enabled" guiName="ExecuteGraph" guiX="150" guiY="25" id="EXECUTE_GRAPH0" type="EXECUTE_GRAPH">
   <attr name="graphName"><![CDATA[${GRAPH_DIR}/child_graph.grf]]></attr>
   <!-- Optional parameter overrides: -->
   <attr name="params"><![CDATA[PARAM1=value1;PARAM2=value2]]></attr>
@@ -1277,7 +1279,7 @@ Runs another graph as a child process.
 #### SUBGRAPH (Subgraph component inside a graph)
 
 ```xml
-<Node enabled="enabled" guiName="MySubgraph" guiX="150" guiY="24" id="SUBGRAPH0" type="SUBGRAPH">
+<Node enabled="enabled" guiName="MySubgraph" guiX="150" guiY="25" id="SUBGRAPH0" type="SUBGRAPH">
   <attr name="graphURL"><![CDATA[${SUBGRAPH_DIR}/my-subgraph.sgrf]]></attr>
 </Node>
 ```
@@ -1289,7 +1291,7 @@ Runs another graph as a child process.
 #### HTTP_CONNECTOR (HTTPConnector)
 
 ```xml
-<Node enabled="enabled" guiName="HTTPConnector" guiX="150" guiY="24" id="HTTP_CONNECTOR0" type="HTTP_CONNECTOR">
+<Node enabled="enabled" guiName="HTTPConnector" guiX="150" guiY="25" id="HTTP_CONNECTOR0" type="HTTP_CONNECTOR">
   <attr name="url"><![CDATA[https://api.example.com/data]]></attr>
   <attr name="method"><![CDATA[GET]]></attr>
   <attr name="outputField"><![CDATA[responseBody]]></attr>
@@ -1304,7 +1306,7 @@ Executes arbitrary SQL (DDL, stored procedures, etc.) 0-1 input, 0-1 output.
 
 ```xml
 <Node dbConnection="DBConnection0" enabled="enabled" guiName="DBExecute"
-      guiX="150" guiY="24" id="DB_EXECUTE0" type="DB_EXECUTE">
+      guiX="150" guiY="25" id="DB_EXECUTE0" type="DB_EXECUTE">
   <attr name="sqlQuery"><![CDATA[TRUNCATE TABLE staging_table]]></attr>
 </Node>
 ```
@@ -1352,7 +1354,7 @@ Executes arbitrary SQL (DDL, stored procedures, etc.) 0-1 input, 0-1 output.
 
   <Phase number="0">
     <!-- Read CSV orders -->
-    <Node enabled="enabled" guiName="ReadOrders" guiX="24" guiY="50"
+    <Node enabled="enabled" guiName="ReadOrders" guiX="25" guiY="50"
           id="DATA_READER0" type="DATA_READER">
       <attr name="fileURL"><![CDATA[${DATAIN_DIR}/orders.csv]]></attr>
       <attr name="skipRows"><![CDATA[1]]></attr>
@@ -1360,12 +1362,12 @@ Executes arbitrary SQL (DDL, stored procedures, etc.) 0-1 input, 0-1 output.
 
     <!-- Read customers from DB -->
     <Node dbConnection="CONN0" enabled="enabled" guiName="ReadCustomers"
-          guiX="24" guiY="150" id="DB_INPUT_TABLE0" type="DB_INPUT_TABLE">
+          guiX="25" guiY="150" id="DB_INPUT_TABLE0" type="DB_INPUT_TABLE">
       <attr name="sqlQuery"><![CDATA[SELECT id, name, tier FROM customers]]></attr>
     </Node>
 
     <!-- Join orders with customers (hash join, unsorted) -->
-    <Node enabled="enabled" guiName="JoinWithCustomers" guiX="250" guiY="80"
+    <Node enabled="enabled" guiName="JoinWithCustomers" guiX="250" guiY="75"
           id="EXT_HASH_JOIN0" type="EXT_HASH_JOIN">
       <attr name="joinKey"><![CDATA[$0.customerId=$1.id]]></attr>
       <attr name="joinType"><![CDATA[leftOuter]]></attr>
@@ -1382,7 +1384,7 @@ function integer transform() {
     </Node>
 
     <!-- Filter: only premium tier -->
-    <Node enabled="enabled" guiName="FilterPremium" guiX="450" guiY="80"
+    <Node enabled="enabled" guiName="FilterPremium" guiX="450" guiY="75"
           id="EXT_FILTER0" type="EXT_FILTER">
       <attr name="filterExpression"><![CDATA[//#CTL2
 $in.0.tier == "premium" && $in.0.amount > 100]]></attr>
@@ -1390,7 +1392,7 @@ $in.0.tier == "premium" && $in.0.amount > 100]]></attr>
 
     <!-- Write to DB -->
     <Node dbConnection="CONN0" enabled="enabled" guiName="WriteToDB"
-          guiX="650" guiY="80" id="DB_OUTPUT_TABLE0" type="DB_OUTPUT_TABLE">
+          guiX="650" guiY="75" id="DB_OUTPUT_TABLE0" type="DB_OUTPUT_TABLE">
       <attr name="sqlQuery"><![CDATA[
 insert into premium_orders(order_id, customer_name, amount, tier)
 values ($orderId:=order_id, $customerName:=customer_name, $amount:=amount, $tier:=tier)
@@ -1461,7 +1463,7 @@ Reads from a database, transforms/formats fields, writes to a delimited CSV file
   <Phase number="0">
     <!-- Read all active employees from DB -->
     <Node dbConnection="HRDB" enabled="enabled" guiName="ReadEmployees"
-          guiX="24" guiY="50" id="DB_INPUT_TABLE0" type="DB_INPUT_TABLE">
+          guiX="25" guiY="50" id="DB_INPUT_TABLE0" type="DB_INPUT_TABLE">
       <attr name="sqlQuery"><![CDATA[
 SELECT emp_id, first_name, last_name, salary, hire_date, dept_code, is_active
 FROM employees
@@ -1489,7 +1491,7 @@ function integer transform() {
     </Node>
 
     <!-- Write CSV with header row -->
-    <Node enabled="enabled" guiName="WriteCSV" guiX="480" guiY="50"
+    <Node enabled="enabled" guiName="WriteCSV" guiX="475" guiY="50"
           id="DATA_WRITER0" type="DATA_WRITER">
       <attr name="fileURL"><![CDATA[${DATAOUT_DIR}/employees_export.csv]]></attr>
       <attr name="charset"><![CDATA[UTF-8]]></attr>
@@ -1573,7 +1575,7 @@ Reads a multi-level XML file, extracts records at each hierarchy level, propagat
   <Phase number="0">
     <!-- XMLExtract: maps hierarchy levels to separate output ports.
          parentKey/generatedKey copy the orderId FK from order level to item level. -->
-    <Node enabled="enabled" guiName="ParseXML" guiX="24" guiY="80"
+    <Node enabled="enabled" guiName="ParseXML" guiX="25" guiY="75"
           id="XML_EXTRACT0" type="XML_EXTRACT">
       <attr name="sourceUri"><![CDATA[${DATAIN_DIR}/orders.xml]]></attr>
       <attr name="mapping"><![CDATA[
@@ -1607,7 +1609,7 @@ Reads a multi-level XML file, extracts records at each hierarchy level, propagat
 
     <!-- Write orders table -->
     <Node dbConnection="ORDERSDB" enabled="enabled" guiName="WriteOrders"
-          guiX="300" guiY="30" id="DB_OUTPUT_TABLE0" type="DB_OUTPUT_TABLE">
+          guiX="300" guiY="25" id="DB_OUTPUT_TABLE0" type="DB_OUTPUT_TABLE">
       <attr name="sqlQuery"><![CDATA[
 INSERT INTO orders (order_id, customer_id, order_date, region, priority)
 VALUES ($orderId:=order_id, $customerId:=customer_id, $orderDate:=order_date,

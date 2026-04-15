@@ -6,7 +6,7 @@
 
 ```xml
 <Node enabled="enabled" fileURL="${DATAIN_DIR}/input.csv" guiName="Read CSV"
-      guiX="30" guiY="150" id="DATA_READER0" type="DATA_READER">
+      guiX="25" guiY="150" id="DATA_READER0" type="DATA_READER">
     <attr name="charset"><![CDATA[UTF-8]]></attr>
 </Node>
 ```
@@ -178,7 +178,7 @@ ftp://user:pass@host/path/file.csv               remote FTP
 **DATA_READER node — no skipRows, no dataPolicy:**
 ```xml
 <Node enabled="enabled" fileURL="${DATAIN_DIR}/export.csv" guiName="Read Lines"
-      guiX="30" guiY="150" id="DATA_READER0" type="DATA_READER">
+      guiX="25" guiY="150" id="DATA_READER0" type="DATA_READER">
     <attr name="charset"><![CDATA[UTF-8]]></attr>
 </Node>
 ```
@@ -212,12 +212,12 @@ REFORMAT acts as a lightweight line classifier only — drops blanks and structu
 ```xml
 <!-- Stage 1: read all lines raw -->
 <Node enabled="enabled" fileURL="${DATAIN_DIR}/export.csv" guiName="Read Lines"
-      guiX="30" guiY="150" id="DATA_READER0" type="DATA_READER">
+      guiX="25" guiY="150" id="DATA_READER0" type="DATA_READER">
     <attr name="charset"><![CDATA[UTF-8]]></attr>
 </Node>
 
 <!-- Stage 2: lightweight classifier — drop blanks and lines without a delimiter -->
-<Node enabled="enabled" guiName="Filter Structured Lines" guiX="280" guiY="150"
+<Node enabled="enabled" guiName="Filter Structured Lines" guiX="275" guiY="150"
       id="REFORMAT0" type="REFORMAT">
     <attr name="transform"><![CDATA[//#CTL2
 function integer transform() {
@@ -232,7 +232,7 @@ function integer transform() {
 
 <!-- Stage 3: parse filtered lines — each line is one discrete "file" -->
 <Node enabled="enabled" fileURL="port:$0.line:discrete" guiName="Parse Data Lines"
-      guiX="560" guiY="150" id="DATA_READER1" type="DATA_READER">
+      guiX="550" guiY="150" id="DATA_READER1" type="DATA_READER">
     <attr name="charset"><![CDATA[UTF-8]]></attr>
     <attr name="dataPolicy"><![CDATA[strict]]></attr>
 </Node>

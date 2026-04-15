@@ -8,7 +8,7 @@
 ## COMPONENT SKELETON
 
 ```xml
-<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/output.xlsx" guiName="MyWriter" guiX="400" guiY="80" id="MY_WRITER" sheet="Sheet1" type="SPREADSHEET_WRITER" writeMode="CREATE_FILE_IN_STREAM">
+<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/output.xlsx" guiName="MyWriter" guiX="400" guiY="75" id="MY_WRITER" sheet="Sheet1" type="SPREADSHEET_WRITER" writeMode="CREATE_FILE_IN_STREAM">
     <attr name="mapping"><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <mapping>
     <globalAttributes>
@@ -108,7 +108,7 @@ Leave the `mapping` attribute empty entirely. The component writes all fields in
 
 ```xml
 <!-- No mapping attr needed — implicit mapping applies -->
-<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/orders.xlsx" guiName="XLSX (Orders)" guiX="395" guiY="375" id="XLSX_ORDERS" type="SPREADSHEET_WRITER" writeMode="OVERWRITE_SHEET_IN_MEMORY"/>
+<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/orders.xlsx" guiName="XLSX (Orders)" guiX="400" guiY="375" id="XLSX_ORDERS" type="SPREADSHEET_WRITER" writeMode="OVERWRITE_SHEET_IN_MEMORY"/>
 ```
 
 ---
@@ -147,7 +147,7 @@ Leave the `mapping` attribute empty entirely. The component writes all fields in
 ### Example 1 — Simplest: no mapping, implicit auto-map
 
 ```xml
-<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/orders.xlsx" guiName="XLSX (Orders)" guiX="395" guiY="375" id="XLSX_ORDERS" type="SPREADSHEET_WRITER" writeMode="OVERWRITE_SHEET_IN_MEMORY"/>
+<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/orders.xlsx" guiName="XLSX (Orders)" guiX="400" guiY="375" id="XLSX_ORDERS" type="SPREADSHEET_WRITER" writeMode="OVERWRITE_SHEET_IN_MEMORY"/>
 ```
 
 All input fields written in metadata order, header in row 1, data from row 2.
@@ -157,7 +157,7 @@ All input fields written in metadata order, header in row 1, data from row 2.
 ### Example 2 — Explicit field mapping, streaming (most common production pattern)
 
 ```xml
-<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/output.xlsx" guiName="OrdersWriter" guiX="400" guiY="80" id="ORDERS_WRITER" makeDirs="true" sheet="Orders" type="SPREADSHEET_WRITER" writeMode="CREATE_FILE_IN_STREAM">
+<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/output.xlsx" guiName="OrdersWriter" guiX="400" guiY="75" id="ORDERS_WRITER" makeDirs="true" sheet="Orders" type="SPREADSHEET_WRITER" writeMode="CREATE_FILE_IN_STREAM">
     <attr name="mapping"><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <mapping>
     <globalAttributes>
@@ -200,7 +200,7 @@ All input fields written in metadata order, header in row 1, data from row 2.
 Output files named `stat_Alabama.xlsx`, `stat_California.xlsx`, etc. Each file further partitioned into sheets by `ENTERPRISE_EMPLOYMENT_SIZE` field value.
 
 ```xml
-<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/stats/stat_#.xlsx" guiName="SpreadsheetDataWriter" guiX="1045" guiY="675" id="SPREADSHEET_WRITER0" makeDirs="true" partitionFileTag="keyNameFileTag" partitionKey="STATE_DESCRIPTION" sheet="$ENTERPRISE_EMPLOYMENT_SIZE" type="SPREADSHEET_WRITER" writeMode="CREATE_FILE_IN_STREAM">
+<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/stats/stat_#.xlsx" guiName="SpreadsheetDataWriter" guiX="1050" guiY="675" id="SPREADSHEET_WRITER0" makeDirs="true" partitionFileTag="keyNameFileTag" partitionKey="STATE_DESCRIPTION" sheet="$ENTERPRISE_EMPLOYMENT_SIZE" type="SPREADSHEET_WRITER" writeMode="CREATE_FILE_IN_STREAM">
     <attr name="mapping"><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <mapping>
     <globalAttributes>
@@ -247,7 +247,7 @@ Output files named `stat_Alabama.xlsx`, `stat_California.xlsx`, etc. Each file f
 ### Example 4 — Sheet partitioning only (one sheet per country, single file)
 
 ```xml
-<Node enabled="enabled" existingSheetsActions="CLEAR_SHEETS" fileURL="${DATAOUT_DIR}/ordersByCountry.xlsx" guiName="Orders by Country" guiX="1045" guiY="175" id="ORDERS_BY_COUNTRY" sheet="$ShipCountry" type="SPREADSHEET_WRITER" writeMode="OVERWRITE_SHEET_IN_MEMORY"/>
+<Node enabled="enabled" existingSheetsActions="CLEAR_SHEETS" fileURL="${DATAOUT_DIR}/ordersByCountry.xlsx" guiName="Orders by Country" guiX="1050" guiY="175" id="ORDERS_BY_COUNTRY" sheet="$ShipCountry" type="SPREADSHEET_WRITER" writeMode="OVERWRITE_SHEET_IN_MEMORY"/>
 ```
 
 No mapping needed — implicit. `sheet="$ShipCountry"` routes each record to a sheet named after its `ShipCountry` field value. `existingSheetsActions="CLEAR_SHEETS"` ensures sheets are fresh on each run.
@@ -259,7 +259,7 @@ No mapping needed — implicit. `sheet="$ShipCountry"` routes each record to a s
 Copies template file to output, then inserts data rows. Template preserves header, footer, and formatting.
 
 ```xml
-<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/sortedByTotalTax.xlsx" guiName="SpreadsheetDataWriter" guiX="920" guiY="300" id="SPREADSHEET_WRITER1" sheet="Taxes" templateFileURL="${DATAIN_DIR}/others/10staxss_template.xlsx" type="SPREADSHEET_WRITER" writeMode="INSERT_INTO_SHEET_IN_MEMORY">
+<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/sortedByTotalTax.xlsx" guiName="SpreadsheetDataWriter" guiX="925" guiY="300" id="SPREADSHEET_WRITER1" sheet="Taxes" templateFileURL="${DATAIN_DIR}/others/10staxss_template.xlsx" type="SPREADSHEET_WRITER" writeMode="INSERT_INTO_SHEET_IN_MEMORY">
     <attr name="mapping"><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <mapping>
     <globalAttributes>
@@ -301,7 +301,7 @@ Copies template file to output, then inserts data rows. Template preserves heade
 Write exactly one record into fixed cells of a pre-designed form.
 
 ```xml
-<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/tax_form_output.xlsx" guiName="FillTaxForm" guiX="400" guiY="80" id="FILL_FORM" sheet="Form" templateFileURL="${DATAIN_DIR}/tax_form_template.xlsx" type="SPREADSHEET_WRITER" writeMode="OVERWRITE_IN_SHEET_IN_MEMORY">
+<Node enabled="enabled" existingSheetsActions="DO_NOTHING" fileURL="${DATAOUT_DIR}/tax_form_output.xlsx" guiName="FillTaxForm" guiX="400" guiY="75" id="FILL_FORM" sheet="Form" templateFileURL="${DATAIN_DIR}/tax_form_template.xlsx" type="SPREADSHEET_WRITER" writeMode="OVERWRITE_IN_SHEET_IN_MEMORY">
     <attr name="mapping"><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <mapping>
     <globalAttributes>
