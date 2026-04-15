@@ -68,7 +68,38 @@ Start with a clean scratchpad:
 note_clear()
 ```
 
-### 0.5 Sandbox rule
+### 0.5 Delegate research to a sub-agent
+For any non-trivial graph, delegate the Phase 0 research work to a sub-agent.
+The sub-agent explores the sandbox and writes structured findings to notes —
+keeping raw tool outputs out of the main agent's context and delivering a clean
+summary ready for planning.
+
+```
+run_sub_agent(
+    task="Research the <sandbox> sandbox to prepare for building a graph that <brief task>.
+          Write all findings to notes using note_add:
+          1. note_add('params', ...) — sandbox parameters from get_sandbox_parameters
+          2. note_add('assets', ...) — existing .fmt/.cfg/.ctl from list_linked_assets
+          3. note_add('metadata', ...) — read relevant .fmt files and list field names/types
+          4. note_add('reference_pattern', ...) — read any reference graphs that match the pattern
+          5. note_add('kb', ...) — relevant KB entries from kb_search + kb_read",
+    allowed_tools=["get_sandbox_parameters", "list_linked_assets", "find_file", "list_files",
+                   "read_file", "grep_files", "kb_search", "kb_read",
+                   "note_add", "note_clear", "note_read"],
+    max_iterations=25
+)
+```
+
+After the sub-agent finishes, read the notes before proceeding:
+```
+note_read()
+```
+
+The sub-agent is especially valuable when the graph requires understanding several
+existing assets, reading multiple reference graphs, or the sandbox is unfamiliar.
+For simple single-component graphs against a known sandbox, proceed directly.
+
+### 0.6 Sandbox rule
 Never create or store files in `wrangler_shared_home`.
 
 ---
@@ -83,8 +114,21 @@ think("What are the processing steps? For each step, what are 2+ candidate
       component types? Which is most specialized for this task?")
 ```
 
-Use `list_components` to find candidate components. Search by task description
-to find relevant components across all categories, or narrow by category:
+**When component selection is unclear, use `suggest_components` first:**
+
+```
+suggest_components(
+    task="<describe the specific processing step: input, logic, output, constraints>"
+)
+```
+
+`suggest_components` internally queries the KB, full component catalog, and
+detailed component docs before recommending. Use it when multiple candidates
+could apply, the best fit is unclear, or the task involves an unfamiliar pattern.
+It returns ranked recommendations with port descriptions, CTL signatures,
+prerequisites, and relevant KB insights — all ready to feed into `get_component_info`.
+
+Use `list_components` for broader exploration by keyword or category:
 ```
 list_components(search_string="compare two datasets")   -- task-oriented search
 list_components(search_string="sort")                    -- find sort-related components
@@ -638,8 +682,11 @@ If it only helps re-build the exact same graph, skip it.
 - [ ] Read `cloverdx://reference/subgraphs` if creating a subgraph
 - [ ] Called `get_sandbox_parameters` — know what ${DATAIN_DIR} etc. resolve to
 - [ ] Cleared session notes with `note_clear()`
+- [ ] Used `run_sub_agent` to delegate sandbox/KB research and wrote findings to notes (for non-trivial graphs)
+- [ ] Reviewed notes with `note_read()` before starting design
 - [ ] Sandbox is not `wrangler_shared_home`
 - [ ] Used `think` to reason through component candidates before looking them up
+- [ ] Used `suggest_components` when component selection was unclear or multiple candidates existed
 - [ ] Used `list_components(search_string=...)` to find candidates when component type was uncertain
 - [ ] Considered at least 2 candidate components per processing step
 - [ ] Called `get_component_info` for every component type used

@@ -4,7 +4,7 @@ CloverDX sub-agent helpers
 Provides LLM-backed helper functions over an OpenAI-compatible chat endpoint:
 
     run_sub_agent(...)
-        Runs a generic sub-agent that can call only read-only MCP tools.
+        Runs a generic sub-agent that can call only a restricted MCP tool subset.
 
     recommend_ctl_components(...)
         Runs a focused recommender agent for CTL implementation planning.
@@ -69,7 +69,7 @@ SUBAGENT_TEMPERATURE: float = _env_float("CLOVERDX_SUBAGENT_TEMPERATURE", 0.2)
 SUBAGENT_MAX_TOKENS: int = _env_int("CLOVERDX_SUBAGENT_MAX_TOKENS", 32768)
 SUBAGENT_TIMEOUT: int = _env_int("CLOVERDX_SUBAGENT_TIMEOUT", 240)
 
-# The generic sub-agent can only use read-only tools. Non-read-only names are ignored.
+# The generic sub-agent can only use a restricted allowlist of tools.
 READ_ONLY_SUBAGENT_TOOLS: frozenset[str] = frozenset(
     {
         "list_sandboxes",
@@ -83,6 +83,9 @@ READ_ONLY_SUBAGENT_TOOLS: frozenset[str] = frozenset(
         "read_resource",
         "get_workflow_guide",
         "validate_graph",
+        "execute_graph",
+        "await_graph_completion",
+        "abort_graph_execution",
         "list_graph_runs",
         "get_graph_run_status",
         "get_graph_execution_log",
@@ -91,7 +94,9 @@ READ_ONLY_SUBAGENT_TOOLS: frozenset[str] = frozenset(
         "list_components",
         "get_component_info",
         "get_component_details",
+        "note_add",
         "note_read",
+        "note_clear",
         "kb_search",
         "kb_read",
     }
@@ -122,7 +127,7 @@ _ALWAYS_EXCLUDED: frozenset[str] = frozenset(
 
 _DEFAULT_SUBAGENT_SYSTEM_PROMPT = """You are a focused CloverDX assistant running as a sub-agent.
 Use tools when needed, but keep calls minimal and grounded in returned data.
-You can only use read-only tools; if a requested tool is unavailable, continue with the allowed subset.
+You can only use the allowed tool subset; if a requested tool is unavailable, continue with the allowed subset.
 Return a concise, actionable final answer.
 """
 

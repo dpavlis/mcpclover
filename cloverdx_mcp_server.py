@@ -1719,8 +1719,8 @@ async def handle_list_tools() -> List[types.Tool]:
             types.Tool(
                 name="run_sub_agent",
                 description=(
-                    "Delegate a sub-task to an inner LLM agent that can use only read-only tools. "
-                    "When allowed_tools is provided, non-read-only tool names are ignored."
+                    "Delegate a sub-task to an inner LLM agent that can use only a restricted tool subset. "
+                    "When allowed_tools is provided, names outside that subset are ignored."
                 ),
                 inputSchema={
                     "type": "object",
@@ -1741,8 +1741,8 @@ async def handle_list_tools() -> List[types.Tool]:
                         "allowed_tools": {
                             "type": "array",
                             "description": (
-                                "Optional tool allowlist. Only read-only tools are accepted; "
-                                "all non-read-only names are ignored."
+                                "Optional tool allowlist. Only tools from the sub-agent restricted subset are accepted; "
+                                "all other names are ignored."
                             ),
                             "items": {"type": "string"},
                         },

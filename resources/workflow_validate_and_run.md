@@ -420,7 +420,37 @@ Fix the code, re-embed with `graph_edit_properties`, re-validate, and re-execute
 | Records lost between two components | Tracking shows where count drops — inspect that component's configuration and CTL logic |
 | Runtime error mid-stream | Log stack trace identifies component and record; check for null fields, type mismatches, missing sequence/lookup declarations |
 
-### 3.7 Persist new knowledge
+### 3.7 Delegate complex failure diagnosis to a sub-agent
+When a run fails and root-cause analysis requires reading the full execution log,
+tracking data, and multiple edge debug samples — delegate diagnosis to a sub-agent
+rather than dumping all that raw output into the main agent's context:
+
+```
+run_sub_agent(
+    task="Graph run <run_id> failed in sandbox <sandbox>, graph <graph_path>.
+          Diagnose the root cause:
+          1. Read get_graph_execution_log to find the first ERROR and its stack trace
+          2. Read get_graph_tracking to identify which component has unexpected record counts
+          3. Use get_edge_debug_data on the edges around the failing component (if debug=True run)
+          4. Identify: failing component, exception type, likely cause, and recommended fix.
+          Return a concise diagnosis.",
+    allowed_tools=["get_graph_execution_log", "get_graph_tracking",
+                   "get_edge_debug_data", "get_edge_debug_info",
+                   "get_graph_run_status", "read_file"],
+    context="run_id=<run_id>, graph=<graph_path>, sandbox=<sandbox>",
+    max_iterations=15
+)
+```
+
+The sub-agent returns a focused diagnosis — failing component, root cause, and fix —
+without the main agent having to read hundreds of log lines. Use this when:
+- The execution log is long (many components, many phases)
+- You need to correlate tracking counts with log errors across multiple components
+- Debug data from several edges needs to be inspected together
+
+For simple single-component failures with a clear error message, diagnose directly.
+
+### 3.8 Persist new knowledge
 If debugging this run revealed a new insight — a component behaviour, a CTL
 gotcha, or a configuration pattern worth remembering — store it:
 
@@ -475,6 +505,7 @@ If it only helps re-build the exact same graph, skip it.
 - [ ] All port split ratios correct (valid + invalid = total, etc.)
 - [ ] No component shows 0 records unexpectedly
 - [ ] If run status not `FINISHED_OK`: `get_graph_execution_log` consulted and root cause identified
+- [ ] Used `run_sub_agent` to delegate complex failure diagnosis when log + tracking + edge debug needed together
 - [ ] Used `think` to reason through unexpected counts before attempting fixes
 - [ ] Used `validate_CTL` to diagnose CTL runtime errors if available; otherwise diagnosed manually using execution log, CTL2 reference, and `think`
 - [ ] If edge debug used: `get_edge_debug_info` confirmed data available first

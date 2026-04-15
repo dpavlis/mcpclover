@@ -75,6 +75,33 @@ note_add("current_state", "Graph has 8 components, VALIDATOR on port 0/1, output
 note_add("edit_scope", "User wants to add date range filtering before the VALIDATOR")
 ```
 
+### 0.5 Delegate deeper research to a sub-agent when needed
+For edits that require understanding multiple sandbox assets, reading several
+reference graphs, or exploring unfamiliar components, delegate the research to
+a sub-agent rather than doing it inline:
+
+```
+run_sub_agent(
+    task="Research the <sandbox> sandbox to prepare for editing <graph>. The edit is: <description>.
+          Write structured findings to notes using note_add:
+          1. note_add('assets', ...) — relevant .fmt/.cfg/.ctl from list_linked_assets
+          2. note_add('reference_pattern', ...) — read graphs that use the components involved
+          3. note_add('kb', ...) — KB entries relevant to the components or CTL patterns touched",
+    allowed_tools=["list_linked_assets", "find_file", "list_files",
+                   "read_file", "grep_files", "kb_search", "kb_read",
+                   "note_add", "note_read"],
+    max_iterations=20
+)
+```
+
+Read notes before proceeding:
+```
+note_read()
+```
+
+For small targeted edits (one attribute, one CTL block) against a familiar
+sandbox, skip the sub-agent and proceed directly.
+
 ### 0.5 Sandbox rule
 Never create or store files in `wrangler_shared_home`.
 
@@ -125,7 +152,18 @@ note_add("delta", "Metadata unchanged — filter passes same record structure th
 If the edit introduces a new component type or significantly changes an existing one,
 do not rely on memory.
 
-If the exact component type is not known, use `list_components` to find candidates:
+**When component selection is unclear, use `suggest_components` first:**
+
+```
+suggest_components(
+    task="<describe the specific processing step being added: input, logic, output, constraints>"
+)
+```
+
+Returns ranked recommendations with ports, CTL signatures, prerequisites, and KB
+insights. Use it before `get_component_info` when multiple candidates could apply.
+
+If the exact component type is not known, also use `list_components` to find candidates:
 ```
 list_components(search_string="compare two datasets")   -- task-oriented search
 list_components(category="joiners", search_string="hash")  -- category + search
@@ -478,9 +516,11 @@ If it only helps re-build the exact same graph, skip it.
 - [ ] Read `cloverdx://reference/graph-xml` / `ctl2` for relevant change types
 - [ ] Read the current server file before making any changes
 - [ ] Cleared session notes and recorded initial context with `note_add`
+- [ ] Used `run_sub_agent` to delegate asset/reference/KB research for deeper edits; reviewed notes with `note_read()`
 - [ ] Used `think` to reason through what changes and what the dependencies are
 - [ ] For large edits (multiple new components, new metadata, new CTL): consulted `create_graph` workflow guide
 - [ ] Enumerated exact components / attributes / CTL blocks / edges / metadata being changed
+- [ ] Used `suggest_components` when adding components and best fit was unclear
 - [ ] Called `get_component_info` for any component being added or significantly reconfigured
 - [ ] Used `list_components(search_string=...)` when the exact component type was not known
 - [ ] Called `get_component_details` for complex components and when interacting attributes are involved
