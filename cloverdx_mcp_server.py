@@ -391,7 +391,27 @@ class ComponentCatalog:
         return str(index)
 
     @staticmethod
-    def format_component(comp: Dict) -> str:
+    def _format_propagated_metadata(meta: Dict) -> List[str]:
+        """Return indented lines describing fields of a propagated metadata record."""
+        result: List[str] = []
+        record_name = (meta.get("recordName") or "").strip()
+        header = "    Injected metadata"
+        if record_name:
+            header += f" ({record_name})"
+        header += ":"
+        result.append(header)
+        for field in (meta.get("fields") or []):
+            fname = field.get("name", "")
+            ftype = field.get("type", "")
+            container = field.get("containerType", "")
+            if container:
+                result.append(f"      {fname}: {ftype} [{container}]")
+            else:
+                result.append(f"      {fname}: {ftype}")
+        return result
+
+    @staticmethod
+    def format_component(comp: Dict, metadata_catalog: Optional[Dict[str, Dict]] = None) -> str:
         """Format a single component for display."""
         lines = [
             f"Type:        {comp.get('type', '')}",
@@ -423,6 +443,9 @@ class ComponentCatalog:
                 label = (p.get("label") or "").strip()
                 label_part = f" {label}" if label else ""
                 lines.append(f"  [{port_name}]{label_part} ({req})")
+                meta_id = (p.get("metadata") or {}).get("id") if isinstance(p.get("metadata"), dict) else None
+                if meta_id and metadata_catalog and meta_id in metadata_catalog:
+                    lines.extend(ComponentCatalog._format_propagated_metadata(metadata_catalog[meta_id]))
         if out_ports:
             lines.append("Output Ports:")
             for index, p in enumerate(out_ports):
@@ -437,6 +460,9 @@ class ComponentCatalog:
                 label = (p.get("label") or "").strip()
                 label_part = f" {label}" if label else ""
                 lines.append(f"  [{port_name}]{label_part} ({req})")
+                meta_id = (p.get("metadata") or {}).get("id") if isinstance(p.get("metadata"), dict) else None
+                if meta_id and metadata_catalog and meta_id in metadata_catalog:
+                    lines.extend(ComponentCatalog._format_propagated_metadata(metadata_catalog[meta_id]))
 
         properties = comp.get("properties", []) or []
         if properties:
@@ -612,6 +638,7 @@ component_catalog: Optional[ComponentCatalog]   = None
 _comp_details_map: Dict[str, str]               = {}
 _reference_cache:  Dict[str, str]               = {}
 _task_notes:       Dict[str, List[str]]         = {}
+_metadata_catalog: Dict[str, Dict]              = {}  # id -> metadata record from metadata.json
 
 
 def get_soap_client() -> CloverDXSoapClient:
@@ -3443,7 +3470,7 @@ async def tool_get_component_info(args: Dict) -> List[types.TextContent]:
             return _text(f"No component found matching '{args['query']}'. "
                          "Use list_components to browse all available types.")
         if len(results) == 1:
-            return _text(ComponentCatalog.format_component(results[0]))
+            return _text(ComponentCatalog.format_component(results[0], _metadata_catalog))
         # Multiple matches — compact list
         return _text(
             f"Found {len(results)} components matching '{args['query']}':\n\n"
@@ -4399,7 +4426,7 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.T
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 async def main():
-    global soap_client, component_catalog, _comp_details_map
+    global soap_client, component_catalog, _comp_details_map, _metadata_catalog
 
     load_dotenv()
 
@@ -4426,6 +4453,15 @@ async def main():
     component_catalog = ComponentCatalog(os.path.join(_SCRIPT_DIR, "resources", "components.json"))
     component_catalog.load()
     _comp_details_map = _scan_comp_details(os.path.join(_SCRIPT_DIR, "comp_details"))
+
+    _meta_path = os.path.join(_SCRIPT_DIR, "resources", "metadata.json")
+    try:
+        with open(_meta_path, encoding="utf-8") as _mf:
+            _meta_list = json.load(_mf)
+        _metadata_catalog = {entry["id"]: entry for entry in _meta_list if "id" in entry}
+        logger.info(f"Metadata catalog loaded: {len(_metadata_catalog)} entries")
+    except FileNotFoundError:
+        logger.warning("metadata.json not found at %s; port metadata will not be shown", _meta_path)
 
     logger.info(f"Component catalog loaded: {len(component_catalog._components)} components")
     logger.info(f"Component detail docs: {list(_comp_details_map.keys())}")

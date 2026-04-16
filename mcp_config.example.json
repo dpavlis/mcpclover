@@ -9,9 +9,20 @@
         "CLOVERDX_BASE_URL": "http://your-cloverdx-host:8083/clover",
         "CLOVERDX_USERNAME": "clover",
         "CLOVERDX_PASSWORD": "clover",
-        "CLOVERDX_VERIFY_SSL": "false",
+        "CLOVERDX_VERIFY_SSL": "false",        
+        "CLOVERDX_LOG_LEVEL": "INFO",
+        "CLOVERDX_LOG_PATH": "/Users/david/git/mcpclover/logs/ctl_tools.log",
         "CLOVERDX_LLM_ALLOW": "false",
-        "CLOVERDX_LOG_LEVEL": "INFO"
+        "CLOVERDX_LLM_API_URL": "http://localhost:11434/v1/chat/completions",
+        "CLOVERDX_LLM_MODEL": "Qwen35_CTL:latest",
+        "CLOVERDX_LLM_TEMPERATURE": "0.2",
+        "CLOVERDX_LLM_TOP_P": "0.9",
+        "CLOVERDX_SUBAGENT_API_URL": "https://api.openai.com/v1/chat/completions",
+        "CLOVERDX_SUBAGENT_MODEL": "gpt-5.4",
+        "CLOVERDX_SUBAGENT_API_KEY": "..YOUR_KEY_HERE..",
+        "CLOVERDX_SUBAGENT_TEMPERATURE": "0.2",
+        "CLOVERDX_SUBAGENT_MAX_TOKENS": "32768",
+        "CLOVERDX_SUBAGENT_TIMEOUT": "240"
       }
     }
   }

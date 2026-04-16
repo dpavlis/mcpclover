@@ -1,0 +1,3659 @@
+[
+  {
+    "id": "SnowflakeBulkWriter_Output",
+    "recordName": "Chunk",
+    "fields": [
+      {
+        "name": "file",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "string"
+      },
+      {
+        "name": "parsedRows",
+        "type": "long"
+      },
+      {
+        "name": "loadedRows",
+        "type": "long"
+      },
+      {
+        "name": "errorLimit",
+        "type": "long"
+      },
+      {
+        "name": "errorCount",
+        "type": "long"
+      },
+      {
+        "name": "firstError",
+        "type": "string"
+      },
+      {
+        "name": "firstErrorLine",
+        "type": "long"
+      },
+      {
+        "name": "firstErrorCharacter",
+        "type": "long"
+      },
+      {
+        "name": "firstErrorColumnName",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteGraph_RunStatus",
+    "recordName": "RunStatus",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "long"
+      },
+      {
+        "name": "originalJobURL",
+        "type": "string"
+      },
+      {
+        "name": "submitTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "startTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "endTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "executionLabel",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "string"
+      },
+      {
+        "name": "errException",
+        "type": "string"
+      },
+      {
+        "name": "errMessage",
+        "type": "string"
+      },
+      {
+        "name": "errComponent",
+        "type": "string"
+      },
+      {
+        "name": "errComponentType",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteWranglerJob_RunStatus",
+    "recordName": "RunStatus",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "long"
+      },
+      {
+        "name": "originalJobURL",
+        "type": "string"
+      },
+      {
+        "name": "submitTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "startTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "endTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "executionLabel",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "string"
+      },
+      {
+        "name": "errException",
+        "type": "string"
+      },
+      {
+        "name": "errMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteGraph_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "jobURL",
+        "type": "string"
+      },
+      {
+        "name": "executionType",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "executionLabel",
+        "type": "string"
+      },
+      {
+        "name": "clusterNodeId",
+        "type": "string"
+      },
+      {
+        "name": "daemon",
+        "type": "boolean"
+      },
+      {
+        "name": "skipCheckConfig",
+        "type": "boolean"
+      },
+      {
+        "name": "locale",
+        "type": "string"
+      },
+      {
+        "name": "timeZone",
+        "type": "string"
+      },
+      {
+        "name": "jobParameters",
+        "type": "string",
+        "containerType": "map"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteWranglerJob_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "jobURL",
+        "type": "string"
+      },
+      {
+        "name": "executionType",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "executionLabel",
+        "type": "string"
+      },
+      {
+        "name": "clusterNodeId",
+        "type": "string"
+      },
+      {
+        "name": "daemon",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "MonitorGraph_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "long"
+      },
+      {
+        "name": "timeout",
+        "type": "long"
+      },
+      {
+        "name": "monitoringInterval",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteScript_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "script",
+        "type": "string"
+      },
+      {
+        "name": "scriptURL",
+        "type": "string"
+      },
+      {
+        "name": "scriptCharset",
+        "type": "string"
+      },
+      {
+        "name": "interpreter",
+        "type": "string"
+      },
+      {
+        "name": "workingDirectory",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "long"
+      },
+      {
+        "name": "environmentVariables",
+        "type": "string"
+      },
+      {
+        "name": "stdIn",
+        "type": "string"
+      },
+      {
+        "name": "stdInFileURL",
+        "type": "string"
+      },
+      {
+        "name": "stdOutFileURL",
+        "type": "string"
+      },
+      {
+        "name": "errOutFileURL",
+        "type": "string"
+      },
+      {
+        "name": "append",
+        "type": "boolean"
+      },
+      {
+        "name": "dataCharset",
+        "type": "string"
+      },
+      {
+        "name": "scriptFileExtension",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteScript_RunResult",
+    "recordName": "RunResult",
+    "fields": [
+      {
+        "name": "stdOut",
+        "type": "string"
+      },
+      {
+        "name": "errOut",
+        "type": "string"
+      },
+      {
+        "name": "startTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "endTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "exitValue",
+        "type": "long"
+      },
+      {
+        "name": "reachedTimeout",
+        "type": "boolean"
+      },
+      {
+        "name": "errException",
+        "type": "string"
+      },
+      {
+        "name": "errMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "KillGraph_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "killDaemonChildren",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "CopyFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      },
+      {
+        "name": "recursive",
+        "type": "boolean"
+      },
+      {
+        "name": "overwrite",
+        "type": "string"
+      },
+      {
+        "name": "makeParentDirs",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "CreateFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "directory",
+        "type": "boolean"
+      },
+      {
+        "name": "makeParentDirs",
+        "type": "boolean"
+      },
+      {
+        "name": "modifiedDate",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      }
+    ]
+  },
+  {
+    "id": "DeleteFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "recursive",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "ListFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "recursive",
+        "type": "boolean"
+      },
+      {
+        "name": "listDirectoryContents",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "MoveFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      },
+      {
+        "name": "overwrite",
+        "type": "string"
+      },
+      {
+        "name": "makeParentDirs",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "CopyFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      },
+      {
+        "name": "resultURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "CreateFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "DeleteFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ListFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "URL",
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "canRead",
+        "type": "boolean"
+      },
+      {
+        "name": "canWrite",
+        "type": "boolean"
+      },
+      {
+        "name": "canExecute",
+        "type": "boolean"
+      },
+      {
+        "name": "isDirectory",
+        "type": "boolean"
+      },
+      {
+        "name": "isFile",
+        "type": "boolean"
+      },
+      {
+        "name": "isHidden",
+        "type": "boolean"
+      },
+      {
+        "name": "lastModified",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "size",
+        "type": "long"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MoveFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      },
+      {
+        "name": "resultURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "CopyFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "CreateFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "DeleteFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ListFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MoveFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteMapReduce_JobResult",
+    "recordName": "JobResult",
+    "fields": [
+      {
+        "name": "jobID",
+        "type": "string"
+      },
+      {
+        "name": "startTime",
+        "type": "date"
+      },
+      {
+        "name": "endTime",
+        "type": "date"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "clusterJobState",
+        "type": "string"
+      },
+      {
+        "name": "wasJobSuccessfull",
+        "type": "boolean"
+      },
+      {
+        "name": "timeouted",
+        "type": "boolean"
+      },
+      {
+        "name": "clusterErrMessage",
+        "type": "string"
+      },
+      {
+        "name": "errException",
+        "type": "string"
+      },
+      {
+        "name": "lastMapReducePhase",
+        "type": "string"
+      },
+      {
+        "name": "lastMapReducePhaseProgress",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "ParallelReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "long"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "originalData",
+        "type": "string"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "readingThreadOffset",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "MetaPivot_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "fieldType",
+        "type": "string"
+      },
+      {
+        "name": "valueBoolean",
+        "type": "boolean"
+      },
+      {
+        "name": "valueByte",
+        "type": "byte"
+      },
+      {
+        "name": "valueDate",
+        "type": "date"
+      },
+      {
+        "name": "valueDecimal",
+        "type": "decimal"
+      },
+      {
+        "name": "valueInteger",
+        "type": "integer"
+      },
+      {
+        "name": "valueLong",
+        "type": "long"
+      },
+      {
+        "name": "valueNumber",
+        "type": "number"
+      },
+      {
+        "name": "valueString",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "RecordToKeyValues_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "fieldType",
+        "type": "string"
+      },
+      {
+        "name": "valueBoolean",
+        "type": "boolean"
+      },
+      {
+        "name": "valueByte",
+        "type": "byte"
+      },
+      {
+        "name": "valueCbyte",
+        "type": "cbyte"
+      },
+      {
+        "name": "valueDate",
+        "type": "date"
+      },
+      {
+        "name": "valueDecimal",
+        "type": "decimal"
+      },
+      {
+        "name": "valueInteger",
+        "type": "integer"
+      },
+      {
+        "name": "valueLong",
+        "type": "long"
+      },
+      {
+        "name": "valueNumber",
+        "type": "number"
+      },
+      {
+        "name": "valueString",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "KeyValuesToRecord_Input",
+    "recordName": "Input",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "fieldType",
+        "type": "string"
+      },
+      {
+        "name": "valueBoolean",
+        "type": "boolean"
+      },
+      {
+        "name": "valueByte",
+        "type": "byte"
+      },
+      {
+        "name": "valueCbyte",
+        "type": "cbyte"
+      },
+      {
+        "name": "valueDate",
+        "type": "date"
+      },
+      {
+        "name": "valueDecimal",
+        "type": "decimal"
+      },
+      {
+        "name": "valueInteger",
+        "type": "integer"
+      },
+      {
+        "name": "valueLong",
+        "type": "long"
+      },
+      {
+        "name": "valueNumber",
+        "type": "number"
+      },
+      {
+        "name": "valueString",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "EmailReader_Message",
+    "recordName": "Message",
+    "fields": [
+      {
+        "name": "MessageID",
+        "type": "string"
+      },
+      {
+        "name": "From",
+        "type": "string"
+      },
+      {
+        "name": "To",
+        "type": "string"
+      },
+      {
+        "name": "Cc",
+        "type": "string"
+      },
+      {
+        "name": "Subject",
+        "type": "string"
+      },
+      {
+        "name": "Date",
+        "type": "string"
+      },
+      {
+        "name": "Body",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "EmailReader_Attachment",
+    "recordName": "Attachment",
+    "fields": [
+      {
+        "name": "MessageID",
+        "type": "string"
+      },
+      {
+        "name": "ContentType",
+        "type": "string"
+      },
+      {
+        "name": "Charset",
+        "type": "string"
+      },
+      {
+        "name": "Disposition",
+        "type": "string"
+      },
+      {
+        "name": "Filename",
+        "type": "string"
+      },
+      {
+        "name": "AttachmentRaw",
+        "type": "byte"
+      },
+      {
+        "name": "AttachmentFile",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "SalesforceEinstein_Success",
+    "recordName": "Einstein_Success",
+    "fields": [
+      {
+        "name": "Status",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "SalesforceEinstein_Error",
+    "recordName": "Einstein_Error",
+    "fields": [
+      {
+        "name": "Status",
+        "type": "string"
+      },
+      {
+        "name": "StatusMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "DataSetCommit_Input",
+    "recordName": "Input",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "DataSetCommit_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "DataSetCommit_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "long"
+      },
+      {
+        "name": "error",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "UniversalDataReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "long"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "originalData",
+        "type": "string"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Request",
+    "recordName": "Request",
+    "fields": [
+      {
+        "name": "URL",
+        "type": "string"
+      },
+      {
+        "name": "requestMethod",
+        "type": "string"
+      },
+      {
+        "name": "addInputFieldsAsParameters",
+        "type": "boolean"
+      },
+      {
+        "name": "addInputFieldsAsParametersTo",
+        "type": "string"
+      },
+      {
+        "name": "ignoredFields",
+        "type": "string"
+      },
+      {
+        "name": "additionalHTTPHeaderProperties",
+        "type": "string"
+      },
+      {
+        "name": "charset",
+        "type": "string"
+      },
+      {
+        "name": "requestContent",
+        "type": "string"
+      },
+      {
+        "name": "requestContentByte",
+        "type": "byte"
+      },
+      {
+        "name": "inputFileUrl",
+        "type": "string"
+      },
+      {
+        "name": "outputFileUrl",
+        "type": "string"
+      },
+      {
+        "name": "appendOutput",
+        "type": "boolean"
+      },
+      {
+        "name": "authenticationMethod",
+        "type": "string"
+      },
+      {
+        "name": "username",
+        "type": "string"
+      },
+      {
+        "name": "password",
+        "type": "string"
+      },
+      {
+        "name": "consumerKey",
+        "type": "string"
+      },
+      {
+        "name": "consumerSecret",
+        "type": "string"
+      },
+      {
+        "name": "keyStore",
+        "type": "string"
+      },
+      {
+        "name": "keyStorePassword",
+        "type": "string"
+      },
+      {
+        "name": "keyAlias",
+        "type": "string"
+      },
+      {
+        "name": "keyPassword",
+        "type": "string"
+      },
+      {
+        "name": "trustStore",
+        "type": "string"
+      },
+      {
+        "name": "trustStorePassword",
+        "type": "string"
+      },
+      {
+        "name": "storeResponseToTempFile",
+        "type": "boolean"
+      },
+      {
+        "name": "temporaryFilePrefix",
+        "type": "string"
+      },
+      {
+        "name": "multipartEntities",
+        "type": "string"
+      },
+      {
+        "name": "rawHTTPHeaders",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "oAuth2AccessToken",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Response",
+    "recordName": "Response",
+    "fields": [
+      {
+        "name": "content",
+        "type": "string"
+      },
+      {
+        "name": "contentByte",
+        "type": "byte"
+      },
+      {
+        "name": "outputFilePath",
+        "type": "string"
+      },
+      {
+        "name": "statusCode",
+        "type": "integer"
+      },
+      {
+        "name": "header",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "rawHeaders",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "errorMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "RunGraph_Input",
+    "recordName": "Input",
+    "fields": [
+      {
+        "name": "graphURL",
+        "type": "string"
+      },
+      {
+        "name": "cloverCmdLineArgs",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "RunGraph_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "graphURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "message",
+        "type": "string"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "runId",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteGraph_RunStatus",
+    "recordName": "RunStatus",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "long"
+      },
+      {
+        "name": "originalJobURL",
+        "type": "string"
+      },
+      {
+        "name": "submitTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "startTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "endTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "executionLabel",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "string"
+      },
+      {
+        "name": "errException",
+        "type": "string"
+      },
+      {
+        "name": "errMessage",
+        "type": "string"
+      },
+      {
+        "name": "errComponent",
+        "type": "string"
+      },
+      {
+        "name": "errComponentType",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteWranglerJob_RunStatus",
+    "recordName": "RunStatus",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "long"
+      },
+      {
+        "name": "originalJobURL",
+        "type": "string"
+      },
+      {
+        "name": "submitTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "startTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "endTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "executionLabel",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "string"
+      },
+      {
+        "name": "errException",
+        "type": "string"
+      },
+      {
+        "name": "errMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteGraph_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "jobURL",
+        "type": "string"
+      },
+      {
+        "name": "executionType",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "executionLabel",
+        "type": "string"
+      },
+      {
+        "name": "clusterNodeId",
+        "type": "string"
+      },
+      {
+        "name": "daemon",
+        "type": "boolean"
+      },
+      {
+        "name": "skipCheckConfig",
+        "type": "boolean"
+      },
+      {
+        "name": "locale",
+        "type": "string"
+      },
+      {
+        "name": "timeZone",
+        "type": "string"
+      },
+      {
+        "name": "jobParameters",
+        "type": "string",
+        "containerType": "map"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteWranglerJob_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "jobURL",
+        "type": "string"
+      },
+      {
+        "name": "executionType",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "executionLabel",
+        "type": "string"
+      },
+      {
+        "name": "clusterNodeId",
+        "type": "string"
+      },
+      {
+        "name": "daemon",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "MonitorGraph_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "long"
+      },
+      {
+        "name": "timeout",
+        "type": "long"
+      },
+      {
+        "name": "monitoringInterval",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteScript_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "script",
+        "type": "string"
+      },
+      {
+        "name": "scriptURL",
+        "type": "string"
+      },
+      {
+        "name": "scriptCharset",
+        "type": "string"
+      },
+      {
+        "name": "interpreter",
+        "type": "string"
+      },
+      {
+        "name": "workingDirectory",
+        "type": "string"
+      },
+      {
+        "name": "timeout",
+        "type": "long"
+      },
+      {
+        "name": "environmentVariables",
+        "type": "string"
+      },
+      {
+        "name": "stdIn",
+        "type": "string"
+      },
+      {
+        "name": "stdInFileURL",
+        "type": "string"
+      },
+      {
+        "name": "stdOutFileURL",
+        "type": "string"
+      },
+      {
+        "name": "errOutFileURL",
+        "type": "string"
+      },
+      {
+        "name": "append",
+        "type": "boolean"
+      },
+      {
+        "name": "dataCharset",
+        "type": "string"
+      },
+      {
+        "name": "scriptFileExtension",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteScript_RunResult",
+    "recordName": "RunResult",
+    "fields": [
+      {
+        "name": "stdOut",
+        "type": "string"
+      },
+      {
+        "name": "errOut",
+        "type": "string"
+      },
+      {
+        "name": "startTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "endTime",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "exitValue",
+        "type": "long"
+      },
+      {
+        "name": "reachedTimeout",
+        "type": "boolean"
+      },
+      {
+        "name": "errException",
+        "type": "string"
+      },
+      {
+        "name": "errMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "KillGraph_RunConfig",
+    "recordName": "RunConfig",
+    "fields": [
+      {
+        "name": "runId",
+        "type": "long"
+      },
+      {
+        "name": "executionGroup",
+        "type": "string"
+      },
+      {
+        "name": "killDaemonChildren",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "CopyFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      },
+      {
+        "name": "recursive",
+        "type": "boolean"
+      },
+      {
+        "name": "overwrite",
+        "type": "string"
+      },
+      {
+        "name": "makeParentDirs",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "CreateFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "directory",
+        "type": "boolean"
+      },
+      {
+        "name": "makeParentDirs",
+        "type": "boolean"
+      },
+      {
+        "name": "modifiedDate",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      }
+    ]
+  },
+  {
+    "id": "DeleteFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "recursive",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "ListFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "recursive",
+        "type": "boolean"
+      },
+      {
+        "name": "listDirectoryContents",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "MoveFiles_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      },
+      {
+        "name": "overwrite",
+        "type": "string"
+      },
+      {
+        "name": "makeParentDirs",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "id": "CopyFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      },
+      {
+        "name": "resultURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "CreateFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "DeleteFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "fileURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ListFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "URL",
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "canRead",
+        "type": "boolean"
+      },
+      {
+        "name": "canWrite",
+        "type": "boolean"
+      },
+      {
+        "name": "canExecute",
+        "type": "boolean"
+      },
+      {
+        "name": "isDirectory",
+        "type": "boolean"
+      },
+      {
+        "name": "isFile",
+        "type": "boolean"
+      },
+      {
+        "name": "isHidden",
+        "type": "boolean"
+      },
+      {
+        "name": "lastModified",
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      {
+        "name": "size",
+        "type": "long"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MoveFiles_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      },
+      {
+        "name": "resultURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "CopyFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "CreateFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "DeleteFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ListFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MoveFiles_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "result",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "sourceURL",
+        "type": "string"
+      },
+      {
+        "name": "targetURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ExecuteMapReduce_JobResult",
+    "recordName": "JobResult",
+    "fields": [
+      {
+        "name": "jobID",
+        "type": "string"
+      },
+      {
+        "name": "startTime",
+        "type": "date"
+      },
+      {
+        "name": "endTime",
+        "type": "date"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "clusterJobState",
+        "type": "string"
+      },
+      {
+        "name": "wasJobSuccessfull",
+        "type": "boolean"
+      },
+      {
+        "name": "timeouted",
+        "type": "boolean"
+      },
+      {
+        "name": "clusterErrMessage",
+        "type": "string"
+      },
+      {
+        "name": "errException",
+        "type": "string"
+      },
+      {
+        "name": "lastMapReducePhase",
+        "type": "string"
+      },
+      {
+        "name": "lastMapReducePhaseProgress",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "ParallelReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "long"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "originalData",
+        "type": "string"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "readingThreadOffset",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "MetaPivot_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "fieldType",
+        "type": "string"
+      },
+      {
+        "name": "valueBoolean",
+        "type": "boolean"
+      },
+      {
+        "name": "valueByte",
+        "type": "byte"
+      },
+      {
+        "name": "valueDate",
+        "type": "date"
+      },
+      {
+        "name": "valueDecimal",
+        "type": "decimal"
+      },
+      {
+        "name": "valueInteger",
+        "type": "integer"
+      },
+      {
+        "name": "valueLong",
+        "type": "long"
+      },
+      {
+        "name": "valueNumber",
+        "type": "number"
+      },
+      {
+        "name": "valueString",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "RecordToKeyValues_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "fieldType",
+        "type": "string"
+      },
+      {
+        "name": "valueBoolean",
+        "type": "boolean"
+      },
+      {
+        "name": "valueByte",
+        "type": "byte"
+      },
+      {
+        "name": "valueCbyte",
+        "type": "cbyte"
+      },
+      {
+        "name": "valueDate",
+        "type": "date"
+      },
+      {
+        "name": "valueDecimal",
+        "type": "decimal"
+      },
+      {
+        "name": "valueInteger",
+        "type": "integer"
+      },
+      {
+        "name": "valueLong",
+        "type": "long"
+      },
+      {
+        "name": "valueNumber",
+        "type": "number"
+      },
+      {
+        "name": "valueString",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "KeyValuesToRecord_Input",
+    "recordName": "Input",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "fieldType",
+        "type": "string"
+      },
+      {
+        "name": "valueBoolean",
+        "type": "boolean"
+      },
+      {
+        "name": "valueByte",
+        "type": "byte"
+      },
+      {
+        "name": "valueCbyte",
+        "type": "cbyte"
+      },
+      {
+        "name": "valueDate",
+        "type": "date"
+      },
+      {
+        "name": "valueDecimal",
+        "type": "decimal"
+      },
+      {
+        "name": "valueInteger",
+        "type": "integer"
+      },
+      {
+        "name": "valueLong",
+        "type": "long"
+      },
+      {
+        "name": "valueNumber",
+        "type": "number"
+      },
+      {
+        "name": "valueString",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "EmailReader_Message",
+    "recordName": "Message",
+    "fields": [
+      {
+        "name": "MessageID",
+        "type": "string"
+      },
+      {
+        "name": "From",
+        "type": "string"
+      },
+      {
+        "name": "To",
+        "type": "string"
+      },
+      {
+        "name": "Cc",
+        "type": "string"
+      },
+      {
+        "name": "Subject",
+        "type": "string"
+      },
+      {
+        "name": "Date",
+        "type": "string"
+      },
+      {
+        "name": "Body",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "EmailReader_Attachment",
+    "recordName": "Attachment",
+    "fields": [
+      {
+        "name": "MessageID",
+        "type": "string"
+      },
+      {
+        "name": "ContentType",
+        "type": "string"
+      },
+      {
+        "name": "Charset",
+        "type": "string"
+      },
+      {
+        "name": "Disposition",
+        "type": "string"
+      },
+      {
+        "name": "Filename",
+        "type": "string"
+      },
+      {
+        "name": "AttachmentRaw",
+        "type": "byte"
+      },
+      {
+        "name": "AttachmentFile",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "SalesforceEinstein_Success",
+    "recordName": "Einstein_Success",
+    "fields": [
+      {
+        "name": "Status",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "SalesforceEinstein_Error",
+    "recordName": "Einstein_Error",
+    "fields": [
+      {
+        "name": "Status",
+        "type": "string"
+      },
+      {
+        "name": "StatusMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "DataSetCommit_Input",
+    "recordName": "Input",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "DataSetCommit_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "DataSetCommit_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "long"
+      },
+      {
+        "name": "error",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBReader_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "collection",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "string"
+      },
+      {
+        "name": "projection",
+        "type": "string"
+      },
+      {
+        "name": "orderBy",
+        "type": "string"
+      },
+      {
+        "name": "skip",
+        "type": "integer"
+      },
+      {
+        "name": "limit",
+        "type": "integer"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBWriter_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "collection",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "string"
+      },
+      {
+        "name": "newValue",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBExecute_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "command",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBReader_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "stringValue",
+        "type": "string"
+      },
+      {
+        "name": "jsonObject",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "count",
+        "type": "long"
+      },
+      {
+        "name": "jsonVariant",
+        "type": "variant"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBWriter_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "numAffected",
+        "type": "integer"
+      },
+      {
+        "name": "objectId",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBExecute_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "success",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "stringResult",
+        "type": "string"
+      },
+      {
+        "name": "booleanResult",
+        "type": "boolean"
+      },
+      {
+        "name": "integerResult",
+        "type": "integer"
+      },
+      {
+        "name": "longResult",
+        "type": "long"
+      },
+      {
+        "name": "numberResult",
+        "type": "number"
+      },
+      {
+        "name": "dateResult",
+        "type": "date"
+      },
+      {
+        "name": "mapResult",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "stringListResult",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "resultType",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBWriter_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBExecute_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "success",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ParquetReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordNumber",
+        "type": "long"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ParquetWriter_output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "fileContent",
+        "type": "byte"
+      }
+    ]
+  },
+  {
+    "id": "SpreadsheetReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordID",
+        "type": "integer"
+      },
+      {
+        "name": "file",
+        "type": "string"
+      },
+      {
+        "name": "sheet",
+        "type": "string"
+      },
+      {
+        "name": "fieldIndex",
+        "type": "integer"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "cellCoords",
+        "type": "string"
+      },
+      {
+        "name": "cellValue",
+        "type": "string"
+      },
+      {
+        "name": "cellType",
+        "type": "string"
+      },
+      {
+        "name": "cellFormat",
+        "type": "string"
+      },
+      {
+        "name": "message",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "Validator_InvalidRecords",
+    "recordName": "ValidationResult",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "long"
+      },
+      {
+        "name": "validationMessage",
+        "type": "string"
+      },
+      {
+        "name": "ruleStatusCode",
+        "type": "integer"
+      },
+      {
+        "name": "ruleName",
+        "type": "string"
+      },
+      {
+        "name": "ruleType",
+        "type": "string"
+      },
+      {
+        "name": "rulePath",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "validatedFieldNames",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "validatedValues",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "ruleParameters",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "validationDate",
+        "type": "date"
+      },
+      {
+        "name": "componentID",
+        "type": "string"
+      },
+      {
+        "name": "componentName",
+        "type": "string"
+      },
+      {
+        "name": "graphURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "UniversalDataReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "long"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "originalData",
+        "type": "string"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Request",
+    "recordName": "Request",
+    "fields": [
+      {
+        "name": "URL",
+        "type": "string"
+      },
+      {
+        "name": "requestMethod",
+        "type": "string"
+      },
+      {
+        "name": "addInputFieldsAsParameters",
+        "type": "boolean"
+      },
+      {
+        "name": "addInputFieldsAsParametersTo",
+        "type": "string"
+      },
+      {
+        "name": "ignoredFields",
+        "type": "string"
+      },
+      {
+        "name": "additionalHTTPHeaderProperties",
+        "type": "string"
+      },
+      {
+        "name": "charset",
+        "type": "string"
+      },
+      {
+        "name": "requestContent",
+        "type": "string"
+      },
+      {
+        "name": "requestContentByte",
+        "type": "byte"
+      },
+      {
+        "name": "inputFileUrl",
+        "type": "string"
+      },
+      {
+        "name": "outputFileUrl",
+        "type": "string"
+      },
+      {
+        "name": "appendOutput",
+        "type": "boolean"
+      },
+      {
+        "name": "authenticationMethod",
+        "type": "string"
+      },
+      {
+        "name": "username",
+        "type": "string"
+      },
+      {
+        "name": "password",
+        "type": "string"
+      },
+      {
+        "name": "consumerKey",
+        "type": "string"
+      },
+      {
+        "name": "consumerSecret",
+        "type": "string"
+      },
+      {
+        "name": "keyStore",
+        "type": "string"
+      },
+      {
+        "name": "keyStorePassword",
+        "type": "string"
+      },
+      {
+        "name": "keyAlias",
+        "type": "string"
+      },
+      {
+        "name": "keyPassword",
+        "type": "string"
+      },
+      {
+        "name": "trustStore",
+        "type": "string"
+      },
+      {
+        "name": "trustStorePassword",
+        "type": "string"
+      },
+      {
+        "name": "storeResponseToTempFile",
+        "type": "boolean"
+      },
+      {
+        "name": "temporaryFilePrefix",
+        "type": "string"
+      },
+      {
+        "name": "multipartEntities",
+        "type": "string"
+      },
+      {
+        "name": "rawHTTPHeaders",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "oAuth2AccessToken",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Response",
+    "recordName": "Response",
+    "fields": [
+      {
+        "name": "content",
+        "type": "string"
+      },
+      {
+        "name": "contentByte",
+        "type": "byte"
+      },
+      {
+        "name": "outputFilePath",
+        "type": "string"
+      },
+      {
+        "name": "statusCode",
+        "type": "integer"
+      },
+      {
+        "name": "header",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "rawHeaders",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "errorMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "RunGraph_Input",
+    "recordName": "Input",
+    "fields": [
+      {
+        "name": "graphURL",
+        "type": "string"
+      },
+      {
+        "name": "cloverCmdLineArgs",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "RunGraph_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "graphURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "message",
+        "type": "string"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "runId",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "SnowflakeBulkWriter_Output",
+    "recordName": "Chunk",
+    "fields": [
+      {
+        "name": "file",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "string"
+      },
+      {
+        "name": "parsedRows",
+        "type": "long"
+      },
+      {
+        "name": "loadedRows",
+        "type": "long"
+      },
+      {
+        "name": "errorLimit",
+        "type": "long"
+      },
+      {
+        "name": "errorCount",
+        "type": "long"
+      },
+      {
+        "name": "firstError",
+        "type": "string"
+      },
+      {
+        "name": "firstErrorLine",
+        "type": "long"
+      },
+      {
+        "name": "firstErrorCharacter",
+        "type": "long"
+      },
+      {
+        "name": "firstErrorColumnName",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "UniversalDataReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "long"
+      },
+      {
+        "name": "fieldNo",
+        "type": "integer"
+      },
+      {
+        "name": "originalData",
+        "type": "string"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Request",
+    "recordName": "Request",
+    "fields": [
+      {
+        "name": "URL",
+        "type": "string"
+      },
+      {
+        "name": "requestMethod",
+        "type": "string"
+      },
+      {
+        "name": "addInputFieldsAsParameters",
+        "type": "boolean"
+      },
+      {
+        "name": "addInputFieldsAsParametersTo",
+        "type": "string"
+      },
+      {
+        "name": "ignoredFields",
+        "type": "string"
+      },
+      {
+        "name": "additionalHTTPHeaderProperties",
+        "type": "string"
+      },
+      {
+        "name": "charset",
+        "type": "string"
+      },
+      {
+        "name": "requestContent",
+        "type": "string"
+      },
+      {
+        "name": "requestContentByte",
+        "type": "byte"
+      },
+      {
+        "name": "inputFileUrl",
+        "type": "string"
+      },
+      {
+        "name": "outputFileUrl",
+        "type": "string"
+      },
+      {
+        "name": "appendOutput",
+        "type": "boolean"
+      },
+      {
+        "name": "authenticationMethod",
+        "type": "string"
+      },
+      {
+        "name": "username",
+        "type": "string"
+      },
+      {
+        "name": "password",
+        "type": "string"
+      },
+      {
+        "name": "consumerKey",
+        "type": "string"
+      },
+      {
+        "name": "consumerSecret",
+        "type": "string"
+      },
+      {
+        "name": "keyStore",
+        "type": "string"
+      },
+      {
+        "name": "keyStorePassword",
+        "type": "string"
+      },
+      {
+        "name": "keyAlias",
+        "type": "string"
+      },
+      {
+        "name": "keyPassword",
+        "type": "string"
+      },
+      {
+        "name": "trustStore",
+        "type": "string"
+      },
+      {
+        "name": "trustStorePassword",
+        "type": "string"
+      },
+      {
+        "name": "storeResponseToTempFile",
+        "type": "boolean"
+      },
+      {
+        "name": "temporaryFilePrefix",
+        "type": "string"
+      },
+      {
+        "name": "multipartEntities",
+        "type": "string"
+      },
+      {
+        "name": "rawHTTPHeaders",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "oAuth2AccessToken",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Response",
+    "recordName": "Response",
+    "fields": [
+      {
+        "name": "content",
+        "type": "string"
+      },
+      {
+        "name": "contentByte",
+        "type": "byte"
+      },
+      {
+        "name": "outputFilePath",
+        "type": "string"
+      },
+      {
+        "name": "statusCode",
+        "type": "integer"
+      },
+      {
+        "name": "header",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "rawHeaders",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "HTTPConnector_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "errorMessage",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "RunGraph_Input",
+    "recordName": "Input",
+    "fields": [
+      {
+        "name": "graphURL",
+        "type": "string"
+      },
+      {
+        "name": "cloverCmdLineArgs",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "RunGraph_Output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "graphURL",
+        "type": "string"
+      },
+      {
+        "name": "result",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "name": "message",
+        "type": "string"
+      },
+      {
+        "name": "duration",
+        "type": "long"
+      },
+      {
+        "name": "runId",
+        "type": "long"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBReader_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "collection",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "string"
+      },
+      {
+        "name": "projection",
+        "type": "string"
+      },
+      {
+        "name": "orderBy",
+        "type": "string"
+      },
+      {
+        "name": "skip",
+        "type": "integer"
+      },
+      {
+        "name": "limit",
+        "type": "integer"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBWriter_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "collection",
+        "type": "string"
+      },
+      {
+        "name": "query",
+        "type": "string"
+      },
+      {
+        "name": "newValue",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBExecute_Attributes",
+    "recordName": "Attributes",
+    "fields": [
+      {
+        "name": "command",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBReader_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "stringValue",
+        "type": "string"
+      },
+      {
+        "name": "jsonObject",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "count",
+        "type": "long"
+      },
+      {
+        "name": "jsonVariant",
+        "type": "variant"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBWriter_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "numAffected",
+        "type": "integer"
+      },
+      {
+        "name": "objectId",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBExecute_Result",
+    "recordName": "Result",
+    "fields": [
+      {
+        "name": "success",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      },
+      {
+        "name": "stringResult",
+        "type": "string"
+      },
+      {
+        "name": "booleanResult",
+        "type": "boolean"
+      },
+      {
+        "name": "integerResult",
+        "type": "integer"
+      },
+      {
+        "name": "longResult",
+        "type": "long"
+      },
+      {
+        "name": "numberResult",
+        "type": "number"
+      },
+      {
+        "name": "dateResult",
+        "type": "date"
+      },
+      {
+        "name": "mapResult",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "stringListResult",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "resultType",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBWriter_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "MongoDBExecute_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "success",
+        "type": "boolean"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "stackTrace",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ParquetReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordNumber",
+        "type": "long"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "errorMessage",
+        "type": "string"
+      },
+      {
+        "name": "fileURL",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "ParquetWriter_output",
+    "recordName": "Output",
+    "fields": [
+      {
+        "name": "fileContent",
+        "type": "byte"
+      }
+    ]
+  },
+  {
+    "id": "SpreadsheetReader_Error",
+    "recordName": "Error",
+    "fields": [
+      {
+        "name": "recordID",
+        "type": "integer"
+      },
+      {
+        "name": "file",
+        "type": "string"
+      },
+      {
+        "name": "sheet",
+        "type": "string"
+      },
+      {
+        "name": "fieldIndex",
+        "type": "integer"
+      },
+      {
+        "name": "fieldName",
+        "type": "string"
+      },
+      {
+        "name": "cellCoords",
+        "type": "string"
+      },
+      {
+        "name": "cellValue",
+        "type": "string"
+      },
+      {
+        "name": "cellType",
+        "type": "string"
+      },
+      {
+        "name": "cellFormat",
+        "type": "string"
+      },
+      {
+        "name": "message",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "Validator_InvalidRecords",
+    "recordName": "ValidationResult",
+    "fields": [
+      {
+        "name": "recordNo",
+        "type": "long"
+      },
+      {
+        "name": "validationMessage",
+        "type": "string"
+      },
+      {
+        "name": "ruleStatusCode",
+        "type": "integer"
+      },
+      {
+        "name": "ruleName",
+        "type": "string"
+      },
+      {
+        "name": "ruleType",
+        "type": "string"
+      },
+      {
+        "name": "rulePath",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "validatedFieldNames",
+        "type": "string",
+        "containerType": "list"
+      },
+      {
+        "name": "validatedValues",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "ruleParameters",
+        "type": "string",
+        "containerType": "map"
+      },
+      {
+        "name": "validationDate",
+        "type": "date"
+      },
+      {
+        "name": "componentID",
+        "type": "string"
+      },
+      {
+        "name": "componentName",
+        "type": "string"
+      },
+      {
+        "name": "graphURL",
+        "type": "string"
+      }
+    ]
+  }
+]

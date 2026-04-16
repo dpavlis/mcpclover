@@ -18,6 +18,9 @@ class GraphValidator:
     VALID_CONTAINER_TYPES = {"list", "map"}
     VALID_ENABLED_VALUES = {"enabled", "disabled", "passThrough"}
 
+    REQUIRED_NODE_ATTRIBUTES = ("guiName", "guiX", "guiY")
+    REQUIRED_EDGE_ATTRIBUTES = ("guiBendpoints", "guiRouter", "inPort", "outPort")
+
     def __init__(self, xml_text: str):
         self._xml = xml_text
         self.errors = []
@@ -60,7 +63,11 @@ class GraphValidator:
         phases = root.findall("Phase")
         if not phases:
             self._warn("<Graph> has no <Phase> elements")
+
         prev_number = -1
+        node_ids = set()
+        edges = []
+
         for phase in phases:
             num_str = phase.get("number")
             if num_str is None:
@@ -69,24 +76,35 @@ class GraphValidator:
                 try:
                     n = int(num_str)
                     if n < prev_number:
-                        self._err(f"<Phase number='{n}'> is out of order (previous was {prev_number})")
+                        self._err(f"<Phase number='{n}'> out of order (previous was {prev_number})")
                     prev_number = n
                 except ValueError:
                     self._err(f"<Phase> 'number' must be an integer, got '{num_str}'")
+
             for node in phase.findall("Node"):
-                self._check_node(node)
+                node_id = self._check_node(node)
+                if node_id:
+                    node_ids.add(node_id)
+
             for edge in phase.findall("Edge"):
                 self._check_edge(edge)
+                edges.append(edge)
+
+        self._check_edge_node_references(edges, node_ids)
 
     def _check_node(self, node):
         nid = node.get("id", "(unknown)")
         if not node.get("id"):
-            self._err("<Node> is missing required 'id' attribute")
+            self._err("<Node> is missing required 'id' attr")
         if not node.get("type"):
-            self._err(f"<Node id='{nid}'> is missing required 'type' attribute")
+            self._err(f"<Node id='{nid}'> is missing required 'type' att")
         enabled = node.get("enabled")
         if enabled and enabled not in self.VALID_ENABLED_VALUES:
             self._warn(f"<Node id='{nid}'> has unknown 'enabled' value '{enabled}'")
+        for attr in self.REQUIRED_NODE_ATTRIBUTES:
+            if node.get(attr) is None:
+                self._warn(f"<Node id='{nid}'> missing attr '{attr}'")
+        return node.get("id")
 
     def _check_edge(self, edge):
         eid = edge.get("id", "(unknown)")
@@ -95,9 +113,28 @@ class GraphValidator:
         for attr in ("fromNode", "toNode"):
             val = edge.get(attr)
             if not val:
-                self._err(f"<Edge id='{eid}'> is missing required '{attr}' attribute")
+                self._err(f"<Edge id='{eid}'> is missing required '{attr}' attr")
             elif ":" not in val:
                 self._err(f"<Edge id='{eid}'> '{attr}' must be 'NodeID:portNumber', got '{val}'")
+        for attr in self.REQUIRED_EDGE_ATTRIBUTES:
+            if edge.get(attr) is None:
+                self._warn(f"<Edge id='{eid}'> missing attr '{attr}'")
+
+    def _check_edge_node_references(self, edges, node_ids):
+        for edge in edges:
+            eid = edge.get("id", "(unknown)")
+            for attr in ("fromNode", "toNode"):
+                endpoint = edge.get(attr)
+                if not endpoint or ":" not in endpoint:
+                    continue
+                node_id = endpoint.split(":", 1)[0]
+                if not node_id:
+                    self._err(f"<Edge id='{eid}'> '{attr}' is missing a node id before ':'")
+                    continue
+                if node_id not in node_ids:
+                    self._err(
+                        f"<Edge id='{eid}'> '{attr}' references missing component id '{node_id}'"
+                    )
 
     def _check_graph_parameters(self, global_el):
         params_el = global_el.find("GraphParameters")

@@ -137,6 +137,10 @@ Environment variable notes:
 - Required: `CLOVERDX_BASE_URL`, `CLOVERDX_USERNAME`, `CLOVERDX_PASSWORD`
 - Common optional: `CLOVERDX_VERIFY_SSL` (default `false`), `CLOVERDX_LOG_LEVEL` (default `INFO`), `CLOVERDX_SESSION_TIMEOUT` (default `1500` seconds)
 - Optional CTL/LLM settings:
+  - Development-only guidance:
+    `CLOVERDX_LLM_ALLOW` and all `CLOVERDX_LLM_*` settings are intended for development/testing only.
+    Keep `CLOVERDX_LLM_ALLOW` set to `false` in normal/production client configuration.
+    Turn it on only for short-lived development sessions where you explicitly need CTL generation/validation tooling.
   - `CLOVERDX_LLM_ALLOW` enables `validate_CTL`, `generate_CTL`, `run_sub_agent`, and `suggest_components`.
     Enable this only when your configured model endpoint can reliably understand CloverDX CTL2 and produce valid CTL output.
     In practice this usually means a specialized/fine-tuned CTL-capable model.

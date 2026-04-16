@@ -224,7 +224,7 @@ it resolves metadata on each edge using these rules, in priority order:
 | **Pass-through** — record structure unchanged | SimpleCopy, Filter (EXT_FILTER), Sort (EXT_SORT), Dedup, Gather, Concatenate, Partition | Propagates metadata **bidirectionally** between all ports (input ↔ output). |
 | **Transform** — output structure differs from input | Reformat (MAP), Normalizer, Denormalizer, Rollup | Propagates **input→input** across ports on the same side; output metadata must be explicitly defined or comes from another source. |
 | **Joiner** — multiple inputs, one output | EXT_HASH_JOIN, EXT_MERGE_JOIN, LOOKUP_JOIN, DBJOIN | Each input port propagates independently; output metadata must be defined. |
-| **Template port** — component injects metadata | SpreadsheetDataReader (error port 1), ListFiles, Subgraph components | The component itself is the source — metadata propagates outward from that port. |
+| **Template port** — component injects metadata | DATA_READER / FLAT_FILE_READER (error port 1), LIST_FILES, Subgraph components | The component runtime injects the metadata automatically. **Do NOT declare a `<Metadata>` on the connected edge** — leave `metadata` absent or `metadataId=""`. |
 
 > At least **some** metadata in the graph must be explicitly assigned or come from
 > a component template.  Propagation cannot resolve metadata if there is no
@@ -238,10 +238,15 @@ it resolves metadata on each edge using these rules, in priority order:
 - **Omit `metadata`** on edges between pass-through components when the same
   record structure is already defined on an adjacent edge — the server will
   propagate it automatically.
+- **Template-port edges (injected metadata) must have no `metadata` attribute.**
+  The CloverDX runtime assigns the structure automatically during graph
+  preparation. Adding an explicit `<Metadata>` there is redundant and may conflict.
+  `get_component_info` marks these ports as *Injected metadata* — that is your
+  signal to leave the edge undecorated.
 - When **reading existing graphs**, edges without a `metadata` attribute are
   normal — they rely on propagation.  Do not treat this as an error.
-- When in doubt, explicitly assigning metadata to every edge is always safe
-  and never causes a conflict.
+- When in doubt, explicitly assigning metadata to every *non-template* edge is
+  always safe and never causes a conflict.
 
 ### Internal Metadata (defined inside graph)
 
