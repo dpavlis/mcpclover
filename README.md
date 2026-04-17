@@ -19,3 +19,7 @@ Connect this MCP server to an MCP-compatible client so the model can safely assi
 - Setup guide: `MCP_CLIENT_SETUP.md`
 - Tool reference: `MCP_TOOLS_README.md`
 - Example Claude MCP config: `mcp_config.example.json`
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
