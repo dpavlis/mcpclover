@@ -115,6 +115,7 @@ Key `<Edge>` attributes:
 - `toNode`: `NodeID:portNumber` (input port of target)
 - `id`: unique edge identifier
 - `metadata`: *(optional)* references `<Metadata id="...">` — describes data structure flowing through this edge.  If omitted, CloverDX resolves it via **metadata propagation** from connected edges or component port templates (see §4 "Metadata Propagation").  When generating new graphs, prefer setting it explicitly on edges where the record structure is first established or changes.
+- `metadataRef`: *(optional, alternative to `metadata`)* references another edge's metadata instead of a `<Metadata>` definition. Format: `metadataRef="#//EdgeId"` (XPath-style ref to an edge in the same graph). Use when this edge carries the same record structure as another edge. Only one of `metadata` or `metadataRef` should be set.
 - `edgeType`: *(optional)* CloverDX automatically determines the optimal edge type when it loads and analyses the graph. You do not need to set this attribute manually.
 
 Port numbering starts at `0`. Format: `NODE_ID:0`, `NODE_ID:1`, etc.
@@ -211,10 +212,13 @@ it resolves metadata on each edge using these rules, in priority order:
 
 1. **Explicitly assigned** — the edge has a `metadata="..."` attribute pointing
    to a `<Metadata>` definition.  This always wins.
-2. **Auto-propagated from a connected edge** — if a neighbouring edge (through
+2. **Edge reference** — `metadataRef="#//EdgeId"` declares this edge has the same
+   metadata as another edge. No separate `<Metadata>` needed. Example:
+   `<Edge id="Edge1" metadataRef="#//Edge0" .../>` — Edge1 uses Edge0's metadata.
+3. **Auto-propagated from a connected edge** — if a neighbouring edge (through
    a component) already has known metadata and the component propagates it,
    that metadata flows to the unassigned edge.
-3. **Component port template** — some components inject metadata on specific
+4. **Component port template** — some components inject metadata on specific
    ports automatically (e.g. error-port metadata on readers, ListFiles output).
 
 #### How components propagate metadata
@@ -235,6 +239,9 @@ it resolves metadata on each edge using these rules, in priority order:
 - **Define metadata explicitly** on edges where the record structure is
   **established or changes**: after readers, after transform components that
   reshape records, and on joiner output ports.
+- **Use `metadataRef="#//EdgeId"`** when an edge carries the same structure as
+  another edge and you want to express that link without repeating or creating
+  a `<Metadata>` definition.
 - **Omit `metadata`** on edges between pass-through components when the same
   record structure is already defined on an adjacent edge — the server will
   propagate it automatically.
@@ -1816,7 +1823,7 @@ Each `SUBGRAPH_INPUT` node with a different `inputPortIndex` creates an addition
 
 ## 16. Key Rules and Constraints
 
-1. **Every edge must have metadata** — either explicitly via the `metadata` attribute or auto-propagated by CloverDX (see §4 "Metadata Propagation").  Best practice: assign `metadata` explicitly on edges where the record structure is first established or changes; propagation handles the rest.
+1. **Every edge must have metadata** — either explicitly via the `metadata` attribute, via `metadataRef="#//EdgeId"` (same metadata as another edge), or auto-propagated by CloverDX (see §4 "Metadata Propagation").  Best practice: assign `metadata` explicitly on edges where the record structure is first established or changes; use `metadataRef` to share structure across edges; propagation handles the rest.
 2. **Port numbers are 0-indexed.** Edge format: `NODE_ID:portNumber`.
 3. **Each `<Node>` and `<Edge>` must have a unique `id`** within the graph.
 4. **Phase numbers must be non-decreasing** in a data flow path.
@@ -2172,7 +2179,7 @@ Follow these rules whenever you are tasked with generating a CloverDX graph XML 
 
 1. **Identify sources and targets.** For each source, choose the correct reader type (`DATA_READER` for CSV/flat files, `DB_INPUT_TABLE` for JDBC, `JSON_READER` for JSON, `XML_EXTRACT` for XML, etc.). For each target, choose the correct writer.
 2. **Map the data flow.** Draw the logical path: source → transform/join/filter steps → target. Each step is one or more `<Node>` elements connected by `<Edge>` elements.
-3. **Determine metadata.** Every edge needs metadata. Define `<Metadata>` elements that match the field names and types at each stage of the flow. If an operation changes the record structure (join adds fields, map renames fields), define a new metadata.
+3. **Determine metadata.** Every edge needs metadata. Define `<Metadata>` elements that match the field names and types at each stage of the flow. If an operation changes the record structure (join adds fields, map renames fields), define a new metadata. For edges sharing a structure with another edge, use `metadataRef="#//EdgeId"` instead of duplicating the metadata reference.
 4. **Identify joins.** If data from multiple sources must be combined, decide on join type: `EXT_HASH_JOIN` (unsorted, general), `EXT_MERGE_JOIN` (sorted inputs), `LOOKUP_JOIN` (one side is a lookup table), `DB_JOIN` (one side is a DB query).
 5. **Decide on phases.** Operations that must complete before others start (e.g., truncate before insert, load lookup before join) go in earlier phases. Components that can run concurrently go in the same phase.
 6. **Plan parameters.** Use `${PARAM_NAME}` for all file paths and configurable values. Always link `workspace.prm`.
@@ -2181,7 +2188,7 @@ Follow these rules whenever you are tasked with generating a CloverDX graph XML 
 
 - **Always declare `<?xml version="1.0" encoding="UTF-8"?>`** as the first line.
 - **Every `<Node>` must have**: `id` (unique, ALLCAPS_N convention), `type` (exact type string), `enabled="enabled"`, `guiName` (human label), `guiX`, `guiY` (layout coords).
-- **Every `<Edge>` must have**: `id`, `fromNode` (`NODEID:portNum`), `toNode` (`NODEID:portNum`), `metadata` (references a `<Metadata id>`). Port numbers are 0-based.
+- **Every `<Edge>` must have**: `id`, `fromNode` (`NODEID:portNum`), `toNode` (`NODEID:portNum`), and one of: `metadata` (references a `<Metadata id>`), `metadataRef` (`#//EdgeId` — same metadata as another edge), or neither (auto-propagated). Port numbers are 0-based.
 - **Wrap all component attribute values in CDATA**: `<attr name="sqlQuery"><![CDATA[SELECT ...]]></attr>`
 - **Every metadata `<Record>` must have**: `name`, `type` (`delimited`/`fixed`/`mixed`), and either `fieldDelimiter`+`recordDelimiter` (delimited) or `size` on each field (fixed).
 - **Every metadata `<Field>` must have**: `name`, `type`. Add `delimiter` for the last field = record delimiter (e.g., `\n`).
@@ -2223,7 +2230,7 @@ Follow these rules whenever you are tasked with generating a CloverDX graph XML 
 
 ### Metadata design guidelines
 
-- Define **one metadata per distinct record structure**. Reuse the same metadata id on multiple edges carrying the same structure.
+- Define **one metadata per distinct record structure**. Reuse the same metadata id on multiple edges carrying the same structure, or use `metadataRef="#//EdgeId"` to reference another edge's metadata.
 - For join output, define a **new metadata** that combines fields from master and slave.
 - For filter/sort/dedup that don't change field structure, **reuse the input metadata** on both input and output edges.
 - For container fields (`containerType="list"` or `containerType="map"`): the `type` attribute specifies the element's scalar type (e.g., `type="string"` for a list of strings). Add a comment documenting the CTL2 type (e.g., `list[string]`, `map[string, integer]`) for clarity.

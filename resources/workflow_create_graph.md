@@ -242,7 +242,7 @@ Determine the metadata structure for each stage of the data flow:
   for VALIDATOR error handling)
 - Whether to reuse existing `.fmt` files (from `list_linked_assets`) or define inline
 
-One metadata definition is shared across all edges at the same stage.
+One metadata definition is shared across all edges at the same stage. Use `metadataRef="#//EdgeId"` to reference another edge's metadata instead of repeating the metadata id.
 Valid records will simply have auxiliary fields null.
 
 ### 2.2 Confirm CTL entry points

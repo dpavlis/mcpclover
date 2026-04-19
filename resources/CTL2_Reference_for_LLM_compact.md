@@ -494,14 +494,36 @@ string raw = getRawParamValue("MY_PARAM");     // unresolved
 
 Standard parameters: `${DATAIN_DIR}`, `${DATAOUT_DIR}`, `${DATATMP_DIR}`, `${CONN_DIR}`, `${TRANS_DIR}`, `${LOOKUP_DIR}`, `${SEQ_DIR}`, `${META_DIR}`, `${GRAPH_DIR}`, `${SUBGRAPH_DIR}`, `${JOBFLOW_DIR}`, `${LIB_DIR}`.
 
+Lookup table functions: `count`, `get`, `next`, `put`. Access via `lookup(<name>)` where name is unquoted identifier.
+Only one query per lookup table at a time (single internal state for next record).
+Do NOT use lookup functions in `init()`, `preExecute()`, or `postExecute()`.
+
+- **get(keyValue)** — returns first matching record or `null`. Access fields: `.fieldName` or `.*`.
+- **next()** — returns next record with same key (after `get`), or `null` when exhausted.
+- **count(keyValue)** — returns number of matching records. DB lookups may return `-1` if `Max cached size` is 0.
+- **put(record)** — stores record in lookup; returns `boolean`. Record metadata must match. Not supported by DB lookups. Stored records may not be available for reading in the same phase.
+
+DB lookups require interpreted mode (`//#CTL2`), not compiled (`//#CTL2:COMPILE`).
+
 ```ctl
+// get — single-key and multi-key
 UsersMetadata rec = lookup(UsersLookup).get("searchKey");
 rec = lookup(MyLookup).get(key1, key2);
-while (!isnull(rec)) { rec = lookup(UsersLookup).next(); }
-integer cnt = lookup(MyLookup).count("key");
-lookup(MyLookup).put(myRecord);
-// Do NOT use lookups in init(), preExecute(), postExecute(). DB lookups not in compiled mode.
+string phone = lookup(users).get("John", "Smith").phone; //read field from lookup record
 
+// iterate duplicates
+UsersMetadata u = lookup(UsersLookup).get($in.0.key);
+while (u != null) {
+    // process u
+    u = lookup(UsersLookup).next();
+}
+
+// count and put
+integer cnt = lookup(MyLookup).count("key");
+lookup(MyLookup).put(myRecord);  // returns boolean
+```
+
+```ctl
 integer id = sequence(MySequence).next();
 integer id2 = sequence(MySequence).current();
 long idL = sequence(MySequence, long).next();
