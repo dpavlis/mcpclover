@@ -483,7 +483,7 @@ External connection file reference:
           start="1" step="1" type="SIMPLE_SEQUENCE"/>
 ```
 
-Usage in CTL: `nextval("Sequence0")`, `currentval("Sequence0")`, `resetval("Sequence0")`
+Usage in CTL: `sequence(Sequence0).next()`, `sequence(Sequence0).current()`, `sequence(Sequence0).reset()`. Default return type is `integer`; for `long` or `string`: `sequence(Sequence0, long).next()`, `sequence(Sequence0, string).next()`.
 
 ---
 
@@ -554,12 +554,15 @@ str2integer($in.0.s)
 str2double($in.0.s)
 str2date($in.0.s, "yyyy-MM-dd")
 
-// Null checks
-isNull($in.0.field)
+// Null checks — isnull() and == null are interchangeable
+isnull($in.0.field)
+$in.0.field == null
 iif($in.0.field == null, "default", $in.0.field)
 
-// Sequences
-nextval("SequenceId")
+// Sequences — default integer; use long/string as second arg for other types
+sequence(MySeq).next()
+sequence(MySeq, long).next()
+sequence(MySeq, string).next()
 
 // Lookup
 lookup("LookupId").get("keyValue").fieldName
@@ -848,7 +851,7 @@ Generates synthetic data using CTL transform.
   <attr name="transform"><![CDATA[
 //#CTL2
 function integer generate() {
-    $out.0.id = nextval("Sequence0");
+    $out.0.id = sequence(Sequence0).next();
     $out.0.name = "Record_" + num2str($out.0.id);
     return 0;
 }
@@ -1762,7 +1765,7 @@ ${FILTER_EXPR} && $in.0.amount >= ${MIN_AMOUNT}]]></attr>
       <attr name="recordsNumber"><![CDATA[10]]></attr>
       <attr name="transform"><![CDATA[//#CTL2
 function integer generate() {
-    $out.0.id = nextval("Sequence0");
+    $out.0.id = sequence(Sequence0).next();
     $out.0.amount = 100.00;
     return 0;
 }]]></attr>
@@ -2223,7 +2226,7 @@ Follow these rules whenever you are tasked with generating a CloverDX graph XML 
 ### CTL2 code guidelines
 
 - **Always set required output fields explicitly.** Do not rely on implicit field copying unless you use `$out.0.* = $in.0.*` wildcard.
-- **Handle nulls explicitly.** Use `isNull($in.0.field)` before using a field value that may be null. Use `iif(isNull($in.0.f), default, $in.0.f)`.
+- **Handle nulls explicitly.** `isnull(expr)` and `expr == null` are interchangeable. Use `iif(isnull($in.0.f), default, $in.0.f)` or `nvl($in.0.f, default)`.
 - **return ALL** sends the record to all connected output ports. **return 0** / **return 1** routes to a specific port. **return SKIP** discards the record.
 - **Date fields**: always specify format in metadata. For CTL conversion: `str2date(s, "yyyy-MM-dd")`, `date2str(d, "dd/MM/yyyy")`.
 - **Decimal formatting**: use `num2str(n, "#,##0.00", "en.US")` for locale-aware formatting.

@@ -9,7 +9,7 @@ description: Dense CTL2 language reference for CloverDX transformations: valid s
 - This document is the only valid source. Unlisted construct → propose closest valid alternative.
 - Prefer simple, explicit CTL2: named field access, explicit conversions.
 - Records are NOT objects: no `.get()`, `.set()`, `.fields()`. Use record functions (**11.6**).
-- Null checks: `isnull(expr)` (1 arg, lowercase) for values/fields; `isNull(record, integer|string)` (2 args, camelCase) for dynamic field access. Two different functions — do not mix. `""` ≠ null. See **11.8**.
+- Null checks: `isnull(expr)` (1 arg, lowercase) and `expr == null` / `expr != null` are interchangeable for any type including records. `isNull(record, integer|string)` (2 args, camelCase) is a separate function for dynamic field access by index/name. `""` ≠ null. See **11.8**.
 - Output records: prefer `$out.<port>.* = $in.<port>.*;`. Use `$out.<port> = $in.<port>;` only when metadata is exactly identical.
 - No implicit conversions except numeric upcasting. Use documented conversion functions.
 - Prefer **native literals** over conversion functions:
@@ -527,6 +527,7 @@ lookup(MyLookup).put(myRecord);  // returns boolean
 integer id = sequence(MySequence).next();
 integer id2 = sequence(MySequence).current();
 long idL = sequence(MySequence, long).next();
+string idS = sequence(MySequence, string).next();
 // Do NOT use sequences in init(), preExecute(), postExecute().
 
 string val = dictionary.myEntry;
@@ -976,7 +977,7 @@ Record metadata helpers return `map[string,string]`, not `variant`.
 - Every type can be null. `null` ≠ `""` — `isnull("")` = false.
 - Local var defaults: primitives NOT null (see **2.1**). `byte`/`cbyte`/`variant` default null.
 - Unset record fields are null (not type default) unless metadata defines a Default.
-- `== null` valid for all types.
+- `isnull(expr)` and `expr == null` / `expr != null` are **interchangeable** for all types (scalars, records, lookup results, etc.).
 
 **Two different null check functions:**
 
@@ -1022,12 +1023,12 @@ isNull($in.0, "field2")  // field "field2" null?
 | `isnull` | `boolean isnull(any expr)` | 1 arg, lowercase. |
 | `isNull` | `boolean isNull(record, integer\|string)` | 2 args, camelCase. |
 | `nvl` | `T nvl(T value, T default)` | Non-null or default. Types must match. |
-| `nvl2` | `T nvl2(T value, T ifNotNull, T ifNull)` | Ternary null branch. |
+| `nvl2` | `T nvl2(<any> value, T ifNotNull, T ifNull)` | Returns `ifNotNull` if value is non-null, else `ifNull`. First arg can be any type; second and third must match. |
 | `isBlank` | `boolean isBlank(string)` | Null, `""`, or whitespace. |
 | `isEmpty` | `boolean isEmpty(string)` | Null or `""`. No whitespace check. |
 | `iif` | `T iif(boolean, T, T)` | Inline conditional (prefer `? :`). |
 
-When to use: named field/var → `isnull()`; dynamic idx → `isNull($in.0, idx)`; dynamic name → `isNull($in.0, "name")`; fallback → `nvl()`; null+empty → `isBlank()`.
+`isnull(expr)` and `expr == null` are interchangeable for any expression. For dynamic field access by index/name use `isNull(record, idx)` / `isNull(record, "name")`. Fallback: `nvl()`; null+empty: `isBlank()`.
 
 **Common null mistakes:**
 - `isnull($in.0, 0)` INVALID — use `isNull($in.0, 0)`.
@@ -1192,7 +1193,7 @@ In `replace(str, regex, repl)` and `split(str, regex)`: pattern is always regex.
 19. **`date2num()` needs unit**: `date2num(date, day)` — not bare `date2num(date)`.
 20. **`double` is valid alias** for `number`. `double x = 1.5;` is valid.
 21. **`cast()` strong-type conversion INVALID**: `cast(decimal, integer)` is wrong. Use `decimal2integer()`.
-22. **Null function confusion**: `isnull(expr)` (1 arg, lowercase) ≠ `isNull(record, idx/name)` (2 args, camelCase). `isnull("")` = false. Local primitive vars NOT null. See **11.8**.
+22. **Null function confusion**: `isnull(expr)` (1 arg, lowercase) and `expr == null` are interchangeable. `isNull(record, idx/name)` (2 args, camelCase) is a different function for dynamic field access. `isnull("")` = false. Local primitive vars NOT null. See **11.8**.
 23. **Null in ordering comparisons throws**: `<`, `>`, `<=`, `>=` throw `CTLException` if either operand is null. `==`/`!=` are null-safe. Use `isnull()` guards or `nvl()` fallbacks.
 
 ---
@@ -1210,7 +1211,7 @@ In `replace(str, regex, repl)` and `split(str, regex)`: pattern is always regex.
 9. Built-in functions: only **10**. Top hallucinations: `size()`→`length()` (32×), `toInteger()`→`str2integer()` (13×), `if(cond,a,b)`→`iif()` (37×), `parseDate()`→`str2date()` (5×), `parseInt()`→`str2integer()` (4×), `now()`→`today()` (2×), `toDouble()`→`str2double()`, `toDecimal()`→`str2decimal()`, `asc()`→`codePointAt()`, `parseDecimal()`→`str2decimal()`, `removeAt()`→`remove()`, `addDays()`→`dateAdd()`, `number2decimal()`→`cast(n,decimal)`, `regexReplace()`→`replace()`, `printJson`→`writeJson`, `containerSize`→`length`, `decode`→DNE, `format`→`formatMessage`, `toUpperCase`→`upperCase`, `toLowerCase`→`lowerCase`, `strip`→`trim`, `len`→`length`, `print`→`printLog`/`printErr`, `JSON.parse`→`parseJson`, `JSON.stringify`→`writeJson`.
 10. Port access: `$in.N.field` / `$out.N.field`. No `input[0]`, `record.get()`.
 11. Type casting: `cast(variant, type)` for variants ONLY. No C-style `(int)x`, no `as`.
-12. Null: `isnull(expr)` (1 arg, lowercase) for values; `isNull(record, int/string)` (2 args, camelCase) for dynamic. No `??`, `?.`, `== NULL`. `""` ≠ null. Ordering operators throw on null.
+12. Null: `isnull(expr)` and `expr == null` interchangeable for all types. `isNull(record, int/string)` (2 args, camelCase) is separate — dynamic field access only. No `??`, `?.`, `== NULL`. `""` ≠ null. Ordering operators throw on null.
 13. Collections: `type[]` or `list[type]`; `map[keyType, valueType]`. No `List<>`, `Map<>`, `Dictionary`, `Array`, `Set`.
 14. Semicolons: all statements end with `;`. Blocks `{}` do NOT.
 15. Component functions match expected signatures for component type.
@@ -1229,10 +1230,12 @@ integer currentId = sequence(MySequence).current();
 sequence(MySequence).reset();
 ```
 
-Typed access:
+Typed access — default is `integer`; specify `long` or `string` as second arg:
 ```ctl
 long idL = sequence(MySequence, long).next();
 string idS = sequence(MySequence, string).next();
+long curL = sequence(MySequence, long).current();
+string curS = sequence(MySequence, string).current();
 ```
 
 Function semantics:
