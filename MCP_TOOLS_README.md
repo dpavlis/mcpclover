@@ -155,11 +155,15 @@ Returns the authoritative step-by-step workflow guide for a CloverDX task type.
 ## Graph Operations
 
 ### `graph_edit_properties`
-Sets or replaces a value on a specific element within a CloverDX graph XML file (`.grf`). Operates on the parsed DOM — no text anchoring, no line numbers, no regex. Loads the file, finds the target element, modifies it, and writes it back.
+Sets or replaces one or more values on existing elements within a CloverDX graph XML file (`.grf`). Operates on the parsed DOM — no text anchoring, no line numbers, no regex. Loads the file, finds the target element(s), modifies them, and writes the file back only after the requested edit set succeeds.
 
 **Element types:** `Node`, `Edge`, `Metadata`, `GraphParameter`, `Connection`
 
-**Two modification modes (selected via `attribute_name`):**
+**Single-edit mode:** provide `element_type`, `element_id`, `attribute_name`, and `value`.
+
+**Bulk mode:** provide `changes[]` instead of the single-edit fields. Each entry must include `element_type`, `element_id`, `attribute_name`, and `value`. Bulk edits are atomic: if any entry is invalid, the entire batch fails and the file is left untouched. Use `dry_run=true` to preview the planned changes without writing.
+
+**Two property modes (selected via `attribute_name`):**
 - **Plain XML attribute** — e.g. `attribute_name='recordsNumber'`, `value='50'`. Sets the attribute directly on the element tag. Use for `recordsNumber`, `joinType`, `enabled`, `guiX`, `guiY`, `fileURL`, `metadata`, `value`, etc.
 - **`attr:X` child element** — e.g. `attribute_name='attr:transform'`. Finds or creates an `<attr name='X'>` child element and stores the value as CDATA (wrapping applied automatically). Use for CTL2 transforms, SQL queries, `joinKey`, mapping XML, `rules`, `errorMapping`, etc.
 

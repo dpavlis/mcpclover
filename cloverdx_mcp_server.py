@@ -60,30 +60,30 @@ WebServices and exposes the following tools:
   kb_search               – Search KB entries or list a catalog of entries
   kb_read                 – Read one KB entry by name
 
-  CTL tools
-  ─────────
-  validate_CTL            – Lint CTL2 code via an LLM (OpenAI-compatible API)
-  generate_CTL            – Generate CTL2 code/snippets via an LLM (OpenAI-compatible API)
-    run_sub_agent           – Delegate a sub-task to a read-only inner LLM agent
-    suggest_components      – Suggest CloverDX components for a given task
+CTL tools
+─────────
+validate_CTL            – Lint CTL2 code via an LLM (OpenAI-compatible API)
+generate_CTL            – Generate CTL2 code/snippets via an LLM (OpenAI-compatible API)
+run_sub_agent           – Delegate a sub-task to a read-only inner LLM agent
+suggest_components      – Suggest CloverDX components for a given task
 
 Resources exposed
 ─────────────────
-  cloverdx://reference/graph-xml   – cloverdx-llm-reference.md
-  cloverdx://reference/ctl2        – CTL2_Reference_for_LLM_compact.md
-    cloverdx://reference/subgraphs   – subgraph-reference.md
-    cloverdx://reference/data-service – data-service-reference.md
-        cloverdx://reference/jobflow     – jobflow-reference.md
-    cloverdx://reference/components  – components.json (non-deprecated)
+cloverdx://reference/graph-xml   – cloverdx-llm-reference.md
+cloverdx://reference/ctl2        – CTL2_Reference_for_LLM_compact.md
+cloverdx://reference/subgraphs   – subgraph-reference.md
+cloverdx://reference/data-service – data-service-reference.md
+cloverdx://reference/jobflow     – jobflow-reference.md
+cloverdx://reference/components  – components.json (non-deprecated)
 
 Configuration (.env)
 ────────────────────
-  CLOVERDX_BASE_URL   http://host:port/clover
-  CLOVERDX_USERNAME   clover
-  CLOVERDX_PASSWORD   clover
-  CLOVERDX_VERIFY_SSL false   (optional, default false)
-    CLOVERDX_LLM_ALLOW  false   (optional, default false; enables validate_CTL/generate_CTL/run_sub_agent/suggest_components tools)
-    CLOVERDX_SUBAGENT_* (optional; endpoint/model settings for run_sub_agent/suggest_components)
+CLOVERDX_BASE_URL   http://host:port/clover
+CLOVERDX_USERNAME   clover
+CLOVERDX_PASSWORD   clover
+CLOVERDX_VERIFY_SSL false   (optional, default false)
+CLOVERDX_LLM_ALLOW  false   (optional, default false; enables validate_CTL/generate_CTL/run_sub_agent/suggest_components tools)
+CLOVERDX_SUBAGENT_* (optional; endpoint/model settings for run_sub_agent/suggest_components)
 
 Dependencies
 ────────────
@@ -852,6 +852,10 @@ async def handle_read_resource(uri) -> str:
 
 @app.list_tools()
 async def handle_list_tools() -> List[types.Tool]:
+    return _build_tool_list()
+
+
+def _build_tool_list() -> List[types.Tool]:
     return [
         # ── Sandbox / File tools ───────────────────────────────────────────
         types.Tool(
@@ -1247,22 +1251,15 @@ async def handle_list_tools() -> List[types.Tool]:
         types.Tool(
             name="graph_edit_properties",
             description=(
-                "Set or update a property value on an existing graph element via XML DOM.\n"
-                "Companion to graph_edit_structure (which adds/deletes/moves whole elements).\n\n"
-                "USE FOR: changing attributes, CTL code, SQL, join keys, metadata records\n"
-                "  on elements that already exist in the graph.\n"
-                "DO NOT USE FOR: adding or removing whole elements (Metadata, Node, Edge, Phase, ...)\n"
-                "  -- use graph_edit_structure for that.\n\n"
-                "Two modes via attribute_name:\n"
-                "1. Plain name (e.g. 'recordsNumber', 'joinType', 'fileURL') -> sets XML attribute.\n"
-                "   USE THIS for short, simple values. This is the DEFAULT and preferred mode.\n"
-                "2. 'attr:' prefix (e.g. 'attr:transform', 'attr:sqlQuery') -> sets <attr> child\n"
-                "   with auto CDATA wrapping. Use ONLY when the value is multi-line code\n"
-                "   (CTL, SQL, XML) or contains characters unsafe in XML attributes (<, >, &, \").\n"
-                "   Do NOT use attr: for short single-value properties like 'enabled', 'joinType',\n"
-                "   'recordsNumber', 'fileURL', 'sortKey', etc. -- plain name is correct for those.\n\n"
-                "For Metadata: attribute_name='record', value=full <Record>...</Record> XML.\n"
-                "External metadata (.fmt files) cannot be modified here.\n"
+                "Set or update a property on one or more existing graph elements via XML DOM.\n"
+                "Single-edit: provide element_type, element_id, attribute_name, value.\n"
+                "Bulk edit: provide a changes[] array - all changes applied atomically; fails entirely\n"
+                "if any change is invalid. Use dry_run=true to preview. graph_path and sandbox apply\n"
+                "to all changes in both modes.\n\n"
+                "Plain attribute_name (for example 'recordsNumber', 'joinType', 'fileURL') sets an\n"
+                "XML attribute directly. 'attr:X' sets an <attr name='X'> child with auto CDATA\n"
+                "wrapping. For Metadata, use attribute_name='record' with full <Record>...</Record>\n"
+                "XML. External metadata (.fmt files) cannot be modified here.\n"
                 "Always call validate_graph after using this tool."
             ),
             inputSchema={
@@ -1304,15 +1301,30 @@ async def handle_list_tools() -> List[types.Tool]:
                             "For Metadata 'record': full <Record>...</Record> XML."
                         ),
                     },
+                    "changes": {
+                        "type": "array",
+                        "description": (
+                            "Bulk edit array. Mutually exclusive with element_type/element_id/attribute_name/value. "
+                            "All changes applied atomically — fails entirely if any entry is invalid."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "required": ["element_type", "element_id", "attribute_name", "value"],
+                            "properties": {
+                                "element_type": {"type": "string"},
+                                "element_id": {"type": "string"},
+                                "attribute_name": {"type": "string"},
+                                "value": {"type": "string"},
+                            },
+                            "additionalProperties": False,
+                        },
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Preview planned changes without writing the graph file. Default: false.",
+                    },
                 },
-                "required": [
-                    "graph_path",
-                    "sandbox",
-                    "element_type",
-                    "element_id",
-                    "attribute_name",
-                    "value",
-                ],
+                "required": ["graph_path", "sandbox"],
                 "additionalProperties": False,
             },
         ),
@@ -3562,7 +3574,7 @@ async def tool_run_sub_agent(args: Dict) -> List[types.TextContent]:
         result = await _run_sub_agent(
             task=task,
             tool_map=_TOOL_MAP,
-            mcp_tool_list=await handle_list_tools(),
+            mcp_tool_list=_build_tool_list(),
             allowed_tools=allowed_tools,
             system_prompt=str(system_prompt) if system_prompt is not None else None,
             max_iterations=max_iterations,
@@ -3591,7 +3603,7 @@ async def tool_suggest_components(args: Dict) -> List[types.TextContent]:
         result = await _suggest_components(
             task=task,
             tool_map=_TOOL_MAP,
-            mcp_tool_list=await handle_list_tools(),
+            mcp_tool_list=_build_tool_list(),
         )
         return _text(result)
     except Exception as exc:
@@ -4126,193 +4138,337 @@ async def tool_modify_graph_structure(args: Dict) -> List[types.TextContent]:
 
 
 async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent]:
-    graph_path     = args["graph_path"]
-    sandbox        = args["sandbox"]
-    element_type   = args["element_type"]
-    element_id     = args["element_id"]
-    attribute_name = args["attribute_name"]
-    value          = args["value"]
-
-    # --- Validation ---
-    if not attribute_name:
-        return _text(json.dumps({"status": "error", "message": "attribute_name must not be empty"}))
-    if element_type == "GraphParameter" and attribute_name.startswith("attr:"):
-        return _text(json.dumps({
-            "status": "error",
-            "message": "GraphParameter elements do not have <attr> children. Use plain attribute_name='value'.",
-        }))
+    graph_path = args["graph_path"]
+    sandbox = args["sandbox"]
+    dry_run = bool(args.get("dry_run", False))
+    changes = args.get("changes")
 
     _ID_ATTR: Dict[str, str] = {
-        "Node": "id", "Edge": "id", "Metadata": "id",
-        "Connection": "id", "GraphParameter": "name",
+        "Node": "id",
+        "Edge": "id",
+        "Metadata": "id",
+        "Connection": "id",
+        "GraphParameter": "name",
     }
-    id_attr = _ID_ATTR[element_type]
+    _REQUIRED_CHANGE_FIELDS = ("element_type", "element_id", "attribute_name", "value")
 
-    # --- Step 1: Download graph file ---
+    def _json(payload: Dict[str, Any], *, indent: int = 2) -> List[types.TextContent]:
+        return _text(json.dumps(payload, indent=indent))
+
+    def _error(message: str) -> List[types.TextContent]:
+        return _json({"status": "error", "message": message})
+
+    def _bulk_error(index: int, change: Dict[str, Any], reason: str) -> List[types.TextContent]:
+        return _json({
+            "status": "error",
+            "failed_index": index,
+            "element_type": change.get("element_type"),
+            "element_id": change.get("element_id"),
+            "attribute_name": change.get("attribute_name"),
+            "reason": reason,
+        })
+
+    def _local_tag(tag: Any) -> str:
+        text = str(tag)
+        return text.split("}", 1)[-1] if "}" in text else text
+
+    single_change = {
+        "element_type": args.get("element_type"),
+        "element_id": args.get("element_id"),
+        "attribute_name": args.get("attribute_name"),
+        "value": args.get("value"),
+    }
+    single_any_provided = any(value is not None for value in single_change.values())
+    single_missing = [name for name, value in single_change.items() if value is None]
+    bulk_mode = changes is not None
+
+    if bulk_mode and single_any_provided:
+        return _error(
+            "Ambiguous input: provide either changes[] for bulk mode or element_type/element_id/attribute_name/value for single-edit mode."
+        )
+
+    if not bulk_mode and single_missing:
+        return _error(
+            "Missing required parameter(s) for single-edit mode: " + ", ".join(single_missing)
+        )
+
+    if bulk_mode and not isinstance(changes, list):
+        return _error("'changes' must be an array when provided.")
+
     try:
         xml_text = get_soap_client().download_file(sandbox, graph_path)
     except Exception:
-        return _text(json.dumps({
+        return _json({
             "status": "error",
             "message": f"Graph file not found: {graph_path} in sandbox {sandbox}",
-        }))
+        })
 
-    # --- Steps 2-6: Parse, find, modify, serialize ---
     try:
         from lxml import etree as _lxml  # type: ignore
         _use_lxml = True
     except ImportError:
+        _lxml = None  # type: ignore[assignment]
         _use_lxml = False
 
-    output: str
-
-    if _use_lxml:
-        try:
+    try:
+        if _use_lxml:
+            assert _lxml is not None
             _parser = _lxml.XMLParser(strip_cdata=False)
             _root = _lxml.fromstring(xml_text.encode("utf-8"), _parser)
-        except Exception as exc:
-            return _text(json.dumps({"status": "error", "message": f"Graph file is not valid XML: {exc}"}))
+        else:
+            _root = ET.fromstring(xml_text)
+    except Exception as exc:
+        return _json({"status": "error", "message": f"Graph file is not valid XML: {exc}"})
 
-        _target = None
-        for _elem in _root.iter(element_type):
-            if _elem.get(id_attr) == element_id:
-                _target = _elem
-                break
+    _cdata_sentinels: Dict[str, str] = {}
 
-        if _target is None:
-            return _text(json.dumps({"status": "error", "message": (
-                f"Element <{element_type} {id_attr}='{element_id}'> not found in {graph_path}"
-            )}))
+    def _stringify_change(raw_change: Dict[str, Any]) -> Dict[str, str]:
+        return {field: str(raw_change[field]) for field in _REQUIRED_CHANGE_FIELDS}
+
+    def _normalize_change(raw_change: Any) -> tuple[Optional[Dict[str, str]], Optional[str]]:
+        if not isinstance(raw_change, dict):
+            return None, "Each change entry must be an object."
+        extra_fields = sorted(set(raw_change.keys()) - set(_REQUIRED_CHANGE_FIELDS))
+        if extra_fields:
+            return None, "Unsupported field(s): " + ", ".join(extra_fields)
+        missing_fields = [field for field in _REQUIRED_CHANGE_FIELDS if raw_change.get(field) is None]
+        if missing_fields:
+            return None, "Missing required field(s): " + ", ".join(missing_fields)
+        return _stringify_change(raw_change), None
+
+    def _serialize_element(elem: Any) -> str:
+        if _use_lxml:
+            assert _lxml is not None
+            return _lxml.tostring(elem, encoding="unicode")
+        return ET.tostring(elem, encoding="unicode")
+
+    def _serialize_metadata_children(target: Any) -> str:
+        return "".join(_serialize_element(child) for child in list(target))
+
+    def _resolve_text_value(text: Optional[str]) -> Optional[str]:
+        if text is None:
+            return None
+        return _cdata_sentinels.get(text, text)
+
+    def _find_target(element_type: str, element_id: str) -> Optional[Any]:
+        id_attr = _ID_ATTR[element_type]
+        for elem in _root.iter(element_type):
+            if elem.get(id_attr) == element_id:
+                return elem
+        return None
+
+    def _apply_change(change: Dict[str, str]) -> Dict[str, Any]:
+        element_type = change["element_type"]
+        element_id = change["element_id"]
+        attribute_name = change["attribute_name"]
+        value = change["value"]
+
+        if element_type not in _ID_ATTR:
+            return {"ok": False, "reason": f"Unsupported element_type '{element_type}'"}
+
+        if not attribute_name:
+            return {"ok": False, "reason": "attribute_name must not be empty"}
+
+        if element_type == "GraphParameter" and attribute_name.startswith("attr:"):
+            return {
+                "ok": False,
+                "reason": "GraphParameter elements do not have <attr> children. Use plain attribute_name='value'.",
+            }
+
+        target = _find_target(element_type, element_id)
+        id_attr = _ID_ATTR[element_type]
+        if target is None:
+            return {
+                "ok": False,
+                "reason": f"Element <{element_type} {id_attr}='{element_id}'> not found in {graph_path}",
+            }
 
         if element_type == "Metadata":
-            if _target.get("fileURL") is not None:
-                return _text(json.dumps({"status": "error", "message": (
-                    "This Metadata element is external (fileURL). Edit the .fmt file directly."
-                )}))
+            if target.get("fileURL") is not None:
+                return {
+                    "ok": False,
+                    "reason": "This Metadata element is external (fileURL). Edit the .fmt file directly.",
+                }
+
             try:
-                _new_record = _lxml.fromstring(value.encode("utf-8"))
+                if _use_lxml:
+                    assert _lxml is not None
+                    new_record = _lxml.fromstring(value.encode("utf-8"))
+                else:
+                    new_record = ET.fromstring(value)
             except Exception as exc:
-                return _text(json.dumps({"status": "error", "message": (
-                    f"value must be a valid <Record>...</Record> XML block: {exc}"
-                )}))
-            _metadata_inner_indent = _target.text
-            _metadata_closing_indent = None
-            _existing_children = list(_target)
-            if _existing_children:
-                _metadata_closing_indent = _existing_children[-1].tail
-            for _child in list(_target):
-                _target.remove(_child)
-            _target.append(_new_record)
-            if _metadata_inner_indent is not None:
-                _target.text = _metadata_inner_indent
-            _new_record.tail = _metadata_closing_indent if _metadata_closing_indent else "\n"
+                return {
+                    "ok": False,
+                    "reason": f"value must be a valid <Record>...</Record> XML block: {exc}",
+                }
 
-        elif attribute_name.startswith("attr:"):
-            _attr_name = attribute_name[len("attr:"):]
-            _attr_elem = None
-            for _child in _target:
-                if _child.tag == "attr" and _child.get("name") == _attr_name:
-                    _attr_elem = _child
+            if _local_tag(new_record.tag) != "Record":
+                return {
+                    "ok": False,
+                    "reason": "value must be a valid <Record>...</Record> XML block: root tag must be <Record>",
+                }
+
+            old_value = _serialize_metadata_children(target)
+            metadata_inner_indent = target.text
+            metadata_closing_indent = None
+            existing_children = list(target)
+            if existing_children:
+                metadata_closing_indent = existing_children[-1].tail
+            for child in existing_children:
+                target.remove(child)
+            target.append(new_record)
+            if metadata_inner_indent is not None:
+                target.text = metadata_inner_indent
+            new_record.tail = metadata_closing_indent if metadata_closing_indent else "\n"
+            return {"ok": True, "old_value": old_value, "new_value": value}
+
+        if attribute_name.startswith("attr:"):
+            attr_name = attribute_name[len("attr:"):]
+            if not attr_name:
+                return {"ok": False, "reason": "attribute_name must not be empty"}
+
+            attr_elem = None
+            for child in target:
+                if _local_tag(child.tag) == "attr" and child.get("name") == attr_name:
+                    attr_elem = child
                     break
-            if _attr_elem is None:
-                _attr_elem = _lxml.SubElement(_target, "attr")
-                _attr_elem.set("name", _attr_name)
-            _attr_elem.text = _lxml.CDATA(value)
 
+            old_value = _resolve_text_value(attr_elem.text) if attr_elem is not None else None
+
+            if attr_elem is None:
+                if _use_lxml:
+                    assert _lxml is not None
+                    attr_elem = _lxml.SubElement(target, "attr")
+                else:
+                    attr_elem = ET.SubElement(target, "attr")
+                attr_elem.set("name", attr_name)
+
+            if _use_lxml:
+                assert _lxml is not None
+                attr_elem.text = _lxml.CDATA(value)
+            else:
+                sentinel = f"CDATA_PLACEHOLDER_{id(attr_elem):x}_{len(_cdata_sentinels)}"
+                attr_elem.text = sentinel
+                _cdata_sentinels[sentinel] = value
+
+            return {"ok": True, "old_value": old_value, "new_value": value}
+
+        old_value = target.get(attribute_name)
+        target.set(attribute_name, value)
+        return {"ok": True, "old_value": old_value, "new_value": value}
+
+    def _serialize_output() -> str:
+        if _use_lxml:
+            assert _lxml is not None
+            output = _lxml.tostring(
+                _root,
+                pretty_print=False,
+                xml_declaration=True,
+                encoding="UTF-8",
+            ).decode("UTF-8")
         else:
-            _target.set(attribute_name, value)
+            import io as _io
 
-        output = _lxml.tostring(
-            _root,
-            pretty_print=False,
-            xml_declaration=True,
-            encoding="UTF-8",
-        ).decode("UTF-8")
+            buf = _io.BytesIO()
+            ET.ElementTree(_root).write(buf, xml_declaration=True, encoding="UTF-8")
+            output = buf.getvalue().decode("UTF-8")
+            for sentinel, cdata_value in _cdata_sentinels.items():
+                escaped_cdata = cdata_value.replace("]]>", "]]]]><![CDATA[>")
+                output = output.replace(sentinel, f"<![CDATA[{escaped_cdata}]]>")
 
-    else:
-        # stdlib fallback (lxml not installed)
-        import io as _io
-        try:
-            _root_et = ET.fromstring(xml_text)
-        except ET.ParseError as exc:
-            return _text(json.dumps({"status": "error", "message": f"Graph file is not valid XML: {exc}"}))
+        output = output.replace(
+            "<?xml version='1.0' encoding='UTF-8'?>",
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            1,
+        )
+        if xml_text.endswith("\n") and not output.endswith("\n"):
+            output += "\n"
+        return output
 
-        _target_et = None
-        for _elem_et in _root_et.iter(element_type):
-            if _elem_et.get(id_attr) == element_id:
-                _target_et = _elem_et
-                break
+    if bulk_mode:
+        normalized_changes: List[Dict[str, str]] = []
+        for index, raw_change in enumerate(changes):
+            normalized_change, error_message = _normalize_change(raw_change)
+            if error_message:
+                change_payload = raw_change if isinstance(raw_change, dict) else {}
+                return _bulk_error(index, change_payload, error_message)
+            assert normalized_change is not None
+            normalized_changes.append(normalized_change)
 
-        if _target_et is None:
-            return _text(json.dumps({"status": "error", "message": (
-                f"Element <{element_type} {id_attr}='{element_id}'> not found in {graph_path}"
-            )}))
+        planned: List[Dict[str, Any]] = []
+        for index, change in enumerate(normalized_changes):
+            result = _apply_change(change)
+            if not result["ok"]:
+                return _bulk_error(index, change, result["reason"])
+            planned.append({
+                "index": index,
+                "element_type": change["element_type"],
+                "element_id": change["element_id"],
+                "attribute_name": change["attribute_name"],
+                "old_value": result["old_value"],
+                "new_value": result["new_value"],
+            })
 
-        _cdata_sentinels: Dict[str, str] = {}
+        if dry_run:
+            return _json({"status": "ok", "dry_run": True, "planned": planned})
 
-        if element_type == "Metadata":
-            if _target_et.get("fileURL") is not None:
-                return _text(json.dumps({"status": "error", "message": (
-                    "This Metadata element is external (fileURL). Edit the .fmt file directly."
-                )}))
+        if normalized_changes:
             try:
-                _new_rec_et = ET.fromstring(value)
-            except ET.ParseError as exc:
-                return _text(json.dumps({"status": "error", "message": (
-                    f"value must be a valid <Record>...</Record> XML block: {exc}"
-                )}))
-            _metadata_inner_indent_et = _target_et.text
-            _metadata_closing_indent_et = None
-            _existing_children_et = list(_target_et)
-            if _existing_children_et:
-                _metadata_closing_indent_et = _existing_children_et[-1].tail
-            for _child_et in list(_target_et):
-                _target_et.remove(_child_et)
-            _target_et.append(_new_rec_et)
-            if _metadata_inner_indent_et is not None:
-                _target_et.text = _metadata_inner_indent_et
-            _new_rec_et.tail = _metadata_closing_indent_et if _metadata_closing_indent_et else "\n"
+                output = _serialize_output()
+            except Exception as exc:
+                return _bulk_error(
+                    len(normalized_changes) - 1,
+                    normalized_changes[-1],
+                    f"XML serialization error: {exc}",
+                )
 
-        elif attribute_name.startswith("attr:"):
-            _attr_name_et = attribute_name[len("attr:"):]
-            _attr_elem_et = None
-            for _child_et in _target_et:
-                if _child_et.tag == "attr" and _child_et.get("name") == _attr_name_et:
-                    _attr_elem_et = _child_et
-                    break
-            if _attr_elem_et is None:
-                _attr_elem_et = ET.SubElement(_target_et, "attr")
-                _attr_elem_et.set("name", _attr_name_et)
-            _sentinel = f"CDATA_PLACEHOLDER_{id(_attr_elem_et):x}"
-            _attr_elem_et.text = _sentinel
-            _cdata_sentinels[_sentinel] = value
+            dir_path, filename = os.path.split(graph_path)
+            try:
+                get_soap_client().upload_file(
+                    sandbox=sandbox,
+                    dir_path=dir_path,
+                    filename=filename,
+                    content=output,
+                )
+            except Exception as exc:
+                return _text(f"ERROR: {exc}")
 
-        else:
-            _target_et.set(attribute_name, value)
+        return _json({"status": "ok", "applied": len(normalized_changes), "dry_run": False})
 
-        _buf = _io.BytesIO()
-        ET.ElementTree(_root_et).write(_buf, xml_declaration=True, encoding="UTF-8")
-        output = _buf.getvalue().decode("UTF-8")
+    normalized_single_change, error_message = _normalize_change(single_change)
+    if error_message:
+        return _error(error_message)
+    assert normalized_single_change is not None
 
-        for _sentinel, _cdata_val in _cdata_sentinels.items():
-            output = output.replace(_sentinel, f"<![CDATA[{_cdata_val}]]>")
+    result = _apply_change(normalized_single_change)
+    if not result["ok"]:
+        return _error(result["reason"])
 
-    # --- Step 7: Write back ---
-    # Both lxml and stdlib ET emit single-quoted XML declarations; normalise to double quotes.
-    output = output.replace(
-        "<?xml version='1.0' encoding='UTF-8'?>",
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        1,
-    )
-    # Preserve original trailing newline (lxml/ET never emit root-element tail).
-    if xml_text.endswith("\n") and not output.endswith("\n"):
-        output += "\n"
-    _dir_path, _filename = os.path.split(graph_path)
+    if dry_run:
+        return _json({
+            "status": "ok",
+            "dry_run": True,
+            "planned": [{
+                "index": 0,
+                "element_type": normalized_single_change["element_type"],
+                "element_id": normalized_single_change["element_id"],
+                "attribute_name": normalized_single_change["attribute_name"],
+                "old_value": result["old_value"],
+                "new_value": result["new_value"],
+            }],
+        })
+
+    try:
+        output = _serialize_output()
+    except Exception as exc:
+        return _error(f"XML serialization error: {exc}")
+
+    dir_path, filename = os.path.split(graph_path)
     try:
         get_soap_client().upload_file(
             sandbox=sandbox,
-            dir_path=_dir_path,
-            filename=_filename,
+            dir_path=dir_path,
+            filename=filename,
             content=output,
         )
     except Exception as exc:
@@ -4320,9 +4476,9 @@ async def tool_set_graph_element_attribute(args: Dict) -> List[types.TextContent
 
     return _text(json.dumps({
         "status": "ok",
-        "element_type": element_type,
-        "element_id": element_id,
-        "attribute_name": attribute_name,
+        "element_type": normalized_single_change["element_type"],
+        "element_id": normalized_single_change["element_id"],
+        "attribute_name": normalized_single_change["attribute_name"],
         "graph_path": graph_path,
         "sandbox": sandbox,
     }))
