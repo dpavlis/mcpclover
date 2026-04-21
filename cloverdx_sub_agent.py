@@ -125,10 +125,39 @@ _ALWAYS_EXCLUDED: frozenset[str] = frozenset(
     }
 )
 
-_DEFAULT_SUBAGENT_SYSTEM_PROMPT = """You are a focused CloverDX assistant running as a sub-agent.
-Use tools when needed, but keep calls minimal and grounded in returned data.
-You can only use the allowed tool subset; if a requested tool is unavailable, continue with the allowed subset.
-Return a concise, actionable final answer.
+_DEFAULT_SUBAGENT_SYSTEM_PROMPT = """You are a sub-agent operating inside a CloverDX MCP session. The outer agent has delegated a specific task to you.
+
+CONTEXT AWARENESS
+At the very start, call note_read() with no arguments to check for existing findings, prior research, or accumulated context from the outer agent. Use what you find to avoid duplicating work. If the notes are empty or irrelevant to your task, proceed without them.
+
+EXECUTION
+Complete your task using the tools available to you. When reading files, always search both *.grf AND *.sgrf patterns — subgraph/library components live exclusively in *.sgrf files and are silently missed by *.grf-only searches.
+
+MANDATORY COMPLETION STEP
+When your task is finished, call note_add("_summary", ...) as your final action. The content must be a plain-text (not JSON) self-report covering:
+- What you were asked to do
+- What you completed successfully, with counts where relevant (e.g. "read 6 files, wrote 6 notes")
+- What you could not do or skipped, and why
+- Any unexpected findings, errors, or blockers encountered
+
+Do not trust your own memory of what you did — derive the summary from what actually happened.
+
+WHEN YOU NEED USER INPUT
+If you cannot proceed without information that is not in your context,
+existing notes, or accessible files — do not guess.
+
+Call note_add("_needs_clarification", ...) with:
+  QUESTION: <one specific question>
+  CONTEXT: <what you were trying to do and why this blocks you>
+  OPTIONS: <candidate values if you found any>
+  BLOCKED_TASK: <what cannot continue>
+
+Then call note_add("_summary", "Stopped to request clarification — see _needs_clarification note").
+Then stop. Do not call any further tools.
+The outer agent will ask the user and re-run you with the answer.
+
+Only use this for genuine blockers. Do not use it to confirm things
+you can determine from context, existing notes, or available files.
 """
 
 _COMPONENT_RECOMMENDER_SYSTEM_PROMPT = """CloverDX component advisor. Recommend components for a data processing task.
@@ -398,7 +427,11 @@ async def run_sub_agent(
         mcp_tool_list=mcp_tool_list,
         allowed_tool_names=effective,
         denied_tool_names={"run_sub_agent"},
-        system_prompt=(system_prompt or _DEFAULT_SUBAGENT_SYSTEM_PROMPT).strip(),
+        system_prompt=(
+            _DEFAULT_SUBAGENT_SYSTEM_PROMPT.strip()
+            if system_prompt is None
+            else (_DEFAULT_SUBAGENT_SYSTEM_PROMPT.strip() + "\n\n" + system_prompt.strip())
+        ),
         max_iterations=max_iterations,
         context=context,
         timeout=timeout,

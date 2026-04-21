@@ -1766,7 +1766,18 @@ def _build_tool_list() -> List[types.Tool]:
                 name="run_sub_agent",
                 description=(
                     "Delegate a sub-task to an inner LLM agent that can use only a restricted tool subset. "
-                    "When allowed_tools is provided, names outside that subset are ignored."
+                    "When allowed_tools is provided, names outside that subset are ignored.\n\n"
+                    "The sub-agent automatically:\n"
+                    "- Calls note_read() at start to inherit context from the outer agent's notes\n"
+                    "- Calls note_add(\"_summary\", ...) at the end with a self-report of what it completed, what it skipped, and any errors\n\n"
+                    "After this tool returns, call note_read(\"_summary\") to verify the sub-agent's actual completion state. "
+                    "The returned result string is self-reported and should not be trusted without cross-checking the summary note.\n\n"
+                    "Notes are shared between outer and sub-agent — any note written by the sub-agent is immediately visible to the outer agent via note_read().\n\n"
+                    "AFTER THIS TOOL RETURNS:\n"
+                    "Always call note_read(\"_needs_clarification\") before proceeding.\n"
+                    "If it contains content, the sub-agent stopped and is waiting for user input.\n"
+                    "Present the QUESTION to the user, then re-run with their answer in context.\n"
+                    "Call note_clear(\"_needs_clarification\") before re-running."
                 ),
                 inputSchema={
                     "type": "object",
@@ -1774,7 +1785,25 @@ def _build_tool_list() -> List[types.Tool]:
                     "properties": {
                         "task": {
                             "type": "string",
-                            "description": "Task for the sub-agent to solve.",
+                            "description": (
+                                "Task for the sub-agent to solve.\n\n"
+                                "TASK WRITING RULES — follow when composing this string:\n\n"
+                                "FILE PATTERNS: Specify both *.grf AND *.sgrf explicitly when asking for\n"
+                                "file searches or reads. Library and subgraph components live exclusively\n"
+                                "in *.sgrf files. Omitting *.sgrf causes silent misses.\n"
+                                "Example: \"grep with file_pattern='*.grf' AND separately with '*.sgrf'\"\n\n"
+                                "COUNT VERIFICATION: Include \"report the count of X found vs X extracted\"\n"
+                                "so the sub-agent self-catches truncation.\n"
+                                "Example: \"found 12 matches, extracted 12\" — a discrepancy flags incomplete work.\n\n"
+                                "NOTE GRANULARITY: Request one note_add per logical unit, not one note for\n"
+                                "everything. One note per file, or one note per component type, produces\n"
+                                "findable, verifiable, independently readable results.\n"
+                                "Wrong: \"save all findings to one note\"\n"
+                                "Right: \"save one note per file; name each note after the file\"\n\n"
+                                "CALLER VERIFICATION: After run_sub_agent returns, always call\n"
+                                "note_read(\"_summary\") to verify what the sub-agent actually did.\n"
+                                "Do not rely solely on the result string — it is self-reported."
+                            ),
                         },
                         "context": {
                             "type": "string",
