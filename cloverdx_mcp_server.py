@@ -75,6 +75,7 @@ cloverdx://reference/subgraphs   – subgraph-reference.md
 cloverdx://reference/data-service – data-service-reference.md
 cloverdx://reference/jobflow     – jobflow-reference.md
 cloverdx://reference/components  – components.json (non-deprecated)
+cloverdx://server/info           – configured CloverDX server info
 
 Configuration (.env)
 ────────────────────
@@ -795,6 +796,12 @@ _RESOURCE_REGISTRY: Dict[str, Dict[str, str]] = {
         "description_path": os.path.join(_SCRIPT_DIR, "resources/components-reference.md"),
         "content_kind":     "components_catalog",
     },
+    "cloverdx://server/info": {
+        "name":         "CloverDX Server Info",
+        "description":  "Structured information about the CloverDX server configuration for this MCP session.",
+        "mimeType":     "application/json",
+        "content_kind": "server_info",
+    },
 }
 
 _WORKFLOW_GUIDE_FILES: Dict[str, str] = {
@@ -826,6 +833,14 @@ def _read_resource_content(uri_str: str) -> str:
         cat = get_catalog()
         non_dep = [c for c in cat._components if not cat._is_deprecated(c)]
         return json.dumps(non_dep, indent=2)
+
+    if meta.get("content_kind") == "server_info":
+        base_url = (os.getenv("CLOVERDX_BASE_URL") or "").strip()
+        payload = {
+            "base_url": base_url,
+            "configured": bool(base_url),
+        }
+        return json.dumps(payload, indent=2)
 
     raise ValueError(f"No content loader configured for resource URI: {uri_str}")
 
@@ -1425,7 +1440,7 @@ def _build_tool_list() -> List[types.Tool]:
                 "URIs: 'cloverdx://reference/graph-xml', 'cloverdx://reference/ctl2', "
                 "'cloverdx://reference/subgraphs', 'cloverdx://reference/data-service', "
                 "'cloverdx://reference/jobflow', "
-                "'cloverdx://reference/components'. "
+                "'cloverdx://reference/components', 'cloverdx://server/info'. "
                 "Call list_resources first to see all available URIs."
             ),
             inputSchema={
