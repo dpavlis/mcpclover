@@ -136,8 +136,8 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-SERVER_NAME    = "cloverdx-mcp-server"
-SERVER_VERSION = "1.0.0"
+SERVER_NAME    = "cloverdx-server"
+SERVER_VERSION = "1.0.1"
 
 POLL_TIMEOUT_S  = 120
 SERVER_WAIT_MS  = 10_000
