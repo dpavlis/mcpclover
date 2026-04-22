@@ -20,6 +20,7 @@ class GraphValidator:
 
     REQUIRED_NODE_ATTRIBUTES = ("guiName", "guiX", "guiY")
     REQUIRED_EDGE_ATTRIBUTES = ("guiBendpoints", "guiRouter", "inPort", "outPort")
+    MIN_NODE_AXIS_DISTANCE = 50
 
     def __init__(self, xml_text: str):
         self._xml = xml_text
@@ -66,6 +67,7 @@ class GraphValidator:
 
         prev_number = -1
         node_ids = set()
+        node_positions = []
         edges = []
 
         for phase in phases:
@@ -85,12 +87,16 @@ class GraphValidator:
                 node_id = self._check_node(node)
                 if node_id:
                     node_ids.add(node_id)
+                node_position = self._get_node_position(node)
+                if node_position is not None:
+                    node_positions.append(node_position)
 
             for edge in phase.findall("Edge"):
                 self._check_edge(edge)
                 edges.append(edge)
 
         self._check_edge_node_references(edges, node_ids)
+        self._check_node_spacing(node_positions)
 
     def _check_node(self, node):
         nid = node.get("id", "(unknown)")
@@ -135,6 +141,58 @@ class GraphValidator:
                     self._err(
                         f"<Edge id='{eid}'> '{attr}' references missing component id '{node_id}'"
                     )
+
+    def _get_node_position(self, node):
+        nid = node.get("id", "(unknown)")
+        x_raw = node.get("guiX")
+        y_raw = node.get("guiY")
+        if x_raw is None or y_raw is None:
+            return None
+        try:
+            x = float(x_raw)
+            y = float(y_raw)
+        except ValueError:
+            self._warn(
+                f"<Node id='{nid}'> has non-numeric gui coordinates guiX='{x_raw}' guiY='{y_raw}'"
+            )
+            return None
+        return nid, x, y
+
+    def _check_node_spacing(self, node_positions):
+        min_dist = float(self.MIN_NODE_AXIS_DISTANCE)
+        for i in range(len(node_positions)):
+            nid_a, x_a, y_a = node_positions[i]
+            for j in range(i + 1, len(node_positions)):
+                nid_b, x_b, y_b = node_positions[j]
+                dx = abs(x_a - x_b)
+                dy = abs(y_a - y_b)
+
+                if dx == 0 and dy == 0:
+                    self._warn(
+                        "STRONG: Nodes "
+                        f"'{nid_a}' and '{nid_b}' totally overlap at guiX={x_a:g}, guiY={y_a:g}"
+                    )
+                    continue
+
+                if dx < min_dist or dy < min_dist:
+                    if dx < min_dist and dy < min_dist:
+                        self._warn(
+                            "MILD: Nodes "
+                            f"'{nid_a}' and '{nid_b}' are too close "
+                            f"(dx={dx:g}, dy={dy:g}); expected at least {min_dist:g} on both axes"
+                        )
+                    elif dx < min_dist:
+                        self._warn(
+                            "MILD: Nodes "
+                            f"'{nid_a}' and '{nid_b}' are too close on X axis "
+                            f"(dx={dx:g}); expected at least {min_dist:g}"
+                        )
+                    else:
+                        self._warn(
+                            "MILD: Nodes "
+                            f"'{nid_a}' and '{nid_b}' are too close on Y axis "
+                            f"(dy={dy:g}); expected at least {min_dist:g}"
+                        )
 
     def _check_graph_parameters(self, global_el):
         params_el = global_el.find("GraphParameters")
