@@ -608,6 +608,8 @@ Metadata defines the structure of records flowing between components. Fields in 
 
 **Important:** Conversion functions (e.g., `str2date`, `str2decimal`) are intended for parsing external string input. Do NOT use them for constant values — use CTL2 literals instead.
 
+**Locale format:** `"language.COUNTRY"` e.g. `"en.US"`, `"de.DE"`.
+
 
 | Function | Signature(s) | Description |
 |---|---|---|
@@ -643,11 +645,11 @@ Metadata defines the structure of records flowing between components. Fields in 
 | | `string num2str(numeric, string format, string locale)` | |
 | `packDecimal2long` | `long packDecimal2long(byte)` | |
 | `parseBson` | `variant parseBson(byte)` | BSON → variant. |
-| `parseJson` | `variant parseJson(string)` | JSON → variant. Null input → null. |
+| `parseJson` | `variant parseJson(string)` | JSON → variant; null→null; whole numbers→`integer`/`long` (size-based), decimals→`number` (`double`). |
 | `parseAvro` | `variant parseAvro(byte, string schema)` | Avro → variant. |
 | `record2map` | `variant record2map(record)` | Record → map variant. |
 | `str2bits` | `byte str2bits(string)` | Binary string → byte array. |
-| `str2bool` | `boolean str2bool(string)` | Accepts: "true"/"false"/"t"/"f"/"yes"/"no"/"y"/"n"/"1"/"0" (case-sensitive). |
+| `str2bool` | `boolean str2bool(string)` | Accepts TRUE/FALSE, T/F, YES/NO, Y/N, 1/0 (upper or lower case); null -> null. |
 | `str2byte` | `byte str2byte(string, string charset)` | |
 | `str2date` | `date str2date(string, string pattern)` | Java SimpleDateFormat. |
 | | `date str2date(string, string pattern, boolean strict)` | |
@@ -655,9 +657,9 @@ Metadata defines the structure of records flowing between components. Fields in 
 | | `date str2date(string, string pattern, string locale, boolean strict)` | |
 | | `date str2date(string, string pattern, string locale, string timeZone)` | |
 | | `date str2date(string, string pattern, string locale, string timeZone, boolean strict)` | |
-| `str2decimal` | `decimal str2decimal(string)` | |
-| | `decimal str2decimal(string, string format)` | |
-| | `decimal str2decimal(string, string format, string locale)` | |
+| `str2decimal` | `decimal str2decimal(string)` | null → null. |
+| | `decimal str2decimal(string, string format)` | Numeric format pattern; null/`""` = default locale format. |
+| | `decimal str2decimal(string, string format, string locale)` | locale: see Locale; default locale if omitted. |
 | `str2double` | `number str2double(string)` | |
 | | `number str2double(string, string format)` | |
 | | `number str2double(string, string format, string locale)` | |
@@ -692,10 +694,17 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `contains` | `boolean contains(string, string substring)` | Contains substring? **input null → false. substring null → fails.** |
 | `countChar` | `integer countChar(string, string char)` | Count occurrences of char. |
 | `cut` | `string[] cut(string, integer[] indices)` | Split at indices. |
-| `editDistance` | `integer editDistance(string, string)` | Levenshtein distance. |
+| `editDistance` | `integer editDistance(string, string)` | Levenshtein distance. Defaults: strength=4, locale=system, maxDifference=3; null/empty args fail. |
+| | `integer editDistance(string, string, string locale)` | |
+| | `integer editDistance(string, string, integer strength)` | |
+| | `integer editDistance(string, string, integer strength, string locale)` | |
+| | `integer editDistance(string, string, integer strength, integer maxDifference)` | |
+| | `integer editDistance(string, string, integer strength, string locale, integer maxDifference)` | Returns `maxDifference + 1` once cutoff is reached. |
 | `endsWith` | `boolean endsWith(string, string suffix)` | **str null → false. suffix null → fails.** |
 | `escapeUrl` | `string escapeUrl(string)` | URL-encode. |
+| `unescapeUrl` | `string unescapeUrl(string)` | Decodes %-encoded sequences (e.g. %20→space). Requires valid URL; empty/null/invalid → error. |
 | `escapeUrlFragment` | `string escapeUrlFragment(string)` | |
+| `unescapeUrlFragment` | `string unescapeUrlFragment(string)\|string unescapeUrlFragment(string, string encoding)` | Inverse of escapeUrlFragment; null input → null; null encoding → fails. |
 | `escapeXML` | `string escapeXML(string)` | Escape &, <, >, ", '. |
 | `find` | `string[] find(string, string regex)` | All regex matches. |
 | `formatMessage` | `string formatMessage(string template, variant ..., variant)` | Template `{0}`, `{1}`. Format: `{index[,type[,style]]}`. Types: `number`, `date`, `time`, `choice`. Styles: `short`, `medium`, `long`, `full`, `integer`, `currency`, `percent`, custom. Example: `formatMessage("Date: {0,date,short}, Cost: {1,number,currency}", myDate, price)`. |
@@ -760,9 +769,12 @@ Metadata defines the structure of records flowing between components. Fields in 
 
 | Function | Signature(s) | Description |
 |---|---|---|
-| `createDate` | `date createDate(int y, int m, int d)` | Construct date. **Month is 1-based** (1=January). |
-| | `date createDate(int y, int m, int d, int h, int min, int sec, int ms)` | With time components. |
-| | `date createDate(int y, int m, int d, int h, int min, int sec, int ms, string tz)` | With timezone. |
+| `createDate` | `date createDate(integer year, integer month, integer day)` | Construct date. **Month is 1-based** (1=January). |
+| | `date createDate(integer year, integer month, integer day, string timeZone)` | |
+| | `date createDate(integer year, integer month, integer day, integer hour, integer minute, integer second)` | |
+| | `date createDate(integer year, integer month, integer day, integer hour, integer minute, integer second, string timeZone)` | |
+| | `date createDate(integer year, integer month, integer day, integer hour, integer minute, integer second, integer millisecond)` | |
+| | `date createDate(integer year, integer month, integer day, integer hour, integer minute, integer second, integer millisecond, string timeZone)` | |
 | `dateAdd` | `date dateAdd(date, long amount, unit)` | Units: `year`, `month`, `week`, `day`, `hour`, `minute`, `second`, `millisec`. |
 | `dateDiff` | `long dateDiff(date later, date earlier, unit)` | Difference in units (truncated). |
 | `extractDate` | `date extractDate(date)` | Zero out time part. |
@@ -969,7 +981,7 @@ Record metadata helpers return `map[string,string]`, not `variant`.
 | `sha1HexString` | `string sha1HexString(byte\|string)` | |
 | `sha256` | `byte sha256(byte\|string)` | |
 | `sha256HexString` | `string sha256HexString(byte\|string)` | |
-| `hashCode` | `integer hashCode(integer)` | Java-style hash. |
+| `hashCode` | `integer hashCode(integer\|long\|number\|decimal\|boolean\|date\|string\|record\|map\|variant)` | Java-style hash. |
 
 ### 11.8 Null Handling
 
@@ -1052,7 +1064,7 @@ isNull($in.0, "field2")  // field "field2" null?
 | `getParamValues` | `map getParamValues()` | All graph params. |
 | `getRawParamValue` | `string getRawParamValue(string paramName)` | Unresolved param. |
 | `getRawParamValues` | `map getRawParamValues()` | All unresolved params. |
-| `getType` | `string getType(variant)` | Type name string. |
+| `getType` | `string getType(variant)` | Type name string. Returns `"double"` for `number`/`double` values. |
 | `getCurrentTimeMillis` | `long getCurrentTimeMillis()` | Epoch ms. |
 | `getOAuth2Token` | `string getOAuth2Token(string connName)` | |
 | `parseProperties` | `map parseProperties(string)` | Parse properties format. |
@@ -1150,7 +1162,7 @@ In `replace(str, regex, repl)` and `split(str, regex)`: pattern is always regex.
 - **No `if(cond, a, b)` as function** — use `iif(cond, a, b)`. `if` is control-flow only.
 - **No `toInteger()`, `toDouble()`, `toDecimal()`** — use `str2integer()`, `str2double()`, `str2decimal()`. Most common hallucination.
 - **No `parseDate()`, `parseInt()`, `parseDecimal()`** — use `str2date()`, `str2integer()`, `str2decimal()`.
-- **No `now()`** — use `today()`.
+- **No `now()`** — use `today()` for current date-time.
 - No `asc()` — use `codePointAt(string, index)`.
 - No `catch(Exception)` — only `catch(CTLException)`. Properties: `ex.message` NOT `ex.getMessage()`.
 - No `foreach (x in list)` — use colon: `foreach (type x : list)`. No tuple unpacking.
@@ -1169,6 +1181,7 @@ In `replace(str, regex, repl)` and `split(str, regex)`: pattern is always regex.
 - No `range` — use for loop.
 - No `map`/`filter`/`reduce` — use foreach.
 - No `JSON.parse`/`JSON.stringify` — use `parseJson()`/`writeJson()`.
+
 
 ### 13.2 Common Pitfalls
 

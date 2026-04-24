@@ -73,6 +73,7 @@ cloverdx://reference/graph-xml   – cloverdx-llm-reference.md
 cloverdx://reference/ctl2        – CTL2_Reference_for_LLM_compact.md
 cloverdx://reference/subgraphs   – subgraph-reference.md
 cloverdx://reference/data-service – data-service-reference.md
+cloverdx://reference/db-connection – db_connection_reference.md
 cloverdx://reference/jobflow     – jobflow-reference.md
 cloverdx://reference/components  – components.json (non-deprecated)
 cloverdx://server/info           – configured CloverDX server info
@@ -785,6 +786,11 @@ _RESOURCE_REGISTRY: Dict[str, Dict[str, str]] = {
         "mimeType":    "text/markdown",
         "file_path":    os.path.join(_SCRIPT_DIR, "resources/data-service-reference.md"),
     },
+    "cloverdx://reference/db-connection": {
+        "name":        "CloverDX Database Connection Reference",
+        "mimeType":    "text/markdown",
+        "file_path":    os.path.join(_SCRIPT_DIR, "resources/db_connection_reference.md"),
+    },
     "cloverdx://reference/jobflow": {
         "name":        "CloverDX Jobflow Reference",
         "mimeType":    "text/markdown",
@@ -807,6 +813,7 @@ _RESOURCE_REGISTRY: Dict[str, Dict[str, str]] = {
 _WORKFLOW_GUIDE_FILES: Dict[str, str] = {
     "create_graph": os.path.join(_SCRIPT_DIR, "resources/workflow_create_graph.md"),
     "edit_graph": os.path.join(_SCRIPT_DIR, "resources/workflow_edit_graph.md"),
+    "create_edit_jobflow": os.path.join(_SCRIPT_DIR, "resources/workflow_create_edit_jobflow.md"),
     "validate_and_run": os.path.join(_SCRIPT_DIR, "resources/workflow_validate_and_run.md"),
 }
 
@@ -1439,6 +1446,7 @@ def _build_tool_list() -> List[types.Tool]:
                 "Fetch resource content by URI. "
                 "URIs: 'cloverdx://reference/graph-xml', 'cloverdx://reference/ctl2', "
                 "'cloverdx://reference/subgraphs', 'cloverdx://reference/data-service', "
+                "'cloverdx://reference/db-connection', "
                 "'cloverdx://reference/jobflow', "
                 "'cloverdx://reference/components', 'cloverdx://server/info'. "
                 "Call list_resources first to see all available URIs."
@@ -1459,6 +1467,7 @@ def _build_tool_list() -> List[types.Tool]:
                 "Task types:\n"
                 "- 'create_graph': Design and create a new graph (component selection, metadata, XML rules, validation).\n"
                 "- 'edit_graph': Modify an existing graph (read-first, patch vs rewrite, re-read between patches).\n"
+                "- 'create_edit_jobflow': Create or edit a jobflow (.jbf) with token-flow, child job, and routing rules.\n"
                 "- 'validate_and_run': Validate, execute, verify a graph (Stage 1/2 errors, tracking, logs).\n"
                 "Defaults to 'create_graph' if omitted."
             ),
@@ -1467,7 +1476,7 @@ def _build_tool_list() -> List[types.Tool]:
                 "properties": {
                     "task": {
                         "type": "string",
-                        "enum": ["create_graph", "edit_graph", "validate_and_run"],
+                        "enum": ["create_graph", "edit_graph", "create_edit_jobflow", "validate_and_run"],
                         "description": "Task type. Defaults to 'create_graph'.",
                     }
                 },
@@ -1661,9 +1670,12 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="get_component_info",
             description=(
-                "Get a component's port definitions and configurable properties. "
-                "Search by type (e.g. 'EXT_HASH_JOIN') or name (e.g. 'Map'). "
-                "Case-insensitive partial match."
+                "Resolve component info by type or name (case-insensitive). "
+                "Returns plain text, not JSON. If exactly one match is found, returns full formatted details "
+                "(usage guidance, input/output ports incl. propagated metadata, and properties incl. required/conditional groups). "
+                "If multiple matches are found, returns a compact candidate table and asks for a more specific query. "
+                "If no match, returns a not-found hint to use list_components. "
+                "Use this before selecting or configuring a component."
             ),
             inputSchema={
                 "type": "object",
@@ -1677,9 +1689,11 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="get_component_details",
             description=(
-                "Fetch extended documentation for a complex CloverDX component. "
-                "Currently available: XML_EXTRACT. "
-                "Returns full markdown with mapping syntax, configuration examples, and usage notes."
+                "Fetch extended markdown docs from comp_details/<COMPONENT_TYPE>.md for complex components. "
+                "Lookup is by component type key (case-insensitive; internally uppercased). "
+                "Returns raw markdown when available (full syntax, config rules, examples). "
+                "If docs are missing, returns available component detail keys so you can retry with a valid type. "
+                "Use after get_component_info when a component has complex mapping/config attributes."
             ),
             inputSchema={
                 "type": "object",

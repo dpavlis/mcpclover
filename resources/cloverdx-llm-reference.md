@@ -290,8 +290,8 @@ it resolves metadata on each edge using these rules, in priority order:
 | `string` | Unicode text | Default for text fields |
 | `integer` | 32-bit signed int | Range: -2³¹ to 2³¹-1 |
 | `long` | 64-bit signed int | Range: -2⁶³ to 2⁶³-1 |
-| `number` | 64-bit IEEE 754 double | |
-| `decimal` | Fixed-precision decimal | Use `length` and `scale` attrs |
+| `number` | 64-bit IEEE 754 double | Do NOT use for monetary values. USe for math calculations or where exact precision is not needed and speed is preferred. |
+| `decimal` | Fixed-precision decimal | Use `length` and `scale` attrs. For monetary values or when exact precision needed. |
 | `date` | Date/time (ms precision) | Use `format` attr for pattern |
 | `boolean` | Boolean | |
 | `byte` | Raw bytes | |
@@ -2161,7 +2161,7 @@ Both forms produce `id="EmpMeta"` that edges can reference with `metadata="EmpMe
 | `integer` | `integer` | |
 | `long` | `long` | |
 | `number` | `number` | 64-bit double |
-| `decimal` | `decimal` | |
+| `decimal` | `decimal` | Use for monetary values, when exact precision needed |
 | `date` | `date` | |
 | `boolean` | `boolean` | |
 | `byte` | `byte` | byte array |

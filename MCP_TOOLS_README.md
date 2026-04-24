@@ -137,6 +137,8 @@ Fetches the full content of a reference resource by its URI.
 - `cloverdx://reference/ctl2` — CloverDX CTL2 transformation language reference
 - `cloverdx://reference/subgraphs` — Authoritative reference for CloverDX subgraphs (`.sgrf` format)
 - `cloverdx://reference/data-service` — Authoritative reference for CloverDX data services (`.rjob` format)
+- `cloverdx://reference/db-connection` — Authoritative reference for CloverDX database connection configuration
+- `cloverdx://reference/jobflow` — Authoritative reference for CloverDX jobflows (`.jbf` format)
 - `cloverdx://reference/components` — Non-deprecated CloverDX component catalog with ports and properties
 
 **Why:** Gives the LLM access to CloverDX-specific domain knowledge (XML structure rules, CTL2 syntax) at any point during a task.  
@@ -146,7 +148,7 @@ Fetches the full content of a reference resource by its URI.
 
 ### `get_workflow_guide`
 Returns the authoritative step-by-step workflow guide for a CloverDX task type.  
-**Available tasks:** `create_graph`, `edit_graph`, `validate_and_run`  
+**Available tasks:** `create_graph`, `edit_graph`, `create_edit_jobflow`, `validate_and_run`  
 **Why:** Ensures the LLM follows the correct sequence of tool calls, applies the right validation steps, and avoids common mistakes. Should be called at the start of every CloverDX task.  
 **Backend:** Local file read from `resources/` directory
 
