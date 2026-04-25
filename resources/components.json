@@ -5,6 +5,7 @@
     "type": "DATA_READER",
     "shortDescription": "Reads data from flat files (CSV, fixed-length).",
     "description": "Reads data from delimited or fixed length files and sends data records to first connected output port. If any error occurs, the report is sent to the second port if \"Data policy\" is set to \"Controlled\". This component is alias for FlatFileReader.",
+    "usage": "Use to read delimited, fixed-length, or mixed flat files into records, including local/remote files, archives, input-port sources, and irregular text parsing scenarios. It is the UniversalDataReader alias of FlatFileReader, so it fits standard flat-file ingestion when you need file-reading flexibility rather than a specialized reader.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -259,6 +260,7 @@
     "type": "DATA_WRITER",
     "shortDescription": "Writes data to flat files (CSV, fixed-length).",
     "description": "Receives data through connected input port and writes data records to delimited or fixed length files based on input metadata. This component is alias for FlatFileWriter.",
+    "usage": "Use to write records to flat files in CSV, fixed-length, or mixed-length formats, including remote targets, compressed outputs, partitioned files, output ports, or dictionaries. It is the UniversalDataWriter alias of FlatFileWriter, so it is the standard choice for generic flat-file export.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -478,6 +480,7 @@
     "type": "FLAT_FILE_READER",
     "shortDescription": "Reads data from flat files (CSV, fixed-length). Replaces UniversalDataReader (UDR).",
     "description": "Reads data from delimited or fixed length files and sends data records to first connected output port. If any error occurs, the report is sent to the second port if \"Data policy\" is set to \"Controlled\". This component is alias for UniversalDataReader.",
+    "usage": "Use to read delimited, fixed-length, or mixed flat files into records, including local/remote files, archives, and optional input-port sources. It is the standard reader for general flat-file ingestion when the source is text-based rather than spreadsheet, XML, or database data.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -723,6 +726,7 @@
     "type": "FLAT_FILE_WRITER",
     "shortDescription": "Writes data to flat files (CSV, fixed-length). Replaces UniversalDataWriter (UDW).",
     "description": "Receives data through connected input port and writes data records to delimited or fixed length files based on input metadata. This component is alias for UniversalDataWriter.",
+    "usage": "Use to write records to flat files such as CSV, fixed-length, or mixed-length text outputs. It is the standard choice for flat-file export when you need options like partitioning, compression, remote destinations, output-port writing, or dictionary output.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -940,9 +944,10 @@
     "category": "deprecated",
     "name": "DelimitedDataReader",
     "type": "DELIMITED_DATA_READER",
-    "defaultVisibility": false,
     "shortDescription": "Reads data from delimited files.",
     "description": "Reads data from delimited files and sends data records to all connected output ports.",
+    "usage": "When to use: Read delimited text files when the source format is explicitly delimiter-based and should be parsed directly into records. Use for standard CSV or similarly delimited inputs that do not require fixed-length parsing.",
+    "defaultVisibility": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1075,10 +1080,11 @@
     "category": "deprecated",
     "name": "DelimitedDataWriter",
     "type": "DELIMITED_DATA_WRITER",
-    "defaultVisibility": false,
-    "viewGridData": false,
     "shortDescription": "Writes data to delimited files.",
     "description": "Receives data through connected input port and writes data records to delimited files based on input metadata.",
+    "usage": "When to use: Write records to delimited text files such as CSV-like outputs. Use when the target format is delimiter-based and simpler than a structured text document or spreadsheet.",
+    "defaultVisibility": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1230,10 +1236,10 @@
     "category": "transformers",
     "name": "SimpleCopy",
     "type": "SIMPLE_COPY",
-    "passThrough": true,
     "shortDescription": "Copies data to output ports.",
     "description": "Receives data through connected input port and copies data records to all connected output ports.",
     "usage": "When to use: Broadcast one input stream to multiple output ports unchanged \u2014 every record goes to ALL connected outputs simultaneously. Use when the same data needs to feed multiple downstream branches in parallel (e.g. write to DB and to a CSV file at the same time, or feed two different transformation chains with the same source records).\nConstraints: All connected output ports receive every record \u2014 there is no content-based routing. Use PARTITION if different records should go to different ports. Use REFORMAT if the copies need to be transformed differently per output.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1254,10 +1260,10 @@
     "category": "transformers",
     "name": "Concatenate",
     "type": "CONCATENATE",
-    "passThrough": true,
     "shortDescription": "Concatenates data flows.",
     "description": "Receives data through all connected input ports in turn. Gets all records from each input port, sends them to output port and continues with the next input port. Skips ports without incoming data. Terminates when all incoming records are received and sent to connected output port.",
     "usage": "When to use: Merge N streams where output must preserve port order \u2014 all records from port 0 first, then all from port 1, etc. Order within each stream is preserved.\nConstraints: Slower than SIMPLE_GATHER \u2014 waits for each port to finish before moving to the next. Input does NOT need to be sorted.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -1277,10 +1283,10 @@
     "category": "transformers",
     "name": "SimpleGather",
     "type": "SIMPLE_GATHER",
-    "passThrough": true,
     "shortDescription": "Gathers data flows.",
     "description": "Receives data incoming through all connected input ports in the order so that all records are gathered and send out through output port as soon as possible.",
     "usage": "When to use: Merge N streams where output order doesn't matter. Fastest option \u2014 emits records from whichever port has data ready.\nConstraints: Output order is non-deterministic. Do NOT use if downstream requires sorted or port-ordered output.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -1378,9 +1384,10 @@
     "category": "readers",
     "name": "DatabaseReader",
     "type": "DB_INPUT_TABLE",
-    "viewPlainData": false,
     "shortDescription": "Or DBReader, replaces DBInputTable. Reads data from database using JDBC driver. Supported databases are Amazon Redshift, Microsoft Access, Microsoft SQL Server, MySQL, Oracle, PostgreSQL, SQLite, Sybase, Vertica, DB2 and any other database with JDBC compliant driver.",
     "description": "Connects to database using JDBC driver, executes specified query on DB, extracts the rows returned by the query and sends them as data records to all connected output ports. Output metadata must precisely describe the structure of extracted rows.",
+    "usage": "Use to unload data from a JDBC-accessible database into the graph using a SQL query, external query file, or even queries supplied from an input port. It fits database extraction scenarios such as filtered reads, incremental reads, and query-driven ingestion where the database returns rows for downstream processing.",
+    "viewPlainData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1511,12 +1518,13 @@
     "category": "deprecated",
     "name": "Sort",
     "type": "SORT",
-    "passThrough": true,
-    "defaultVisibility": false,
-    "viewPlainData": false,
-    "viewGridData": false,
     "shortDescription": "Sorts incoming data records.",
     "description": "Receives data through connected input port, sorts data records according to specified sort key and sends them to all connected output ports. Sort key is name or combination of names of field(s) of incoming records. Sort order can be either Ascending (default) or Descending. This component is deprecated and should not be used anymore, we suggest you work with ExtSort instead.",
+    "usage": "When to use: Sort incoming records by one or more key fields before downstream processing that depends on ordered input. Use only for legacy graphs; prefer ExtSort for new work.",
+    "defaultVisibility": false,
+    "passThrough": true,
+    "viewPlainData": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1575,11 +1583,11 @@
     "category": "writers",
     "name": "DatabaseWriter",
     "type": "DB_OUTPUT_TABLE",
-    "viewPlainData": false,
-    "viewGridData": false,
     "shortDescription": "Or DBWriter, replaces DBOutputTable. Writes data into database using JDBC driver. Supported databases are Amazon Redshift, Microsoft Access, Microsoft SQL Server, MySQL, Oracle, PostgreSQL, SQLite, Sybase, Vertica, DB2 and any other database with JDBC compliant driver.",
     "description": "Receives data through connected input port, connects to database using JDBC driver, performs database operation and loads data records into specified DB table. Correspondence between input metadata and DB table columns must be defined.",
     "usage": "When to use: Write records from a data stream into a database table via JDBC. Three configuration modes \u2014 choose based on how closely field names match column names and how much SQL control is needed:\n- dbTable (auto-mapping): Field names in metadata exactly match DB column names. CloverDX auto-generates the INSERT. Simplest option \u2014 no SQL required. Use when schema alignment is clean.\n- sqlQuery (manual SQL): Full control over the INSERT statement. Field-to-column mapping syntax: $cloverField:=dbColumn. Use when field names differ from column names, or when custom SQL behaviour is needed (ON CONFLICT, MERGE, stored procedure call, etc.).\n- url: External .sql file containing the query. Use when the SQL is long or shared across multiple graphs.\n\nPerformance: Enable batchMode=true with appropriate batchSize (default 25) for significantly faster bulk loads. Tune commit interval (default 100) to balance transaction overhead vs memory.\nConstraints: Requires a defined dbConnection. Port 0 (rejected) receives rows that failed DB insertion when maxErrors > 0. Port 1 (autogenerated) receives DB-generated key values (e.g. auto-increment IDs) when the DB returns them.",
+    "viewPlainData": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1749,10 +1757,11 @@
     "category": "deprecated",
     "name": "FixLenDataWriter",
     "type": "FIXLEN_DATA_WRITER",
-    "defaultVisibility": false,
-    "viewGridData": false,
     "shortDescription": "Writes data to fixed length files.",
     "description": "Receives data through connected input port and writes data records to fixed length files based on input metadata.",
+    "usage": "When to use: Write records to fixed-length flat files where field widths are defined by metadata rather than delimiters. Use for legacy or external systems that require positional text output.",
+    "defaultVisibility": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -1931,10 +1940,10 @@
     "category": "transformers",
     "name": "Dedup",
     "type": "DEDUP",
-    "passThrough": true,
     "shortDescription": "Removes duplicate records.",
     "description": "Receives sorted data records through connected input port and removes records that are in duplicate with a view to the specified key values. Keeps defined number of records from either the start (First) or the end (Last) of each group with the same key value. If desired, only unique records are kept. Dedup key is name or combination of names of field(s) of incoming records. Rejected records are sent to the optional second output port if connected.",
     "usage": "When to use: Remove duplicate records from a stream based on key field values. Keeps the first, last, or a defined count of records per duplicate group. Optionally routes duplicates to a second output port for inspection or logging rather than silently discarding them. If no dedupKey is defined, the component operates on the entire input as a single group, effectively acting as a global head/tail (first/last N records).\nConstraints: Input MUST be sorted on dedupKey when sorted=true (default) \u2014 add EXT_SORT or FAST_SORT upstream. Set sorted=false to handle unsorted input but this uses significantly more memory. Use DATA_INTERSECTION instead if you need to compare duplicates across two separate streams rather than within one stream.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2011,9 +2020,10 @@
     "category": "deprecated",
     "name": "FixLenDataReader",
     "type": "FIXLEN_DATA_READER",
-    "defaultVisibility": false,
     "shortDescription": "Reads data from fixed length files.",
     "description": "Reads data from fixed length files and sends data records to all connected output ports.",
+    "usage": "When to use: Read fixed-length flat files where fields are defined by character positions and widths. Use for positional text formats rather than delimited files.",
+    "defaultVisibility": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2174,10 +2184,10 @@
     "category": "transformers",
     "name": "Merge",
     "type": "MERGE",
-    "passThrough": true,
     "shortDescription": "Merges data flows.",
     "description": "Receives sorted data through all connected input ports in turn. Gets all incoming records and sends them to connected output port sorted in the same way. Terminates when all incoming records are received and sent to connected output port.",
     "usage": "When to use: Merge N pre-sorted streams into a single sorted output stream. Equivalent to a sorted merge in database terms.\nConstraints: ALL inputs MUST be pre-sorted on mergeKey. Add sorting upstream if not sorted. Use CONCATENATE if sort order doesn't matter.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -2280,11 +2290,12 @@
     "category": "deprecated",
     "name": "MergeJoin",
     "type": "MERGE_JOIN",
+    "shortDescription": "Joins sorted data flows.",
+    "description": "Receives sorted data through all connected input ports, for each join key value contained in data records incoming through the first input port (drivers) searches corresponding data records incoming through the other port(s) (slaves) with the same key value. Every combination of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port. This component is deprecated and should not be used anymore, we suggest you work with ExtMergeJoin instead.",
+    "usage": "Use in legacy graphs to join two or more already sorted data sources on a common key. The current docs point to ExtMergeJoin as the general-purpose sorted-input joiner when merge-style joining is needed.",
     "defaultVisibility": false,
     "viewPlainData": false,
     "viewGridData": false,
-    "shortDescription": "Joins sorted data flows.",
-    "description": "Receives sorted data through all connected input ports, for each join key value contained in data records incoming through the first input port (drivers) searches corresponding data records incoming through the other port(s) (slaves) with the same key value. Every combination of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port. This component is deprecated and should not be used anymore, we suggest you work with ExtMergeJoin instead.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2602,10 +2613,11 @@
     "category": "writers",
     "name": "Trash",
     "type": "TRASH",
-    "viewPlainData": false,
-    "viewGridData": false,
     "shortDescription": "Discards all data.",
     "description": "Receives data through connected input port and discards it all. However, data can be written to specified file for debugging.",
+    "usage": "When to use: Terminate a branch whose records should be discarded, or temporarily inspect unwanted output during debugging without affecting the rest of the graph.",
+    "viewPlainData": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -2690,6 +2702,7 @@
   },
   {
     "type": "TRASHIFIER",
+    "usage": "When to use: Use as a discard/debug sink for data you do not want to process further, especially in legacy graphs where this alias or variant appears.",
     "inputPorts": [],
     "outputPorts": [],
     "properties": []
@@ -2700,6 +2713,7 @@
     "type": "DB_EXECUTE",
     "shortDescription": "Executes specified commands on database.",
     "description": "Executes specified commands (SQL/DML) on specified database table. If using stored procedure, receives records through connected input port and sends return value and/or output parameters to connected output port.",
+    "usage": "Use to execute SQL, DML, DDL, transactions, stored procedures, or functions against a JDBC database when the goal is to perform database actions rather than just stream query results. It is especially appropriate for procedure calls with input/output parameters or multi-statement execution; for per-record INSERT/UPDATE/DELETE operations, the docs suggest considering DatabaseWriter instead.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -2867,11 +2881,12 @@
     "category": "deprecated",
     "name": "HashJoin",
     "type": "HASH_JOIN",
+    "shortDescription": "Joins unsorted data flows.",
+    "description": "Receives data through all connected input ports, for every connected slave input port (all input ports except the first) creates hash table from data records incoming through such slave input port (for this reason, number of incoming slave data records must be sufficiently small), for each join key value contained in data records incoming through the first input port (drivers) looks up every hash table and searches corresponding slave data records with the same key value. Every tuple of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port. This component is deprecated and should not be used anymore, we suggest you work with ExtHashJoin instead.",
+    "usage": "Use in legacy graphs to join unsorted data from two or more sources on a common key using an in-memory hash-based approach. The current docs point to ExtHashJoin as the general-purpose option, especially when slave inputs are small enough to fit in memory.",
     "defaultVisibility": false,
     "viewPlainData": false,
     "viewGridData": false,
-    "shortDescription": "Joins unsorted data flows.",
-    "description": "Receives data through all connected input ports, for every connected slave input port (all input ports except the first) creates hash table from data records incoming through such slave input port (for this reason, number of incoming slave data records must be sufficiently small), for each join key value contained in data records incoming through the first input port (drivers) looks up every hash table and searches corresponding slave data records with the same key value. Every tuple of driver and its corresponding slaves is sent to transformation class that joins them to form outgoing data flow. Resulting records are sent to connected output port. This component is deprecated and should not be used anymore, we suggest you work with ExtHashJoin instead.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3150,9 +3165,10 @@
     "category": "others",
     "name": "CheckForeignKey",
     "type": "CHECK_FOREIGN_KEY",
-    "defaultVisibility": "etlGraph",
     "shortDescription": "Checks foreign key.",
     "description": "Checks foreign key values against a table of primary key values. Duplicate primary keys are ignored. Invalid foreign key values are replaced by default foreign key value. Resulting foreign data records are sent to all connected output ports. Invalid data records are sent to the optional second output port if connected.",
+    "usage": "When to use: Validate foreign key fields against a reference set of primary key values and optionally route invalid records separately. Use when referential integrity must be checked during ETL and bad keys should be replaced or rejected before downstream loading.",
+    "defaultVisibility": "etlGraph",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3236,6 +3252,7 @@
     "type": "DBF_DATA_READER",
     "shortDescription": "Reads data from dBase files.",
     "description": "Reads data from dBase files and sends data records to all connected output ports.",
+    "usage": "When to use: Read legacy dBase/DBF files into CloverDX records for further transformation or loading.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3351,10 +3368,11 @@
     "category": "writers",
     "name": "DBFDataWriter",
     "type": "DBF_DATA_WRITER",
-    "viewPlainData": false,
-    "viewGridData": false,
     "shortDescription": "Writes data to dBase files.",
     "description": "Writes data from input port to dBase file(s). Handles Character/Number/Logical/Date dBase data types. Requires fixed-length metadata on input.",
+    "usage": "When to use: Write records to legacy dBase/DBF files when an external system requires DBF output and the input metadata matches supported DBF field types.",
+    "viewPlainData": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3556,10 +3574,10 @@
     "category": "transformers",
     "name": "Filter",
     "type": "EXT_FILTER",
-    "passThrough": true,
     "shortDescription": "Filters incoming data.",
     "description": "Receives data records through connected input port, removes some of them depending on defined filter expression and sends the rest to the connected first output port. Rejected records are sent to the optional second output port if connected.",
     "usage": "When to use: Split stream into two: records matching a condition (port 0) and records not matching (port 1). Boolean keep/reject.\nConstraints: Exactly two outputs. Use PARTITION if you need more than two destination ports or content-based routing beyond boolean.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3608,10 +3626,10 @@
     "category": "transformers",
     "name": "ExtSort",
     "type": "EXT_SORT",
-    "passThrough": true,
     "shortDescription": "Sorts incoming data.",
     "description": "Receives data records through connected input port, sorts them according to specified sort key and sends them to all connected output ports. Sort key is name or combination of names of field(s) of incoming records. Sort order can be either Ascending (default) or Descending. Any number of records can be sorted. If internal buffer is full, external sorting is performed.",
     "usage": "When to use: Dataset may be larger than available RAM. Spills to disk if buffer exhausted. Use when data size is unknown or large. When sort stability is required.\nConstraints: Slower than FAST_SORT due to potential disk I/O.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3697,10 +3715,10 @@
     "category": "transformers",
     "name": "SortWithinGroups",
     "type": "SORT_WITHIN_GROUPS",
-    "passThrough": true,
     "shortDescription": "Sorts incoming data in groups.",
     "description": "Receives data records through connected input port, sorts them according to specified sort key within groups of data records. The groups are defined by previous sorting of the records by the group key, with each group consisting of records considered equal when sorting by the group key. Sends sorted data records to all connected output ports. Sort key (as well as group key) is name or combination of names of field(s) of incoming data records. Sort order of each data field can be either Ascending (default) or Descending. Can be different for different key fields. Any number of records can be sorted. If the internal buffer is full, external sorting is performed.",
     "usage": "When to use: Sort records within pre-existing groups without re-sorting the entire dataset globally. Input is already grouped by groupKey (but not necessarily sorted globally) and records within each group need internal ordering by a different sortKey. Much cheaper than a full EXT_SORT when the stream is already partitioned \u2014 only one group is buffered at a time.\nConstraints: Input MUST already be grouped on groupKey (consecutive records with the same key value form a group). Does NOT perform global sorting. If input is not already grouped, add sorting on groupKey upstream first. Use EXT_SORT or FAST_SORT instead if you need a full global sort.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -3761,10 +3779,10 @@
     "category": "transformers",
     "name": "Partition",
     "type": "PARTITION",
-    "passThrough": true,
     "shortDescription": "Splits incoming data flow.",
     "description": "Receives data through connected input port, splits incoming data flow into more flows and sends each of them to different connected output port.",
     "usage": "When to use: Route each record to a specific output port based on content \u2014 value ranges, hash of a key field, or CTL2 logic returning a port number. Content-aware routing.\nConstraints: Record goes to exactly one port. Define routing via ranges, partitionKey (hash-based), or partitionSource (CTL2).",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -4078,9 +4096,10 @@
     "category": "deprecated",
     "name": "SystemExecute",
     "type": "SYS_EXECUTE",
-    "defaultVisibility": false,
     "shortDescription": "Executes system commands.",
     "description": "Executes system commands and sends their outputs to the optional output port or writes it to output file. If command requires some data, it can be get through connected optional input port.",
+    "usage": "When to use: Run external operating system commands or scripts from a graph, optionally feeding them input data and capturing their output. Use when required processing is outside CloverDX and must be delegated to the host environment.",
+    "defaultVisibility": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -4188,9 +4207,10 @@
     "category": "deprecated",
     "name": "RunGraph",
     "type": "RUN_GRAPH",
-    "defaultVisibility": false,
     "shortDescription": "Runs graphs in selected instance of Clover.",
     "description": "Runs specified graph(s) in selected instance of Clover. Name(s) of at least one graph can be received through connected input port or name of one graph only can be set as attribute of this component. If graph name(s) is(are) received through connected input port, information about execution of the graph(s) is sent to the connected first output port (second output port is not connected). If graph name is set as attribute of the component, input port is not connected and information about execution of the graph is sent to connected output ports. It is sent to the first output port if it is successful or to the second if not.",
+    "usage": "When to use: Launch one or more Clover graphs from within another graph or orchestration flow and capture execution results. Use for nested execution patterns in legacy solutions.",
+    "defaultVisibility": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -4318,6 +4338,7 @@
     "type": "HTTP_CONNECTOR",
     "shortDescription": "HTTPConnector sends HTTP requests to a web server and receives responses.",
     "description": "Receives an HTTP request through the connected input port, reads it from input file or directly from the graph and sends it to the HTTP server. Takes the response from the server and sends it out through the connected output port or writes it to the output file. Optionally also the output file URLs can be sent out through the connected output port.",
+    "usage": "Use to send HTTP requests and capture responses when you need low-level HTTP integration, with requests defined in the graph, a file, or an input port and responses returned to ports or files. It fits flexible web/API calls where you want direct control over request content and response handling rather than OpenAPI-driven setup.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -4872,6 +4893,7 @@
     "type": "REST_CONNECTOR",
     "shortDescription": "Connects to a REST API which provides an OpenAPI specification.",
     "description": "Connects to a REST API which provides an OpenAPI specification. Creates and sends a request based on the data received on input ports. Parses the responses and writes them to the output ports. Provides comfortable user interface to create requests and parse responses.",
+    "usage": "Use to integrate REST APIs into CloverDX workflows, especially when an OpenAPI specification is available so the component can pre-load endpoints, parameters, and other settings. It is the preferred choice for standard REST integrations when you want easier configuration, structured request/response mapping, pagination, and rate-limiting support.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -5241,11 +5263,12 @@
     "category": "deprecated",
     "name": "KeyGenerator",
     "type": "KEY_GEN",
+    "shortDescription": "Generates new key field.",
+    "description": "Receives data through connected input port, generates one new field based on other specified fields, adds this new field to outgoing data records and sends them to all connected output ports.",
+    "usage": "When to use: Derive a new key field from existing fields, such as concatenated, normalized, or generated business keys needed for downstream matching, grouping, or loading.",
     "defaultVisibility": false,
     "viewPlainData": false,
     "viewGridData": false,
-    "shortDescription": "Generates new key field.",
-    "description": "Receives data through connected input port, generates one new field based on other specified fields, adds this new field to outgoing data records and sends them to all connected output ports.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -5279,11 +5302,12 @@
     "category": "deprecated",
     "name": "ApproximativeJoin",
     "type": "APROX_MERGE_JOIN",
+    "shortDescription": "Joins two similar data flows.",
+    "description": "Receives data through two input ports, for each matching key value contained in driver data records (port 0) searches corresponding slave data records (port 1) with the same key value. For every pair of driver and slave records conformity based on join key is computed as Levenstein distance. Pairs with conformity higher than specified value are joined to form outgoing data flow and these resulting records are sent to the first output port. Pairs with conformity less are joined to form outgoing data flow and these resulting records sent to the second output port. Driver records without slave are sent to the third output port if connected. Slave records without driver are sent to the fourth output port if connected.",
+    "usage": "When to use: Perform fuzzy matching between two streams when keys are similar but not exactly equal, using approximate string comparison and a conformity threshold. Use for deduplication, record linkage, or matching dirty reference data where exact joins would miss likely matches.",
     "defaultVisibility": false,
     "viewPlainData": false,
     "viewGridData": false,
-    "shortDescription": "Joins two similar data flows.",
-    "description": "Receives data through two input ports, for each matching key value contained in driver data records (port 0) searches corresponding slave data records (port 1) with the same key value. For every pair of driver and slave records conformity based on join key is computed as Levenstein distance. Pairs with conformity higher than specified value are joined to form outgoing data flow and these resulting records are sent to the first output port. Pairs with conformity less are joined to form outgoing data flow and these resulting records sent to the second output port. Driver records without slave are sent to the third output port if connected. Slave records without driver are sent to the fourth output port if connected.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -5630,9 +5654,10 @@
     "category": "writers",
     "name": "CloverDataWriter",
     "type": "CLOVER_WRITER",
-    "viewPlainData": false,
     "shortDescription": "Writes data to Clover files.",
     "description": "Receives data through connected input port and writes data records to output files in internal binary Clover data format.",
+    "usage": "When to use: Write records to CloverDX's internal binary data format for efficient intermediate storage, exchange between graphs, or high-performance staging inside Clover-based solutions.",
+    "viewPlainData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -5849,9 +5874,10 @@
     "category": "readers",
     "name": "CloverDataReader",
     "type": "CLOVER_READER",
-    "viewPlainData": false,
     "shortDescription": "Reads data from Clover files.",
     "description": "Reads data from files written in internal binary Clover data format and sends data records to all connected output ports.",
+    "usage": "When to use: Read data previously stored in CloverDX internal binary format, typically for efficient reuse of staged intermediate data between Clover graphs or processing steps.",
+    "viewPlainData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -5956,9 +5982,10 @@
     "category": "writers",
     "name": "StructuredDataWriter",
     "type": "STRUCTURE_WRITER",
-    "viewGridData": false,
     "shortDescription": "Writes data to files in structured way.",
     "description": "Receives data through connected input port(s) and writes data records to output files according to defined structure consisting of header, body and footer. Header and footer are optional.",
+    "usage": "Use to write structured text files with a user-defined header, body, and footer layout. It is the right choice when output must follow a custom document structure rather than a simple flat-file row format.",
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6492,10 +6519,11 @@
     "category": "readers",
     "name": "JMSReader",
     "type": "JMS_READER",
-    "viewPlainData": false,
-    "viewGridData": false,
     "shortDescription": "Receives JMS messages.",
     "description": "Receives JMS messages, converts them to data records and sends them to all connected output ports. Implements JmsMsg2DataRecord interface.",
+    "usage": "When to use: Consume JMS messages from messaging infrastructure and convert them into CloverDX records for downstream processing.",
+    "viewPlainData": false,
+    "viewGridData": false,
     "inputPorts": [],
     "outputPorts": [
       {
@@ -6597,10 +6625,11 @@
     "category": "writers",
     "name": "JMSWriter",
     "type": "JMS_WRITER",
-    "viewPlainData": false,
-    "viewGridData": false,
     "shortDescription": "Sends out JMS messages.",
     "description": "Receives data through connected input port, converts data records to JMS messages and sends them out. Implements DataRecord2JmsMsg interface.",
+    "usage": "When to use: Publish CloverDX records as JMS messages to a messaging system when downstream consumers expect queue or topic-based delivery.",
+    "viewPlainData": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6790,6 +6819,7 @@
     "type": "LOOKUP_TABLE_READER_WRITER",
     "shortDescription": "Reads data from lookup table or write data to lookup table.",
     "description": "Receives data records through connected input port and writes them to specified lookup table (output port is not connected) or reads data records from lookup table and sends them out through all connected output ports (input port is not connected). Lookup table can also be updated before data records are read and sent out (both input port and output ports are connected).",
+    "usage": "When to use: Read from, write to, or refresh a Clover lookup table as part of a graph. Use when lookup contents must be loaded, exported, or updated before being used by downstream lookup-based processing.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -6827,10 +6857,11 @@
     "category": "readers",
     "name": "DataGenerator",
     "type": "DATA_GENERATOR",
-    "viewPlainData": false,
-    "viewGridData": true,
     "shortDescription": "Generates data records.",
     "description": "Generates data records according to defined pattern and sends them to all connected output ports.",
+    "usage": "When to use: Generate synthetic or patterned records for testing, iteration, simulation, or driving repeated downstream operations without an external input source.",
+    "viewPlainData": false,
+    "viewGridData": true,
     "inputPorts": [],
     "outputPorts": [
       {
@@ -6929,10 +6960,11 @@
     "category": "others",
     "name": "SequenceChecker",
     "type": "SEQUENCE_CHECKER",
-    "passThrough": true,
-    "defaultVisibility": "etlGraph",
     "shortDescription": "Checks data sequence.",
     "description": "Checks the sort order of incoming data records. If all records are sorted properly for a specified sort key, the component continues, otherwise it fails (thus aborting the graph). Sort key is name or combination of names of field(s) of incoming records. Sort order is either Ascending (default) or Descending, but it is always the same for all key fields. If the sort order is correct, the incoming records are sent out through output port(s) if connected.",
+    "usage": "When to use: Verify that an incoming stream is correctly sorted before passing it to downstream components that depend on ordered input, and fail fast if the order is wrong.",
+    "defaultVisibility": "etlGraph",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7013,6 +7045,7 @@
     "type": "XML_XPATH_READER",
     "shortDescription": "Reads data from XML files.",
     "description": "Reads data from XML files, converts elements matched by XPath defined in mapping along with their direct children to data records and sends them into different connected output ports as defined by mapping.",
+    "usage": "When to use: Extract records from XML files using XPath-based mapping when the source is XML and selected elements or subtrees need to be converted into one or more record streams.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7392,10 +7425,10 @@
     "category": "readers",
     "name": "XMLReader",
     "type": "XML_READER",
-    "defaultVisibility": "etlGraph",
     "shortDescription": "Reads data from XML.",
     "description": "Reads data from XML, converts properties matched by XPath defined in mapping along with their direct children to data records and sends them into different connected output ports as defined by mapping.",
     "usage": "When to use: Smaller/medium files where entire document fits in memory (DOM).Complex or irregular structure better expressed with XPath.\nConstraints: Loads entire document into RAM \u2014 avoid for large (>>5M) files.",
+    "defaultVisibility": "etlGraph",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7503,12 +7536,13 @@
     "category": "deprecated",
     "name": "SpeedLimiter",
     "type": "SPEED_LIMITER",
-    "passThrough": true,
-    "defaultVisibility": false,
-    "viewPlainData": false,
-    "viewGridData": false,
     "shortDescription": "Delays incoming records.",
     "description": "Receives data through connected input port, delays each incoming data record by defined value of milliseconds and copies all data records to all connected output ports.",
+    "usage": "When to use: Throttle record flow by introducing a delay between records, for example to avoid overloading downstream systems or to simulate slower input.",
+    "defaultVisibility": false,
+    "passThrough": true,
+    "viewPlainData": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7547,9 +7581,10 @@
     "category": "jobControl",
     "name": "Sleep",
     "type": "SLEEP",
-    "passThrough": true,
     "shortDescription": "Delays incoming records.",
     "description": "Receives data through connected input port, delays each incoming data record by defined value of milliseconds and copies all data records to all connected output ports.",
+    "usage": "When to use: Pause or slow token/record processing by a fixed delay, typically for timing control, retries, or throttling in simple flows.",
+    "passThrough": true,
     "inputPorts": [
       {
         "type": "singlePort",
@@ -7588,11 +7623,12 @@
     "category": "deprecated",
     "name": "JavaExecute",
     "type": "JAVA_EXECUTE",
+    "shortDescription": "Executes Java transformations.",
+    "description": "Executes Java commands using runnable transformation.",
+    "usage": "When to use: Run custom Java logic through a runnable transformation when required behavior cannot be expressed conveniently with standard components or CTL.",
     "defaultVisibility": false,
     "viewPlainData": false,
     "viewGridData": false,
-    "shortDescription": "Executes Java transformations.",
-    "description": "Executes Java commands using runnable transformation.",
     "inputPorts": [],
     "outputPorts": [],
     "properties": [
@@ -7646,9 +7682,10 @@
     "category": "readers",
     "name": "CustomJavaReader",
     "type": "GENERIC_READER",
-    "viewPlainData": false,
     "shortDescription": "Generic component that allows you to create custom reader.",
     "description": "Runs the specified custom algorithm implemented in Java. Provides an easy way to read, process and write records from and to any number of ports. This is a CustomJavaComponent customized for implementing a Reader.",
+    "usage": "When to use: Implement a custom Java-based source component when standard readers do not support the required input system or protocol.",
+    "viewPlainData": false,
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -7726,10 +7763,11 @@
     "category": "writers",
     "name": "CustomJavaWriter",
     "type": "GENERIC_WRITER",
-    "viewPlainData": false,
-    "viewGridData": false,
     "shortDescription": "Generic component that allows you to create custom writer.",
     "description": "Runs the specified custom algorithm implemented in Java. Provides an easy way to read, process and write records from and to any number of ports. This is a CustomJavaComponent customized for implementing a Writer",
+    "usage": "When to use: Implement a custom Java-based sink component when standard writers do not support the required output target or behavior.",
+    "viewPlainData": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -7809,6 +7847,7 @@
     "type": "GENERIC_TRANSFORMER",
     "shortDescription": "Generic component that allows you to create custom transformer.",
     "description": "Runs the specified custom algorithm implemented in Java. Provides an easy way to read, process and write records from and to any number of ports. This is a CustomJavaComponent customized for implementing a Transformer.",
+    "usage": "When to use: Implement custom Java transformation logic across one or more ports when standard components or CTL are insufficient.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -7888,6 +7927,7 @@
     "type": "GENERIC_COMPONENT",
     "shortDescription": "Allows you to create custom component in Java.",
     "description": "Runs the specified custom algorithm implemented in Java. Provides an easy way to read, process and write records from and to any number of ports. This is a CustomJavaComponent without customization.",
+    "usage": "When to use: Build a fully custom Java component with flexible multi-port behavior when no specialized standard or customized generic component fits the requirement.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -7965,10 +8005,11 @@
     "category": "deprecated",
     "name": "XMLWriter (deprecated)",
     "type": "XML_WRITER",
-    "defaultVisibility": false,
-    "viewGridData": false,
     "shortDescription": "Writes data to XML files.",
     "description": "Receives data through all connected input ports, converts data records to XML elements based on defined mapping and writes the resulting tree structure of elements to XML files.",
+    "usage": "When to use: Write XML documents from one or more input record streams using mapping-defined XML structure. Use only for legacy graphs; prefer the newer XML writer variant where appropriate.",
+    "defaultVisibility": false,
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -8159,9 +8200,10 @@
     "category": "writers",
     "name": "XMLWriter",
     "type": "EXT_XML_WRITER",
-    "viewGridData": false,
     "shortDescription": "Writes data to XML files.",
     "description": "Receives data through all connected input ports, converts data records to XML elements based on defined mapping and writes the resulting tree structure of elements to XML files.",
+    "usage": "Use to join one or more input record streams and map them into a user-defined XML structure, including nested XML documents. It is the standard choice for generating XML files when output must follow XML mapping rules rather than flat-file formatting.",
+    "viewGridData": false,
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -8396,6 +8438,7 @@
     "type": "XSL_TRANSFORMER",
     "shortDescription": "Transforms data with XSLT.",
     "description": "Changes / tranforms data record between one input and one output port. Rejected records are sent to the optional second output port if connected.",
+    "usage": "When to use: Transform data using XSLT/XSL-based logic, especially when the transformation is naturally expressed as XML/XSL rather than CTL or standard record components.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -8500,6 +8543,7 @@
     "type": "VALIDATOR",
     "shortDescription": "Validates data based on specified rules.",
     "description": "Allows you to specify a set of rules and check the validity of incoming data based on these rules. Receives data records through connected input port, valid data are sent to first output port, invalid on the second output port.",
+    "usage": "Use to validate incoming records against declarative rules such as formats, numeric checks, intervals, phone/date validity, and similar data-quality criteria. It is the right choice when you need to split valid and invalid records and optionally enrich rejected rows with validation-failure details.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -8562,6 +8606,7 @@
     "type": "EMAIL_FILTER",
     "shortDescription": "Verifies e-mail addresses in records",
     "description": "Reads records from input port and parses e-mail addresses in specified fields. It is capable of both simple syntax validation and advanced methods such as: Domain existence check, SMTP session validation and MAIL sending. Valid records are sent out through output port 0, rejected records through output port 1.",
+    "usage": "When to use: Validate or classify email addresses in incoming records, from simple syntax checks up to domain or SMTP-level verification, while splitting valid and rejected addresses into separate flows.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -8814,6 +8859,7 @@
     "type": "EMAIL_SENDER",
     "shortDescription": "Sends e-mail messages composed from record data.",
     "description": "Receives data through connected input port and composes e-mail messages and sends them out via specified SMTP server.",
+    "usage": "When to use: Compose and send emails from record data through an SMTP server, for example for notifications, alerts, or record-driven outbound messaging.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9012,6 +9058,7 @@
     "type": "EMAIL_READER",
     "shortDescription": "Reads emails into CloverDX as record data.",
     "description": "Receives emails through connected input port and transforms them into record data.",
+    "usage": "When to use: Read email content and convert it into record data for downstream parsing, routing, or archival processing.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9357,6 +9404,7 @@
     "type": "META_PIVOT",
     "shortDescription": "MetaPivot (normalize) record transform.",
     "description": "Converts every incoming record into several output records, each one representing a single field from the input.",
+    "usage": "When to use: Unpivot records into a field-level representation, where each input field becomes its own output record for metadata-driven analysis or generic processing.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9382,6 +9430,7 @@
     "type": "MULTI_LEVEL_READER",
     "shortDescription": "Reads data from heterogeneous flat files.",
     "description": "Reads data from flat files containing heterogeneous data structure, identifies data records using a plugged selector\n\t    and sends individual groups of data records to corresponding connected output ports. Selector implements MultiLevelSelector interface. By default, PrefixMultiLevelSelector is used.",
+    "usage": "When to use: Read heterogeneous flat files that contain multiple record types or layouts and route each identified record group to a different output port.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9635,6 +9684,7 @@
     "type": "PARALLEL_READER",
     "shortDescription": "Reads data using more threads.",
     "description": "Reads data from flat files using specified number of threads and sends data records to the first connected output port.\nIt supports both delimited and fixed-length data. However, it cannot handle fixed-length data encoded in variable-length charset (e.g. UTF-8). \nIf \"Data policy\" is set to \"Controlled\" and an error occurs during processing of the input, the report is sent to the second port.\nThere are to options for selection of the parsing algorithm. The faster one can be used if certain features of the component are turned off and the record metadata conform to certain limitations. The other algorithm is more robust and can be used for any data supported by CloverDX. The component chooses the algorithm according to metadata and component parameters. The faster algorithm is chosen whenever possible. However, one of component parameters provides to the user the possibility to force the use of the robust algorithm.",
+    "usage": "When to use: Read large flat files in parallel for higher throughput when the source format and metadata are compatible with multithreaded parsing. Use when performance matters more than the simplicity of a standard single-threaded reader.",
     "inputPorts": [],
     "outputPorts": [
       {
@@ -9827,6 +9877,7 @@
     "type": "CLUSTER_PARTITION",
     "shortDescription": "Splits incoming data flow on workers.",
     "description": "Receives data through connected input port, splits incoming data flow into more flows and sends each of them to different workers.",
+    "usage": "When to use: Partition an incoming data stream across parallel workers so records can be processed concurrently in a clustered or parallelized flow.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9904,6 +9955,7 @@
     "type": "CLUSTER_SIMPLE_GATHER",
     "shortDescription": "Gathers data flows from workers.",
     "description": "Receives data through all connected workers. Gets all incoming records and sends them to connected output port. Terminates when all incoming records are received and sent to connected output port.",
+    "usage": "When to use: Collect records from multiple parallel workers into a single output stream when no merge ordering is required.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9926,6 +9978,7 @@
     "type": "CLUSTER_MERGE",
     "shortDescription": "Merges data flows from workers.",
     "description": "Receives sorted data through all connected workers. Gets all incoming records and sends them to connected output port sorted in the same way. Terminates when all incoming records are received and sent to connected output port.",
+    "usage": "When to use: Merge multiple already sorted parallel worker streams back into one sorted output stream while preserving the shared sort order.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9961,6 +10014,7 @@
     "type": "CLUSTER_SIMPLE_COPY",
     "shortDescription": "Copies data records to all output workers.",
     "description": "Receives data through connected input port and copies data records to all workers. Each incoming record is sent to all output partitions.",
+    "usage": "When to use: Broadcast each incoming record to all parallel workers when every branch needs the full input stream rather than a partitioned subset.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -9985,6 +10039,7 @@
     "type": "WEB_SERVICE_CLIENT",
     "shortDescription": "Call a SOAP webservice and parse the response.",
     "description": "Send incoming data record to a web-service and the response is passed on output ports.",
+    "usage": "When to use: Call SOAP or similar web services from record data and route the service responses to downstream processing.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -10223,6 +10278,7 @@
     "type": "COMPLEX_DATA_READER",
     "shortDescription": "Reads non-homogeneous data.",
     "description": "Reads non-homogeneous data from files containing multiple metadata.",
+    "usage": "When to use: Read files that contain multiple record structures or metadata definitions within the same source, where a simple homogeneous reader is not sufficient.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -10428,6 +10484,7 @@
     "type": "DATA_SAMPLER",
     "shortDescription": "Creates data sample from full data set",
     "description": "Creates data sample from full data set. Passes only some records from the input. Filtering strategy depends on selected sampling method.",
+    "usage": "When to use: Take a representative or rule-based sample from a larger dataset for testing, profiling, previewing, or reduced-volume downstream processing.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -10506,6 +10563,7 @@
     "type": "PIVOT",
     "shortDescription": "Creates data summarization record for each group of records",
     "description": "Creates data summarization record for each group of records, that can be defined by key or size",
+    "usage": "When to use: Summarize grouped records into pivoted output records when you need grouped aggregation or reshaping by key or group size.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -10659,6 +10717,7 @@
     "type": "BEAN_READER",
     "shortDescription": "Reads data from Java beans.",
     "description": "Reads data from Java beans, converts properties matched by XPath defined in mapping along with their direct children to data records and sends them into different connected output ports as defined by mapping.",
+    "usage": "When to use: Read data from Java bean objects and map their properties into CloverDX records, especially when integrating with custom Java code or embedded object models.",
     "inputPorts": [],
     "outputPorts": [
       {
@@ -10738,6 +10797,7 @@
     "type": "BEAN_WRITER",
     "shortDescription": "Writes data to Java bean objects.",
     "description": "Receives data through all connected input ports, converts data records to Java Bean properties based on defined mapping.",
+    "usage": "When to use: Map CloverDX records into Java bean objects when downstream processing or integration expects Java object structures rather than files or database rows.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -10838,6 +10898,7 @@
     "type": "MAP_WRITER",
     "shortDescription": "Writes data to Maps.",
     "description": "Receives data through all connected input ports, converts data records to Maps based on defined mapping and writes the resulting tree structure of elements to Maps.",
+    "usage": "When to use: Convert record streams into Java Map structures when downstream custom logic or integration expects map-based object trees.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -11024,6 +11085,7 @@
     "type": "JSON_WRITER",
     "shortDescription": "Writes data to JSON files.",
     "description": "Receives data through all connected input ports, converts data records to JSON objects based on defined mapping and writes the resulting tree structure of elements to JSON files.",
+    "usage": "When to use: Generate JSON files from one or more input record streams when output structure must be defined by JSON mapping rather than simple text masks.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -11229,6 +11291,7 @@
     "type": "EXECUTE_GRAPH",
     "shortDescription": "Runs graphs with user-specified settings.",
     "description": "The component ExecuteGraph allows running graphs with user-specified settings and provides their results and tracking information to output ports.",
+    "usage": "Use in a jobflow to run graphs with configurable execution settings and capture execution results and tracking details on output ports. It is appropriate for orchestration scenarios where one job needs to launch and monitor child graph executions.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -11441,6 +11504,7 @@
     "type": "EXECUTE_JOBFLOW",
     "shortDescription": "Runs jobflow with user-specified settings.",
     "description": "The component ExecuteJobflow allows running jobflows with user-specified settings and provides their results and tracking information to output ports.",
+    "usage": "Use in a jobflow to run other jobflows with configurable execution settings and capture their execution results and tracking details. It is appropriate for orchestration scenarios that delegate work to child jobflows.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -11652,6 +11716,7 @@
     "type": "EXECUTE_WRANGLER_JOB",
     "shortDescription": "Runs Wrangler job with user-specified settings.",
     "description": "The component ExecuteWranglerJob allows running Wrangler jobs with user-specified settings and provides their results and tracking information to output ports.",
+    "usage": "Use to run Wrangler jobs from a jobflow when Wrangler execution needs to be orchestrated as part of a larger automated process. It is the standard orchestration component for launching Wrangler jobs and collecting their execution results.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -11826,6 +11891,7 @@
     "type": "MONITOR_GRAPH",
     "shortDescription": "Watches running graphs.",
     "description": "The component MonitorGraph allows watching running graphs. Component can either wait for final execution status or periodically monitor current execution status.",
+    "usage": "Use in a jobflow to watch running graphs, either waiting for final status or periodically reporting current status. It is appropriate when orchestration logic needs to monitor child graph executions after they have been started.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -11939,6 +12005,7 @@
     "type": "MONITOR_JOBFLOW",
     "shortDescription": "Watches running jobflows.",
     "description": "The component MonitorJobflow allows watching running jobflows. Component can either wait for final execution status or periodically monitor current execution status.",
+    "usage": "Use in a jobflow to watch running jobflows, either waiting for final status or periodically reporting current status. It is appropriate when orchestration logic needs to monitor child jobflow executions after they have been started.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12050,6 +12117,7 @@
     "type": "EXECUTE_SCRIPT",
     "shortDescription": "Runs either shell scripts or scripts interpreted by a selected interpreter.",
     "description": "SystemExecute is a component that runs either shell scripts or scripts interpreted by a selected interpreter. It either runs a script only once or the script is executed repeatedly for each incoming record. Each incoming record can redefine almost all parameters of run including the script itself.",
+    "usage": "Use to run shell scripts or interpreter-based scripts once or once per incoming record, with configurable working directory, timeout, environment, and input/output mappings. It is the right choice when external scripted logic must be invoked from CloverDX as part of a workflow.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12259,6 +12327,7 @@
     "type": "KILL_GRAPH",
     "shortDescription": "Aborts specified graphs.",
     "description": "The KillGraph component aborts specified graphs and passes their final status to output port.",
+    "usage": "When to use: Abort running graph executions from an orchestration flow when timeout, failure handling, or manual stop logic is required.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12332,6 +12401,7 @@
     "type": "KILL_JOBFLOW",
     "shortDescription": "Aborts specified jobflows.",
     "description": "The KillJobflow component aborts specified jobflows and passes their final status to output port.",
+    "usage": "When to use: Abort running jobflow executions from orchestration logic when stop conditions or failure handling require termination.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12405,6 +12475,7 @@
     "type": "FAIL",
     "shortDescription": "Aborts parent job.",
     "description": "The component Fail aborts the parent job (jobflow or graph) with user-specified error message.",
+    "usage": "When to use: Explicitly terminate a graph or jobflow with a controlled error message when a business rule or orchestration condition should stop execution.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12440,6 +12511,7 @@
     "type": "SET_JOB_OUTPUT",
     "shortDescription": "Sets incoming values to dictionary content.",
     "description": "The component SetJobOutput receives input records and sets the incoming values to dictionary content.",
+    "usage": "When to use: Publish values from records into dictionary output so a parent job or downstream orchestration step can consume them.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12466,6 +12538,7 @@
     "type": "GET_JOB_INPUT",
     "shortDescription": "Produces single record populated by dictionary content.",
     "description": "The component GetJobInput produces single record populated by dictionary content and/or graph parameters.",
+    "usage": "When to use: Materialize job input values, dictionary entries, or graph parameters into a single record at the start of a graph or jobflow.",
     "inputPorts": [],
     "outputPorts": [
       {
@@ -12492,6 +12565,7 @@
     "type": "TOKEN_GATHER",
     "shortDescription": "Copies incoming tokens from any input port to all output ports.",
     "description": "The component TokenGather copies each incoming token from any input port to all connected output ports. If input metadata differs from output metadata copying based on field names is used. This component is typically used to collect all tokens from several parallel execution branches and send them to one unified output.",
+    "usage": "When to use: Gather tokens from multiple parallel branches into one unified downstream flow in a jobflow.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -12512,6 +12586,7 @@
     "type": "BARRIER",
     "shortDescription": "Waits for results of parallel running jobs and sends an aggregated result to output port.",
     "description": "The component Barrier allows to wait for results of parallel running jobs and react to the success or failure of groups of jobs in a simple way. Barrier waits for all input tokens belonging to a group, evaluates this group and based on the results sends output token(s) to first or second output port.",
+    "usage": "When to use: Synchronize parallel jobflow branches, wait for all tokens in a logical group, and route the group based on combined success or failure.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -12608,6 +12683,7 @@
     "type": "CONDITION",
     "shortDescription": "Routes incoming tokens to one of its output ports.",
     "description": "The Condition component routes incoming tokens to one of its output ports based on result of specified condition. It is similar to 'if' statement in programming languages.",
+    "usage": "When to use: Route jobflow tokens conditionally to different branches based on an evaluated expression, similar to an if/else decision point.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12647,6 +12723,7 @@
     "type": "SUCCESS",
     "shortDescription": "Successful termination of tokens",
     "description": "The Success component indicates successful termination of tokens.",
+    "usage": "When to use: Mark successful completion of a token branch in a jobflow when no further processing is needed.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12680,6 +12757,7 @@
     "type": "COMBINE",
     "shortDescription": "Joins data flows by tuples.",
     "description": "The component Combine takes single records from each input port and combines them to single output record according to specified transformation.",
+    "usage": "When to use: Combine one record from each of several input ports into a single output record according to transformation logic.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -12747,6 +12825,7 @@
     "type": "LIST_FILES",
     "shortDescription": "Lists directory contents, retrieves file attributes.",
     "description": "Lists directory contents and reads file attributes, such as size or last modification data.",
+    "usage": "Use to list directory contents and emit one record per file or directory entry, including metadata such as size and modification date. It is the standard component for file discovery, recursive traversal, and feeding downstream file-processing logic with file inventory records.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -12864,6 +12943,7 @@
     "type": "CREATE_FILES",
     "shortDescription": "Creates files and directories, sets last modification date.",
     "description": "Creates files and directories or sets the last modified date.",
+    "usage": "When to use: Create files or directories, or set file timestamps, as part of file-system preparation or orchestration logic.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13000,6 +13080,7 @@
     "type": "DELETE_FILES",
     "shortDescription": "Deletes files and directories.",
     "description": "Deletes files and directories.",
+    "usage": "When to use: Delete files or directories as part of cleanup, archival rotation, or file-management workflows.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13117,6 +13198,7 @@
     "type": "COPY_FILES",
     "shortDescription": "Copies files and directories.",
     "description": "Copies files and directories. Subdirectories may be copied recursively.",
+    "usage": "When to use: Copy files or directory trees between locations when file-management logic is part of the workflow.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13276,6 +13358,7 @@
     "type": "MOVE_FILES",
     "shortDescription": "Moves files and directories.",
     "description": "Moves files and directories.",
+    "usage": "When to use: Move or rename files and directories as part of staging, handoff, archival, or cleanup workflows.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13447,6 +13530,7 @@
     "type": "CLUSTER_LOAD_BALANCING_PARTITION",
     "shortDescription": "Splits incoming data flow on workers.",
     "description": "Receives data through connected input port, splits incoming data flow into more flows and sends each of them to different worker.",
+    "usage": "When to use: Distribute incoming records across parallel workers using load balancing so work is spread dynamically rather than by fixed partitioning rules.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13471,6 +13555,7 @@
     "type": "CLUSTER_REPARTITION",
     "shortDescription": "Repartition already partitioned data flow.",
     "description": "Receives partitioned data through connected input port and repartitions them according different rules.",
+    "usage": "When to use: Repartition already partitioned data when a later parallel stage requires a different distribution rule.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13547,6 +13632,7 @@
     "type": "EXECUTE_MAPREDUCE",
     "shortDescription": "Executes map/reduce jobs on Hadoop cluster.",
     "description": "Jobs are specified as .jar libraries containing at least mapper class, (most of the times) reducer class and input & output location on cluster's file system. Libraries with mapper & reducer are send to cluster together with other settings and executed.",
+    "usage": "When to use: Submit and run Hadoop-style MapReduce jobs on a cluster when processing must be delegated to external distributed computation.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13875,6 +13961,7 @@
     "type": "LOOP",
     "shortDescription": "Controls loops in jobflows.",
     "description": "Controls token processing in oriented cycle in a jobflow.",
+    "usage": "When to use: Implement iterative token processing in a jobflow when a branch must repeat until a condition is met.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -13950,6 +14037,7 @@
     "type": "SALESFORCE_READER",
     "shortDescription": "Reads from Salesforce",
     "description": "Sends SOQL queries to Salesforce using SOAP API and sends returned data to output port.",
+    "usage": "When to use: Read data from Salesforce via SOQL over the SOAP API when integrating Salesforce objects into CloverDX processing.",
     "inputPorts": [],
     "outputPorts": [
       {
@@ -14010,6 +14098,7 @@
     "type": "SALESFORCE_WRITER",
     "shortDescription": "Writes to Salesforce",
     "description": "Sends records to salesforce using SOAP API and returns inserted and rejected records on output ports.",
+    "usage": "When to use: Write records to Salesforce through the SOAP API and capture successful and rejected operations separately.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -14125,6 +14214,7 @@
     "type": "SALESFORCE_BULK_READER",
     "shortDescription": "Reads from Salesforce",
     "description": "Sends SOQL queries to Salesforce using Bulk API and returns data on output port.",
+    "usage": "When to use: Read larger Salesforce datasets through the Bulk API when throughput is more important than interactive SOAP-style access.",
     "inputPorts": [],
     "outputPorts": [
       {
@@ -14192,6 +14282,7 @@
     "type": "SALESFORCE_BULK_WRITER",
     "shortDescription": "Writes to Salesforce",
     "description": "Sends records to salesforce in batches using Bulk API and returns inserted and rejected records on output ports.",
+    "usage": "When to use: Load larger batches of records into Salesforce through the Bulk API and handle successes and rejects separately.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -14336,6 +14427,7 @@
     "type": "SALESFORCE_WAVE_WRITER",
     "shortDescription": "Replaces SalesforceWaveWriter. Writes to Salesforce Einstein.",
     "description": "Writes records into Salesforce Einstein datasets using Einstein External Data API.",
+    "usage": "When to use: Publish records into Salesforce Einstein datasets when analytics data must be loaded into the Einstein platform.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -14464,6 +14556,7 @@
     "type": "RESTJOB_INPUT",
     "shortDescription": "Reads input data records from http request.",
     "description": "The component RestJobInput is source of data records passed from http request.",
+    "usage": "When to use: Start a REST job by reading request data delivered from an incoming HTTP call into CloverDX records.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -14517,6 +14610,7 @@
     "type": "RESTJOB_OUTPUT",
     "shortDescription": "Writes output data records to http response.",
     "description": "The component RestJobOutput is target for data records passed to http response.",
+    "usage": "When to use: Return records from a REST job back to the HTTP response of the caller.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -14639,6 +14733,7 @@
     "type": "KAFKA_READER",
     "shortDescription": "Reads events from Kafka topic.",
     "description": "Reads events from Kafka topic and transforms them into record data.",
+    "usage": "When to use: Consume events from Kafka topics and convert them into records for downstream ETL or streaming-style processing.",
     "inputPorts": [],
     "outputPorts": [
       {
@@ -14840,6 +14935,7 @@
     "type": "KAFKA_WRITER",
     "shortDescription": "Writes events to Kafka topic.",
     "description": "Writes events to Kafka topic.",
+    "usage": "When to use: Publish records or events to Kafka topics for downstream consumers or event-driven integration.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -15026,6 +15122,7 @@
     "type": "KAFKA_COMMIT",
     "shortDescription": "Commits processed offsets for Kafka topics.",
     "description": "Commits processed offsets for Kafka topics.",
+    "usage": "When to use: Commit Kafka offsets after successful processing so consumer progress is recorded explicitly.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -15067,6 +15164,7 @@
     "type": "EDIFACT_READER",
     "shortDescription": "Reads data from EDIFACT files.",
     "description": "Reads data from EDIFACT files, converts elements matched by mapping along with their children to data records and sends them to different connected output ports as defined by mapping.",
+    "usage": "When to use: Parse EDIFACT messages into record streams using mapping definitions when integrating EDI data.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -15144,6 +15242,7 @@
     "type": "X12_READER",
     "shortDescription": "Reads data from X12 edi files.",
     "description": "Reads data from X12 files, converts elements matched by mapping along with their children to data records and sends them to different connected output ports as defined by mapping.",
+    "usage": "When to use: Parse X12 EDI messages into record streams using mapping definitions for downstream processing.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -15221,6 +15320,7 @@
     "type": "EDIFACT_WRITER",
     "shortDescription": "Writes data to EDIFACT files.",
     "description": "Receives data through all connected input ports, converts data records based on defined mapping and writes the resulting tree structure of elements to EDIFACT files.",
+    "usage": "When to use: Generate EDIFACT messages from record streams when outbound EDI documents must be produced.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -15451,6 +15551,7 @@
     "type": "X12_WRITER",
     "shortDescription": "Writes data to X12 edi files.",
     "description": "Receives data through all connected input ports, converts data records based on defined mapping and writes the resulting tree structure of elements to X12 files.",
+    "usage": "When to use: Generate X12 EDI messages from record streams when outbound X12 documents are required.",
     "inputPorts": [
       {
         "type": "multiplePort",
@@ -15708,6 +15809,7 @@
     "type": "HL7_READER",
     "shortDescription": "Reads data from HL7 files.",
     "description": "Reads data from HL7 files, converts them into variant and sends them to output port.",
+    "usage": "When to use: Read HL7 healthcare messages and convert them into variant-based data for downstream parsing or transformation.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -15786,6 +15888,7 @@
     "type": "DATA_SET_WRITER",
     "shortDescription": "Writes data to transactional data set of Data Manager.",
     "description": "Writes records to the specified transactional data set in the Data Manager.",
+    "usage": "When to use: Write records into a transactional Data Manager dataset when changes must go through an approval or commit lifecycle.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -15874,6 +15977,7 @@
     "type": "DATA_SET_COMMIT",
     "shortDescription": "Commits approved records in transactional data set of Data Manager.",
     "description": "Commits records that were previously approved in the selected transactional data set in the Data Manager.",
+    "usage": "When to use: Commit approved changes in a transactional Data Manager dataset so staged records become finalized.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -15921,6 +16025,7 @@
     "type": "DATA_SET_READER",
     "shortDescription": "Reads data from transactional data set of Data Manager.",
     "description": "Reads records from the specified transactional data set in the Data Manager.",
+    "usage": "When to use: Read records from a transactional Data Manager dataset as part of governed data processing.",
     "inputPorts": [],
     "outputPorts": [
       {
@@ -16017,6 +16122,7 @@
     "type": "REFERENCE_DATA_SET_WRITER",
     "shortDescription": "Writes data to reference data set of Data Manager.",
     "description": "Writes new changes to the selected reference data set in the Data Manager. The changes must be approved in the Data Manager before they can be read.",
+    "usage": "When to use: Propose or stage updates to a governed reference dataset in Data Manager when changes require approval before publication.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -16085,6 +16191,7 @@
     "type": "REFERENCE_DATA_SET_READER",
     "shortDescription": "Reads data from reference data set of Data Manager.",
     "description": "Reads published rows from the selected reference data set in the Data Manager.",
+    "usage": "When to use: Read published reference data from Data Manager for use in downstream enrichment, validation, or loading.",
     "inputPorts": [],
     "outputPorts": [
       {
@@ -16145,6 +16252,7 @@
     "type": "AI_ANONYMIZER",
     "shortDescription": "Classify incoming data via token classification model and anonymize selected token classes.",
     "description": "Classify incoming data via token classification model and anonymize selected token classes.",
+    "usage": "When to use: Detect sensitive token classes in incoming text and anonymize selected categories automatically using an AI model.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -16315,6 +16423,7 @@
     "type": "TOKEN_CLASSIFIER",
     "shortDescription": "Process incoming data through token classificaton machine learning model.",
     "description": "Process incoming data through token classificaton machine learning model.",
+    "usage": "When to use: Classify tokens within incoming text using a machine learning model when token-level labeling is needed.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -16463,6 +16572,7 @@
     "type": "TEXT_CLASSIFIER",
     "shortDescription": "Process incoming data through text classificaton machine learning model.",
     "description": "Process incoming data through text classificaton machine learning model.",
+    "usage": "When to use: Classify whole text inputs into categories using a machine learning model.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -16630,6 +16740,7 @@
     "type": "ZERO_SHOT_CLASSIFIER",
     "shortDescription": "Process incoming data through zero shot classificaton machine learning model.",
     "description": "Process incoming data through zero shot classificaton machine learning model.",
+    "usage": "When to use: Classify text against candidate labels without task-specific training, using a zero-shot model.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -16797,6 +16908,7 @@
     "type": "AI_OPENAICLIENT",
     "shortDescription": "Client for communication with remote AI agents.",
     "description": "Client for communication with remote AI agents: Anthropic, Azure OpenAI, Gemini, and OpenAI.",
+    "usage": "When to use: Call remote AI models or agents from supported providers when a graph needs LLM-style generation, classification, extraction, or conversational processing.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -16915,6 +17027,7 @@
     "type": "SPREADSHEET_READER",
     "shortDescription": "Reads data from Excel files (.xls, .xlsx).",
     "description": "Reads specified sheets of Excel files, converts their contents to data records and sends them to connected output port. Mapping of sheet content to output metadata must be defined.",
+    "usage": "Use to read Excel XLS/XLSX spreadsheets into records when you need mapped extraction from one or more sheets. It is appropriate for spreadsheet ingestion scenarios where sheet selection, mapping, streaming vs. in-memory reading, and structured workbook parsing matter.",
     "inputPorts": [
       {
         "type": "singlePort",
@@ -17111,6 +17224,7 @@
     "type": "SPREADSHEET_WRITER",
     "shortDescription": "Writes data to Excel files (.xls, .xlsx).",
     "description": "Writes into specified sheets of Excel files. Mapping of input metadata to sheet content must be defined.",
+    "usage": "Use to write records to Excel XLS/XLSX spreadsheets when you need mapped cell placement rather than plain text output. It is well suited for spreadsheet reports, form filling, template-based output, append/overwrite/insert behavior, and partitioned workbook/file generation.",
     "inputPorts": [
       {
         "type": "singlePort",
