@@ -10,7 +10,7 @@ description: Dense CTL2 language reference for CloverDX transformations: valid s
 - Prefer simple, explicit CTL2: named field access, explicit conversions.
 - Records are NOT objects: no `.get()`, `.set()`, `.fields()`. Use record functions (**11.6**).
 - Null checks: `isnull(expr)` (1 arg, lowercase) and `expr == null` / `expr != null` are interchangeable for any type including records. `isNull(record, integer|string)` (2 args, camelCase) is a separate function for dynamic field access by index/name. `""` ≠ null. See **11.8**.
-- Output records: prefer `$out.<port>.* = $in.<port>.*;`. Use `$out.<port> = $in.<port>;` only when metadata is exactly identical.
+- Output records: prefer `$out.<port>.* = $in.<port>.*;`. Full-record assignment is valid only when metadata is identical (e.g., `$out.1 = $out.0;`, `$out.0 = $in.0;`).
 - No implicit conversions except numeric upcasting. Use documented conversion functions.
 - Prefer **native literals** over conversion functions:
   - Use `date d = 2025-01-01;` instead of `str2date(...)`
@@ -257,10 +257,18 @@ result = condition ? valueIfTrue : valueIfFalse;   // both branches must be same
 ### 3.7 Conditional Fail Expression (interpreted mode only, NOT compiled)
 
 ```ctl
-expr1 : expr2 : expr3;   // first expression that doesn't throw is used; all fail → graph fails
-$out.0.date_value = str2date($in.0.text, "yyyy-MM-dd") : str2date($in.0.text, "dd.MM.yyyy") : null;
+expr1 : expr2 : ... : exprN;
 ```
-Picks first non-throwing expression even if result is null. For non-null fallback use `nvl()`.
+
+- `//#CTL2` only (not `//#CTL2:COMPILE`).
+- Evaluate left → right; first non-throwing expression wins; rest are skipped.
+- If all expressions throw, graph fails.
+- Usable in assignment, output mapping, and function arguments.
+- Can return `null`; use `nvl()` when non-null fallback is required.
+
+```ctl
+date d = str2date($in.0.text, "yyyy-MM-dd") : str2date($in.0.text, "dd.MM.yyyy") : null;   // assignment/mapping/arg contexts
+```
 
 ---
 
@@ -315,9 +323,10 @@ $in.0.*            $out.0.*             // wildcard
 **Bulk copying:**
 ```ctl
 $out.0.* = $in.0.*;           // copy matching fields by name+type
-$out.0 = $in.0;               // full record assignment — requires EXACT same metadata
-copyByName($out.0.*, $in.0.*);
-copyByPosition($out.0.*, $in.0.*);
+$out.1 = $out.0;              // full record assignment (identical metadata)
+$out.0 = $in.0;               // no wildcard needed if metadata is identical
+copyByName($out.0, $in.0);
+copyByPosition($out.0, $in.0);
 ```
 
 **Record variables:**
@@ -703,7 +712,7 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `endsWith` | `boolean endsWith(string, string suffix)` | **str null → false. suffix null → fails.** |
 | `escapeUrl` | `string escapeUrl(string)` | URL-encode. |
 | `unescapeUrl` | `string unescapeUrl(string)` | Decodes %-encoded sequences (e.g. %20→space). Requires valid URL; empty/null/invalid → error. |
-| `escapeUrlFragment` | `string escapeUrlFragment(string)` | |
+| `escapeUrlFragment` | `string escapeUrlFragment(string)\|string escapeUrlFragment(string, string encoding)` | Default encoding: UTF-8; null encoding fails. |
 | `unescapeUrlFragment` | `string unescapeUrlFragment(string)\|string unescapeUrlFragment(string, string encoding)` | Inverse of escapeUrlFragment; null input → null; null encoding → fails. |
 | `escapeXML` | `string escapeXML(string)` | Escape &, <, >, ", '. |
 | `find` | `string[] find(string, string regex)` | All regex matches. |
@@ -863,14 +872,15 @@ Date format patterns: Java SimpleDateFormat — `yyyy`, `MM`, `dd`, `HH`, `mm`, 
 
 ### 11.5 Container Functions (List, Map, Variant)
 
-> **Variant compatibility:** Most list/map functions also accept `variant` when it contains the appropriate container type. The typed `T[]` and `variant` overloads are functionally equivalent — prefer typed form when type is known, use variant form when working with `variant` variables. Do NOT convert `append()` to `push()` just because the variable is `variant` — both work on variant.
+> **Variant compatibility:** list/map funcs also accept `variant` containers; typed and `variant` overloads are equivalent. `append()` and `push()` are interchangeable. `append()`/`push()`/`insert()` mutate and return the same container; `pop()`/`poll()`/`remove()` mutate and return removed value.
 
 | Function | Signature(s) | Description |
 |---|---|---|
 | `append` | `T[] append(T[], T element)` | Append to end. Returns modified list. `append(nullList, x)` is valid; `x` becomes the first item automatically. |
 | | `variant append(variant, variant)` | variant must contain list. |
-| `appendAll` | `T[] appendAll(T[] target, T[] source)` | Append all. Maps: merge (right overwrites). |
-| | `variant appendAll(variant target, variant source)` | variant must contain list or map. |
+| `appendAll` | `list[E] appendAll(list[E] target, list[E] source)` | Append `source` to `target`; returns mutated `target`. `target==null` fails. Since 6.4.0. |
+| | `map[K,V] appendAll(map[K,V] target, map[K,V] source)` | Merge into `target`; existing keys in `target` are preserved (left wins). `target==null` or `source==null` fails. Since 6.4.0. |
+| | `variant appendAll(variant target, variant source)` | Same semantics for list/map variants; fails on non-container, mixed types, or null-invalid cases. Since 6.4.0. |
 | `binarySearch` | `integer binarySearch(T[], T)` | Binary search on **pre-sorted** list. Returns 0-based index if found; negative value `-(insertionPoint+1)` if not found. |
 | `clear` | `void clear(list\|map\|variant)` | Remove all elements. |
 | `containsAll` | `boolean containsAll(T[], T[])` | List contains all from another? |
@@ -880,6 +890,7 @@ Date format patterns: Java SimpleDateFormat — `yyyy`, `MM`, `dd`, `HH`, `mm`, 
 | | `boolean containsValue(variant, variant value)` | variant must contain map or list. |
 | `in` | `boolean in(any element, list\|map\|variant collection)` | True if collection contains element. For maps: checks keys. Object notation: `element.in(collection)`. |
 | `copy` | `T[] copy(T[] to, T[] from)` | Copy elements. |
+| | `map[K,V] copy(map[K,V] to, map[K,V] from)` | Merge `from` into `to` (overwrite duplicate keys); returns mutated `to`; null arg fails. |
 | `findAllValues` | `variant findAllValues(variant container, variant key)` | Find all values for key in nested. |
 | `getKeys` | `keyType[] getKeys(map)` | All keys as list. |
 | | `variant getKeys(variant)` | variant must contain map. |
