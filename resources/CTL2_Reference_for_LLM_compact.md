@@ -459,6 +459,8 @@ function integer getOutputPortOnError(string errorMessage, string stackTrace) { 
 
 ### 8.7 Rollup
 
+Accumulator metadata is set on the Rollup component; `GroupAccMeta` and `groupAccumulator` are examples only, actual type/name come from graph metadata.
+
 ```ctl
 //#CTL2
 function boolean initGroup(GroupAccMeta groupAccumulator) {
@@ -715,6 +717,7 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `escapeUrlFragment` | `string escapeUrlFragment(string)\|string escapeUrlFragment(string, string encoding)` | Default encoding: UTF-8; null encoding fails. |
 | `unescapeUrlFragment` | `string unescapeUrlFragment(string)\|string unescapeUrlFragment(string, string encoding)` | Inverse of escapeUrlFragment; null input → null; null encoding → fails. |
 | `escapeXML` | `string escapeXML(string)` | Escape &, <, >, ", '. |
+| `unescapeXML` | `string unescapeXML(string input)` | Unescape XML entities to original chars (' , ", &, <, >); inverse of `escapeXML`. |
 | `find` | `string[] find(string, string regex)` | All regex matches. |
 | `formatMessage` | `string formatMessage(string template, variant ..., variant)` | Template `{0}`, `{1}`. Format: `{index[,type[,style]]}`. Types: `number`, `date`, `time`, `choice`. Styles: `short`, `medium`, `long`, `full`, `integer`, `currency`, `percent`, custom. Example: `formatMessage("Date: {0,date,short}, Cost: {1,number,currency}", myDate, price)`. |
 | `formatMessageWithLocale` | `string formatMessageWithLocale(string locale, string template, variant ..., variant)` | |
@@ -748,6 +751,7 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `length` | `integer length(string)` | Also works on lists, maps, records. **null or `""` → 0.** |
 | `lowerCase` | `string lowerCase(string)` | **null → null.** |
 | `lpad` | `string lpad(string, integer length)` | Left-pad with spaces. |
+| | `string lpad(string input, integer length, string filler)` | Left-pad using filler. |
 | `matches` | `boolean matches(string, string regex)` | Whole-string match. |
 | `matchGroups` | `string[] matchGroups(string, string regex)` | Capture groups. |
 | `metaphone` | `string metaphone(string)` | Phonetic code. |
@@ -766,6 +770,7 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `reverse` | `string reverse(string)` | |
 | `right` | `string right(string, integer length)` | Rightmost N chars. |
 | `rpad` | `string rpad(string, integer length)` | Right-pad with spaces. |
+| | `string rpad(string input, integer length, string filler)` | Right-pad using filler. |
 | `soundex` | `string soundex(string)` | Phonetic code. |
 | `split` | `string[] split(string, string regex)` | Split on regex. **Pattern is always regex.** |
 | `startsWith` | `boolean startsWith(string, string prefix)` | **str null → false. prefix null → fails.** |
