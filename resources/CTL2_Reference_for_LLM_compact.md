@@ -72,9 +72,11 @@ CTL2 provides **native literals** for several types. Prefer literals over conver
 
 #### Date / Date-time literals
 
+Formats: `yyyy-MM-dd` (date) or `yyyy-MM-dd HH:mm:ss` (date-time).
+
 ```ctl
-date d1 = 2025-01-01;
-date d2 = 2020-12-31 11:54:59;
+date date1 = 2025-01-01; // date only
+date datetime1 = 2023-06-15 08:45:00; // date + time
 ```
 
 Equivalent (but unnecessary):
@@ -120,7 +122,7 @@ long id = 1234567890123L;
 | `long` | `0` | `257L`, `9562307813123123L` | 64-bit signed. **`L` suffix required**. Use long literals instead of implicit integer widening when value exceeds integer range. |
 | `number` (alias `double`) | `0.0` | `123.45`, `1.5e2` | 64-bit IEEE 754 double-precision. Default floating-point type. |
 | `decimal` | `0` | `123.45D`, `10.50D` | Fixed-precision. **`D` suffix required on literals**. Prefer decimal literals for precise arithmetic instead of `number`. |
-| `date` | `1970-01-01 00:00:00 GMT` | `2025-01-01`, `2020-12-31 11:54:59` | Holds both date AND time. **CTL2 supports date and date-time literals**, which can be directly assigned to `date` variables or used as function parameters. No need for `str2date()` when using literal values. |
+| `date` | `1970-01-01 00:00:00 GMT` | `2025-01-01`, `2023-06-15 08:45:00` | Holds both date AND time. **CTL2 supports date and date-time literals**, which can be directly assigned to `date` variables or used as function parameters. No need for `str2date()` when using literal values. |
 | `string` | `""` | | |
 | `byte` | `null` | (use `hex2byte()`) | Raw byte array. |
 | `cbyte` | `null` | | Compressed byte array. |
@@ -562,7 +564,7 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `decimal` | `0` | `123.45D`, `10.50D` | Fixed-precision. **`D` suffix required on literals**. Prefer decimal literals for precise arithmetic instead of `number`. |
 | `number` | `number` (`double`) | Floating-point |
 | `boolean` | `boolean` | |
-| `date` | `1970-01-01 00:00:00 GMT` | `2025-01-01`, `2020-12-31 11:54:59` | Holds both date AND time. **CTL2 supports date and date-time literals**, which can be directly assigned to `date` variables or used as function parameters. No need for `str2date()` when using literal values. |
+| `date` | `1970-01-01 00:00:00 GMT` | `2025-01-01`, `2023-06-15 08:45:00` | Holds both date AND time. **CTL2 supports date and date-time literals**, which can be directly assigned to `date` variables or used as function parameters. No need for `str2date()` when using literal values. |
 | `byte` | `byte` | Raw bytes |
 | `cbyte` | `cbyte` | Compressed bytes |
 | `variant` | `variant` | Dynamic type |
@@ -662,7 +664,7 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `str2bits` | `byte str2bits(string)` | Binary string → byte array. |
 | `str2bool` | `boolean str2bool(string)` | Accepts TRUE/FALSE, T/F, YES/NO, Y/N, 1/0 (upper or lower case); null -> null. |
 | `str2byte` | `byte str2byte(string, string charset)` | |
-| `str2date` | `date str2date(string, string pattern)` | Java SimpleDateFormat. |
+| `str2date` | `date str2date(string, string pattern)` | Java SimpleDateFormat. `locale`: `"en.US"` (dot-separated). `timeZone`: `"GMT-5"`, `"UTC"`, etc. |
 | | `date str2date(string, string pattern, boolean strict)` | |
 | | `date str2date(string, string pattern, string locale)` | |
 | | `date str2date(string, string pattern, string locale, boolean strict)` | |
@@ -704,7 +706,7 @@ Metadata defines the structure of records flowing between components. Fields in 
 | `concatWithSeparator` | `string concatWithSeparator(string sep, string, string, ...)` | Join with separator. |
 | `contains` | `boolean contains(string, string substring)` | Contains substring? **input null → false. substring null → fails.** |
 | `countChar` | `integer countChar(string, string char)` | Count occurrences of char. |
-| `cut` | `string[] cut(string, integer[] indices)` | Split at indices. |
+| `cut` | `string[] cut(string, integer[] indices)` | Returns substrings by `indices` position/length pairs `[pos1,len1,pos2,len2,...]` (even count required; `null`/`""` input fails). Example: `cut("somestringasanexample",[2,3,1,5]) = ["mes","omest"]`. |
 | `editDistance` | `integer editDistance(string, string)` | Levenshtein distance. Defaults: strength=4, locale=system, maxDifference=3; null/empty args fail. |
 | | `integer editDistance(string, string, string locale)` | |
 | | `integer editDistance(string, string, integer strength)` | |
@@ -738,12 +740,25 @@ Metadata defines the structure of records flowing between components. Fields in 
 | | `integer indexOf(string, string substring, integer fromIndex)` | Search from index. |
 | `isAscii` | `boolean isAscii(string)` | |
 | `isBlank` | `boolean isBlank(string)` | Null, empty, or whitespace-only? |
-| `isDate` | `boolean isDate(string, string pattern)` | |
+| `isDate` | `boolean isDate(string, string pattern)` | `pattern`: Java SimpleDateFormat. `locale`: `"en.US"` (dot-separated). `timeZone`: `"GMT-5"`, `"UTC"`, etc. |
+| | `boolean isDate(string, string pattern, boolean strict)` | |
+| | `boolean isDate(string, string pattern, string locale)` | |
+| | `boolean isDate(string, string pattern, string locale, boolean strict)` | |
+| | `boolean isDate(string, string pattern, string locale, string timeZone)` | |
+| | `boolean isDate(string, string pattern, string locale, string timeZone, boolean strict)` | Examples: `isDate("2014-03-30 2:30 +1000","yyyy-MM-dd H:m Z","en.US")=true`; `isDate("2014-03-30 2:30","yyyy-MM-dd H:m","en.US","GMT-5")=true`. |
 | `isDecimal` | `boolean isDecimal(string)` | |
+| | `boolean isDecimal(string, string format)` | |
+| | `boolean isDecimal(string, string format, string locale)` | |
 | `isEmpty` | `boolean isEmpty(string)` | Null or empty? |
 | `isInteger` | `boolean isInteger(string)` | |
+| | `boolean isInteger(string, string format)` | |
+| | `boolean isInteger(string, string format, string locale)` | |
 | `isLong` | `boolean isLong(string)` | |
+| | `boolean isLong(string, string format)` | |
+| | `boolean isLong(string, string format, string locale)` | |
 | `isNumber` | `boolean isNumber(string)` | |
+| | `boolean isNumber(string, string format)` | |
+| | `boolean isNumber(string, string format, string locale)` | |
 | `isUrl` | `boolean isUrl(string)` | |
 | `join` | `string join(string delimiter, type[] array)` | Join array with delimiter. |
 | `lastIndexOf` | `integer lastIndexOf(string, string substring)` | Last index. **2 args only — no fromIndex.** |
@@ -1006,6 +1021,7 @@ Record metadata helpers return `map[string,string]`, not `variant`.
 - Local var defaults: primitives NOT null (see **2.1**). `byte`/`cbyte`/`variant` default null.
 - Unset record fields are null (not type default) unless metadata defines a Default.
 - `isnull(expr)` and `expr == null` / `expr != null` are **interchangeable** for all types (scalars, records, lookup results, etc.).
+- In joins, do NOT test missing slave as `isnull($in.1)`; test a slave field, e.g. `isnull($in.1.region_name)`.
 
 **Two different null check functions:**
 
@@ -1040,7 +1056,7 @@ isNull($in.0, "field2")  // field "field2" null?
 | `integer`/`long`/`decimal` | false (default `0`) |
 | `number`/`double` | false (default `0.0`) |
 | `boolean` | false (default `false`) |
-| `date` | `1970-01-01 00:00:00 GMT` | `2025-01-01`, `2020-12-31 11:54:59` | Holds both date AND time. **CTL2 supports date and date-time literals**, which can be directly assigned to `date` variables or used as function parameters. No need for `str2date()` when using literal values. |
+| `date` | `1970-01-01 00:00:00 GMT` | `2025-01-01`, `2023-06-15 08:45:00` | Holds both date AND time. **CTL2 supports date and date-time literals**, which can be directly assigned to `date` variables or used as function parameters. No need for `str2date()` when using literal values. |
 | `byte`/`cbyte`/`variant` | true |
 | record field (unset) | true |
 
@@ -1091,7 +1107,8 @@ isNull($in.0, "field2")  // field "field2" null?
 | `raiseError` | `void raiseError(string message)` | Abort processing. |
 | `resolveParams` | `string resolveParams(string)` | Resolve `${PARAM}` in string. |
 | `sleep` | `void sleep(long millis)` | |
-| `toAbsolutePath` | `string toAbsolutePath(string)` | Relative → absolute path. |
+| `toAbsolutePath` | `string toAbsolutePath(string path)` | Path/URL -> OS absolute path; relative input resolves against graph context URL; server `sandbox://` works only for local files on current node; conversion fail -> `null`; `path=null` -> error. |
+| `toProjectUrl` | `string toProjectUrl(string path)` | Relative path -> `sandbox://<sandbox>/...`; `null` -> `null`; `""`/`"."` -> sandbox root; `"/"` -> `file:/`;|
 
 ### 11.10 Validation Functions
 
