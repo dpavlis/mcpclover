@@ -4,10 +4,10 @@ CloverDX LLM-based tools module
 Provides LLM-backed helpers over OpenAI-compatible chat endpoints
 (e.g. local Ollama):
 
-    validate_CTL(code, input_metadata, output_metadata, query, timeout)
+    validate_CTL(code, input_metadata, output_metadata, query, timeout, temperature)
         Lints CTL2 code and reports issues.
 
-    generate_CTL(description, input_metadata, output_metadata, timeout)
+    generate_CTL(description, input_metadata, output_metadata, timeout, temperature)
         Generates CTL code snippets or component transform code.
 
     suggest_components(task, tool_map, mcp_tool_list)
@@ -16,28 +16,56 @@ Provides LLM-backed helpers over OpenAI-compatible chat endpoints
 
 Configuration
 -------------
-All tuneable knobs are module-level constants below.  Edit them directly or
+All tuneable knobs are module-level constants below. Edit them directly or
 override them from the environment.
 
-    CLOVERDX_LLM_API_URL – Overrides LLM_API_URL if defined.
-    CLOVERDX_LLM_MODEL   – Overrides LLM_MODEL if defined.
-    CLOVERDX_LLM_TEMPERATURE – Overrides LLM_TEMPERATURE if defined.
-    CLOVERDX_LLM_TOP_P   – Overrides LLM_TOP_P if defined.
-    CLOVERDX_LLM_ALLOW   – Overrides LLM_ALLOW if defined (true/false).
-    CLOVERDX_LOG_PATH – File path for CTL tool logging.
-                            Default: <project>/logs/ctl_tools.log
-                            Set to an empty string to disable CTL tool file logging.
-    LLM_ALLOW            – Alternate env name for enabling LLM-backed CTL tools.
+Environment variables and defaults:
 
-    LLM_API_URL          – Full URL of the OpenAI-compatible /chat/completions endpoint.
-                          Default: http://localhost:11434/v1/chat/completions (Ollama).
-  LLM_MODEL            – Model identifier to pass in the request body.
-  LLM_TEMPERATURE      – Sampling temperature (0.0–2.0).  Lower = more deterministic.
-  LLM_TOP_P            – Nucleus sampling probability cutoff (0.0–1.0).
-  VALIDATE_SYSTEM_PROMPT     – System prompt used by validate_CTL.
-  VALIDATE_USER_PROMPT_PREPEND – User-message prefix for validate_CTL.
-  GENERATE_SYSTEM_PROMPT     – System prompt used by generate_CTL.
-  GENERATE_USER_PROMPT_PREPEND – User-message prefix for generate_CTL.
+    CLOVERDX_LLM_API_URL
+        Default: http://xenserver-g8.javlin.eu:11434/v1/chat/completions
+        Purpose: OpenAI-compatible /chat/completions endpoint used by validate_CTL and generate_CTL.
+
+    CLOVERDX_LLM_MODEL
+        Default: Qwen35_CTL:latest
+        Purpose: model identifier sent in LLM requests.
+
+    CLOVERDX_LLM_TEMPERATURE
+        Default: 0.2 (module-level fallback)
+        Purpose: default sampling temperature constant. Note that tool call defaults are:
+            validate_CTL temperature default = 0.2
+            generate_CTL temperature default = 0.4
+
+    CLOVERDX_LLM_TOP_P
+        Default: 0.9
+        Purpose: nucleus sampling cutoff.
+
+    CLOVERDX_LLM_ALLOW
+        Default: false (via fallback chain)
+        Purpose: enable/disable LLM-backed CTL tools.
+        Fallback behavior: if unset, LLM_ALLOW is checked; if both are unset, false is used.
+
+    LLM_ALLOW
+        Default: false (only used as fallback for CLOVERDX_LLM_ALLOW)
+        Purpose: alternate env name for enabling LLM-backed CTL tools.
+
+    CLOVERDX_LOG_PATH
+        Default: <project>/logs/ctl_tools.log
+        Purpose: path for CTL tool file logging.
+        Behavior: set to an empty string to disable CTL tool file logging.
+
+Non-env configurable constants in this module:
+
+    VALIDATE_SYSTEM_PROMPT
+        Purpose: system prompt used by validate_CTL.
+
+    VALIDATE_USER_PROMPT_PREPEND
+        Purpose: user-message prefix used by validate_CTL.
+
+    GENERATE_SYSTEM_PROMPT
+        Purpose: system prompt used by generate_CTL.
+
+    GENERATE_USER_PROMPT_PREPEND
+        Purpose: user-message prefix used by generate_CTL.
 """
 
 import json
@@ -262,11 +290,12 @@ def _call_llm(
     user_message: str,
     system_prompt: str,
     timeout: int,
+    temperature: float,
 ) -> str:
     tool_name = _active_ctl_tool_name
     payload = {
         "model": LLM_MODEL,
-        "temperature": LLM_TEMPERATURE,
+        "temperature": temperature,
         "top_p": LLM_TOP_P,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -380,6 +409,7 @@ def validate_CTL(
     output_metadata: Optional[str] = None,
     query: Optional[str] = None,
     timeout: int = 120,
+    temperature: float = 0.2,
 ) -> str:
     """Send CTL2 code to the configured LLM for linting analysis.
 
@@ -403,6 +433,8 @@ def validate_CTL(
     timeout:
         HTTP request timeout in seconds.  Increase for large code blocks or
         slow/remote model endpoints.
+    temperature:
+        Optional sampling temperature for this validation call.
 
     Returns
     -------
@@ -433,7 +465,7 @@ def validate_CTL(
     user_message = "\n".join(parts)
     llm_payload = {
         "model": LLM_MODEL,
-        "temperature": LLM_TEMPERATURE,
+        "temperature": temperature,
         "top_p": LLM_TOP_P,
         "messages": [
             {"role": "system", "content": VALIDATE_SYSTEM_PROMPT},
@@ -445,6 +477,7 @@ def validate_CTL(
         "tool_called",
         tool="validate_CTL",
         timeout_s=timeout,
+        temperature=temperature,
         code=code,
         input_metadata=input_metadata,
         output_metadata=output_metadata,
@@ -460,15 +493,17 @@ def validate_CTL(
         tool="validate_CTL",
         llm_api_url=LLM_API_URL,
         timeout_s=timeout,
+        temperature=temperature,
         payload=llm_payload,
         system_prompt=VALIDATE_SYSTEM_PROMPT,
         user_message=user_message,
     )
 
     logger.info(
-        "validate_CTL: calling LLM at %s (model=%s, code_len=%d, input_metadata=%s, output_metadata=%s, query=%s)",
+        "validate_CTL: calling LLM at %s (model=%s, temperature=%s, code_len=%d, input_metadata=%s, output_metadata=%s, query=%s)",
         LLM_API_URL,
         LLM_MODEL,
+        temperature,
         len(code),
         "yes" if input_metadata else "no",
         "yes" if output_metadata else "no",
@@ -482,6 +517,7 @@ def validate_CTL(
             user_message=user_message,
             system_prompt=VALIDATE_SYSTEM_PROMPT,
             timeout=timeout,
+            temperature=temperature,
         )
     finally:
         _active_ctl_tool_name = previous_tool
@@ -492,6 +528,7 @@ def generate_CTL(
     input_metadata: Optional[str] = None,
     output_metadata: Optional[str] = None,
     timeout: int = 120,
+    temperature: float = 0.4,
 ) -> str:
     """Generate CTL2 code from a functional description.
 
@@ -512,6 +549,8 @@ def generate_CTL(
         Used only for $out.N field references.
     timeout:
         HTTP request timeout in seconds.
+    temperature:
+        Optional sampling temperature for this generation call.
     """
     parts: list = [GENERATE_USER_PROMPT_PREPEND.strip()]
     if input_metadata or output_metadata:
@@ -526,7 +565,7 @@ def generate_CTL(
     user_message = "\n".join(parts)
     llm_payload = {
         "model": LLM_MODEL,
-        "temperature": LLM_TEMPERATURE,
+        "temperature": temperature,
         "top_p": LLM_TOP_P,
         "messages": [
             {"role": "system", "content": GENERATE_SYSTEM_PROMPT},
@@ -538,6 +577,7 @@ def generate_CTL(
         "tool_called",
         tool="generate_CTL",
         timeout_s=timeout,
+        temperature=temperature,
         description=description,
         input_metadata=input_metadata,
         output_metadata=output_metadata,
@@ -552,15 +592,17 @@ def generate_CTL(
         tool="generate_CTL",
         llm_api_url=LLM_API_URL,
         timeout_s=timeout,
+        temperature=temperature,
         payload=llm_payload,
         system_prompt=GENERATE_SYSTEM_PROMPT,
         user_message=user_message,
     )
 
     logger.info(
-        "generate_CTL: calling LLM at %s (model=%s, desc_len=%d, input_metadata=%s, output_metadata=%s)",
+        "generate_CTL: calling LLM at %s (model=%s, temperature=%s, desc_len=%d, input_metadata=%s, output_metadata=%s)",
         LLM_API_URL,
         LLM_MODEL,
+        temperature,
         len(description),
         "yes" if input_metadata else "no",
         "yes" if output_metadata else "no",
@@ -573,6 +615,7 @@ def generate_CTL(
             user_message=user_message,
             system_prompt=GENERATE_SYSTEM_PROMPT,
             timeout=timeout,
+            temperature=temperature,
         )
     finally:
         _active_ctl_tool_name = previous_tool

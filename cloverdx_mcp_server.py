@@ -1748,6 +1748,12 @@ def _build_tool_list() -> List[types.Tool]:
                             "type": "integer",
                             "description": "LLM request timeout in seconds (default: 120).",
                         },
+                        "temperature": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 2.0,
+                            "description": "Optional sampling temperature for validation (default: 0.2).",
+                        },
                     },
                 },
             ),
@@ -1787,6 +1793,12 @@ def _build_tool_list() -> List[types.Tool]:
                         "timeout": {
                             "type": "integer",
                             "description": "LLM request timeout in seconds (default: 120).",
+                        },
+                        "temperature": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 2.0,
+                            "description": "Optional sampling temperature for generation (default: 0.4).",
                         },
                     },
                 },
@@ -3576,6 +3588,16 @@ async def tool_validate_CTL(args: Dict) -> List[types.TextContent]:
     output_metadata = args.get("output_metadata") or None
     query = args.get("query") or None
     timeout = int(args.get("timeout") or 120)
+    temperature_raw = args.get("temperature")
+    if temperature_raw is None:
+        temperature = 0.2
+    else:
+        try:
+            temperature = float(temperature_raw)
+        except (TypeError, ValueError):
+            return _text("ERROR: 'temperature' must be a number between 0.0 and 2.0")
+        if temperature < 0.0 or temperature > 2.0:
+            return _text("ERROR: 'temperature' must be between 0.0 and 2.0")
     try:
         result = _ctl_validate(
             code=code,
@@ -3583,6 +3605,7 @@ async def tool_validate_CTL(args: Dict) -> List[types.TextContent]:
             output_metadata=output_metadata,
             query=query,
             timeout=timeout,
+            temperature=temperature,
         )
         return _text(result)
     except RuntimeError as exc:
@@ -3596,12 +3619,23 @@ async def tool_generate_CTL(args: Dict) -> List[types.TextContent]:
     input_metadata = args.get("input_metadata") or None
     output_metadata = args.get("output_metadata") or None
     timeout = int(args.get("timeout") or 120)
+    temperature_raw = args.get("temperature")
+    if temperature_raw is None:
+        temperature = 0.4
+    else:
+        try:
+            temperature = float(temperature_raw)
+        except (TypeError, ValueError):
+            return _text("ERROR: 'temperature' must be a number between 0.0 and 2.0")
+        if temperature < 0.0 or temperature > 2.0:
+            return _text("ERROR: 'temperature' must be between 0.0 and 2.0")
     try:
         result = _ctl_generate(
             description=description,
             input_metadata=input_metadata,
             output_metadata=output_metadata,
             timeout=timeout,
+            temperature=temperature,
         )
         return _text(result)
     except RuntimeError as exc:
