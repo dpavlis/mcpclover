@@ -279,7 +279,7 @@ date d = str2date($in.0.text, "yyyy-MM-dd") : str2date($in.0.text, "dd.MM.yyyy")
 ```ctl
 if (cond) { ... } else if (cond2) { ... } else { ... }
 
-switch (expr) {          // expr: integer, string, boolean; labels must be unique literals
+switch (expr) {          // expr: integer, string, boolean, double, decimal, date; labels must be unique literals; null expr is allowed (no runtime error) — default branch is taken if present
     case "v1": ...; break;
     case "v2":
     case "v3": ...; break;  // fall-through
@@ -465,20 +465,23 @@ Accumulator metadata is set on the Rollup component; `GroupAccMeta` and `groupAc
 
 ```ctl
 //#CTL2
-function boolean initGroup(GroupAccMeta groupAccumulator) {
+// First record in each group.
+function void initGroup(GroupAccMeta groupAccumulator) {
     groupAccumulator.count = 0;
     groupAccumulator.total = 0D;
-    return true;
 }
+// Every record in group (first..last).
 function boolean updateGroup(GroupAccMeta groupAccumulator) {
     groupAccumulator.count++;
     groupAccumulator.total += $in.0.amount;
     return true;
 }
+// Last record in each group.
 function boolean finishGroup(GroupAccMeta groupAccumulator) {
     groupAccumulator.avg = groupAccumulator.total / groupAccumulator.count;
     return true;
 }
+// After finishGroup=true; emit group-level outputs.
 function integer transform(integer counter, GroupAccMeta groupAccumulator) {
     if (counter > 0) return SKIP;
     $out.0.count = groupAccumulator.count;
@@ -896,7 +899,7 @@ Date format patterns: Java SimpleDateFormat — `yyyy`, `MM`, `dd`, `HH`, `mm`, 
 
 | Function | Signature(s) | Description |
 |---|---|---|
-| `append` | `T[] append(T[], T element)` | Append to end. Returns modified list. `append(nullList, x)` is valid; `x` becomes the first item automatically. |
+| `append` | `T[] append(T[], T element)` | Append to end. Returns modified list. `append(nullList, x)` throws error. |
 | | `variant append(variant, variant)` | variant must contain list. |
 | `appendAll` | `list[E] appendAll(list[E] target, list[E] source)` | Append `source` to `target`; returns mutated `target`. `target==null` fails. Since 6.4.0. |
 | | `map[K,V] appendAll(map[K,V] target, map[K,V] source)` | Merge into `target`; existing keys in `target` are preserved (left wins). `target==null` or `source==null` fails. Since 6.4.0. |
@@ -1254,7 +1257,7 @@ In `replace(str, regex, repl)` and `split(str, regex)`: pattern is always regex.
 6. Operators: only **3**. No `===`, `>>>`, `instanceof`, `is`, `not in`, `in` as operator.
 7. Control flow: only `if/else`, `switch/case`, `for`, `while`, `do-while`, `foreach`, `break`, `continue`, `return`. No `for-in`, `for-of`, `yield`, `async/await`, `try-finally`.
 8. Functions: `function returnType name(args)`. No `def`, `fun`, `fn`, arrow, anonymous.
-9. Built-in functions: only **10**. Top hallucinations: `size()`→`length()` (32×), `toInteger()`→`str2integer()` (13×), `if(cond,a,b)`→`iif()` (37×), `parseDate()`→`str2date()` (5×), `parseInt()`→`str2integer()` (4×), `now()`→`today()` (2×), `toDouble()`→`str2double()`, `toDecimal()`→`str2decimal()`, `asc()`→`codePointAt()`, `parseDecimal()`→`str2decimal()`, `removeAt()`→`remove()`, `addDays()`→`dateAdd()`, `number2decimal()`→`cast(n,decimal)`, `regexReplace()`→`replace()`, `printJson`→`writeJson`, `containerSize`→`length`, `decode`→DNE, `format`→`formatMessage`, `toUpperCase`→`upperCase`, `toLowerCase`→`lowerCase`, `strip`→`trim`, `len`→`length`, `print`→`printLog`/`printErr`, `JSON.parse`→`parseJson`, `JSON.stringify`→`writeJson`.
+9. Built-in functions: only **10**. Top hallucinations: `size()`→`length()`, `toInteger()`→`str2integer()`, `if(cond,a,b)`→`iif()`, `parseDate()`→`str2date()`, `parseInt()`→`str2integer()`, `now()`→`today()`, `toDouble()`→`str2double()`, `toDecimal()`→`str2decimal()`, `asc()`→`codePointAt()`, `parseDecimal()`→`str2decimal()`, `removeAt()`→`remove()`, `addDays()`→`dateAdd()`, `number2decimal()`→DNE (auto numeric upcast), `double2decimal()`→DNE (`double`=`number`; auto upcast), `regexReplace()`→`replace()`, `printJson`→`writeJson`, `containerSize`→`length`, `format`→`formatMessage`, `toUpperCase`→`upperCase`, `toLowerCase`→`lowerCase`, `strip`→`trim`, `len`→`length`, `print`→`printLog`/`printErr`, `JSON.parse`→`parseJson`, `JSON.stringify`→`writeJson`.
 10. Port access: `$in.N.field` / `$out.N.field`. No `input[0]`, `record.get()`.
 11. Type casting: `cast(variant, type)` for variants ONLY. No C-style `(int)x`, no `as`.
 12. Null: `isnull(expr)` and `expr == null` interchangeable for all types. `isNull(record, int/string)` (2 args, camelCase) is separate — dynamic field access only. No `??`, `?.`, `== NULL`. `""` ≠ null. Ordering operators throw on null.
