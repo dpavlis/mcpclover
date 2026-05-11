@@ -193,9 +193,15 @@ const string[] TAGS = ["a", "b", "c"];
 | Operator | Notes |
 |---|---|
 | `+` | numeric / string concat (string must be left operand) / list concat / map merge |
-| `-` `*` `%` | numeric |
-| `/` | integer division truncates; ÷0 → exception for integer/long/decimal, Infinity for double |
+| `-` `*` `%` | numeric; `%` works on float/decimal too (e.g., `6.25 % 2.5` → `1.25`) |
+| `/` | both-integer → truncates (`7/2`→`3`); float operand → float; decimal → decimal; ÷0 → exception for integer/long/decimal, Infinity for number |
 | `++` `--` | pre/post; **cannot use on**: literals, record fields, map/list values |
+
+**Numeric type promotion** (automatic, per expression): `integer < long < number(double) < decimal`.
+Rules: int+long→long; int/long+number→number (⚠ long→number may lose precision); int/long+decimal→decimal.
+⚠ **`number` is contagious**: if any operand is `number` (or an unsuffixed float literal like `0.15`, which is `number`), the entire expression is floating-point — decimal precision is lost. Use `D`-suffixed literals throughout to stay in decimal math.
+No implicit downcast on assignment — result type must match target or use explicit conversion (`decimal2double()`, `decimal2long()`, `double2long()`, etc.).
+Overflow: integer/long overflow silently (no error). Null operand → runtime exception.
 
 ### 3.2 Relational
 
@@ -764,7 +770,8 @@ Metadata defines the structure of records flowing between components. Fields in 
 | | `boolean isNumber(string, string format, string locale)` | |
 | `isUrl` | `boolean isUrl(string)` | |
 | `join` | `string join(string delimiter, type[] array)` | Join array with delimiter. |
-| `lastIndexOf` | `integer lastIndexOf(string, string substring)` | Last index. **2 args only — no fromIndex.** |
+| `lastIndexOf` | `integer lastIndexOf(string input, string substr)` | Last occurrence. `input` null → `-1`; `substr` null → fail. |
+| | `integer lastIndexOf(string input, string substr, integer index)` | Search backward from `index`. `index` null/`substr` null → fail; `index < 0` → `-1`. |
 | `left` | `string left(string, integer length)` | Leftmost N chars. |
 | `length` | `integer length(string)` | Also works on lists, maps, records. **null or `""` → 0.** |
 | `lowerCase` | `string lowerCase(string)` | **null → null.** |
@@ -1221,7 +1228,7 @@ In `replace(str, regex, repl)` and `split(str, regex)`: pattern is always regex.
 
 ### 13.2 Common Pitfalls
 
-1. **Decimal without `D`**: `123.45` is `number`, not `decimal`. Use `123.45D`.
+1. **Decimal without `D`**: `123.45` is `number`, not `decimal`. Use `123.45D`. Mixing a `number` literal into a `decimal` expression silently degrades to floating-point math.
 2. **Long without `L`**: `9999999999` overflows integer. Use `9999999999L`.
 3. **`replace()` regex**: `replace(s, ".", "_")` replaces EVERY char. Use `replace(s, "\\.", "_")`.
 4. **`split()` regex**: `split(s, ".")` splits every char. Use `split(s, "\\.")`.
@@ -1238,12 +1245,13 @@ In `replace(str, regex, repl)` and `split(str, regex)`: pattern is always regex.
 15. **`foreach` colon not `in`**: `foreach (string s : myList)`. No tuple unpacking.
 16. **Exception**: `catch(CTLException e)` only. `e.message` property, not `e.getMessage()`.
 17. **Port syntax**: `$in.0.field` — NOT `$in0.field`, NOT `$field`.
-18. **`lastIndexOf()` 2 args only** — no `fromIndex` param.
+18. **`lastIndexOf()`** has 2 forms; optional `index` searches backward from `index`. `input` null → `-1`; `substr`/`index` null → fail; `index < 0` → `-1`.
 19. **`date2num()` needs unit**: `date2num(date, day)` — not bare `date2num(date)`.
 20. **`double` is valid alias** for `number`. `double x = 1.5;` is valid.
 21. **`cast()` strong-type conversion INVALID**: `cast(decimal, integer)` is wrong. Use `decimal2integer()`.
 22. **Null function confusion**: `isnull(expr)` (1 arg, lowercase) and `expr == null` are interchangeable. `isNull(record, idx/name)` (2 args, camelCase) is a different function for dynamic field access. `isnull("")` = false. Local primitive vars NOT null. See **11.8**.
 23. **Null in ordering comparisons throws**: `<`, `>`, `<=`, `>=` throw `CTLException` if either operand is null. `==`/`!=` are null-safe. Use `isnull()` guards or `nvl()` fallbacks.
+24. **Numeric promotion one-way**: `integer→long→number(double)→decimal`; assigning result to lower type is a compile error — use explicit conversion. long→number may lose precision. integer/long overflow silently.
 
 ---
 
