@@ -1,108 +1,80 @@
 # CloverDX DENORMALIZER — LLM Reference
 
 ## What it does
-Collapses N consecutive input records with the same key value into exactly 1 output record.
-Input MUST be sorted on the key field(s). Use for: concatenating strings across rows, collecting values per group, pivoting repeated rows into columns.
+Collapses N consecutive same-key input records into exactly 1 output record. Input MUST be sorted on key field(s). Use for: string concatenation across rows, value collection per group, pivoting repeated rows into columns.
 
 ## Ports
-- Input 0: required — sorted input records (any metadata)
-- Output 0: required — one output record per group (any metadata)
+- Input 0: required — sorted records (any metadata)
+- Output 0: required — one record per group (any metadata)
+
 No metadata propagation. No metadata templates.
 
 ## Key Attributes
 
 | Attribute (XML) | Req | Description |
 |---|---|---|
-| `key` | one of | Field names defining group boundaries. Adjacent records with the same key value form one group. Separator: semicolon, colon, or pipe. |
-| `groupSize` | one of | Fixed integer — every N records form one group. Mutually exclusive with `key`. `groupSize` takes priority if both set. Input count must be multiple of groupSize unless `incompleteGroupAllowed="true"`. |
-| `denormalize` [attr-cdata] | one of | Inline CTL2 transformation |
-| `denormalizeURL` | one of | Path to external CTL file. Also set `denormalizeSourceCharset` when using this. |
-| `order` | no | `Auto` (default) / `Asc` / `Desc` / `Ignore`. Expected sort order of input groups. `Ignore` = groups contiguous but not globally sorted. |
-| `equalNULL` | no | Default `true`. NULL key values treated as equal (same group). |
-| `incompleteGroupAllowed` | no | Default `false`. Allow last group to have fewer records than `groupSize`. |
+| `key` | one of | Semicolon/colon/pipe-separated field names defining group boundaries. |
+| `groupSize` | one of | Fixed integer — every N records form one group. Takes priority over `key` if both set. Input count must be multiple of groupSize unless `incompleteGroupAllowed="true"`. |
+| `denormalize` [attr-cdata] | one of | Inline CTL2 transformation. |
+| `denormalizeURL` | one of | Path to external CTL file. Set `denormalizeSourceCharset` too. |
+| `order` | no | `Auto` (default) / `Asc` / `Desc` / `Ignore`. `Ignore` = contiguous but not globally sorted. |
+| `equalNULL` | no | Default `true`. NULL key values treated as equal. |
+| `incompleteGroupAllowed` | no | Default `false`. Allow last group shorter than `groupSize`. |
 
-**Key or groupSize:** if neither is set, all records form one single group.
-
-## Function Call Lifecycle
-
-For each group of input records:
-1. `append()` — called once per input record
-2. `transform()` — called once after all `append()` calls for the group
-3. `clean()` — called **after** `transform()` to reset state for next group
-
-Global (per graph run):
-- `init()` — once before first record
-- `preExecute()` — once per run before processing starts
-- `postExecute()` — once per run after processing ends
+If neither `key` nor `groupSize` is set, all records form one group.
 
 ## CTL Entry Points
 
-`append()` and `transform()` are mandatory. `clean()` is mandatory whenever you use module-level (global) variables.
+`append()` and `transform()` are mandatory. `clean()` is mandatory when using module-level variables.
 
 ```ctl
 //#CTL2
 
-// MODULE-LEVEL VARIABLES — persist across function calls within a group.
-// Must be reset in clean() for each group.
+// Module-level variables persist across append() calls within a group. Reset in clean().
 string[] products = [];
 string companyName;
 
-// Called once per input record within the current group.
-// $in.0 accessible here only (NOT in transform/clean).
-// Returns: non-negative = OK; <= -2 = error (calls getMessage())
+// Called once per input record. $in.0 accessible here only.
 function integer append() {
     append(products, $in.0.product);
     companyName = $in.0.companyName;
     return OK;
 }
 
-// Called once after all append() calls for the group.
-// $out.0 accessible here only (NOT in append/clean).
-// Returns: OK/ALL/0 = emit record; SKIP = skip output; <= -2 = error
+// Called once after all append() calls for the group. $out.0 accessible here only.
 function integer transform() {
     $out.0.companyName = companyName;
     $out.0.products = join(",", products);
     return OK;
 }
 
-// Called after transform() for each group.
-// MANDATORY when using module-level variables — state bleeds without it.
-// $in.0 and $out.0 NOT accessible here.
+// Called after transform(). Reset all module-level variables here.
 function void clean() {
     clear(products);
     companyName = null;
 }
 
-// Optional — called once before any record is processed. Return false aborts graph.
-// function boolean init() { return true; }
-
-// Optional — called if append() throws an exception.
-// Returns: positive = ignored; 0 = continue; negative = error
+// function boolean init() { return true; }  -- once before first record
 // function integer appendOnError(string errorMessage, string stackTrace) { return OK; }
-
-// Optional — called if transform() throws an exception.
+//   returns: positive = ignored; 0 = continue (to next record, or transform() if last of group); negative = error
 // function integer transformOnError(string errorMessage, string stackTrace) { return OK; }
-
-// Optional — called when any function returns <= -2 (provides custom error message)
-// function string getMessage() { return "custom error"; }
-
-// Optional — allocate resources per graph run (released in postExecute)
-// function void preExecute() {}
-// function void postExecute() {}
+// function string getMessage() { return "custom error"; }  -- called when any fn returns <= -2
+// function void preExecute() {}  -- once per run before processing
+// function void postExecute() {} -- once per run after all groups
 ```
 
-### Return value summary
+## Return Values
 
-| Function | Non-negative (OK/ALL) | SKIP | <= -2 |
+| Function | Non-negative | SKIP | <= -2 |
 |---|---|---|---|
-| `append()` | Continue accumulating | — | Abort (calls getMessage()) |
-| `transform()` | Emit output record | Suppress output, continue | Abort (calls getMessage()) |
-| `appendOnError()` | Positive ignored; 0 = continue | — | Error |
+| `append()` | Continue accumulating | — | Abort (calls `getMessage()`) |
+| `transform()` | Emit output record | Suppress output, continue | Abort (calls `getMessage()`) |
+| `appendOnError()` | Positive = ignored; 0 = continue | — | Error |
 | `transformOnError()` | Emit output record | Suppress output | Error |
 
-Note: in `transform()`, `ALL` (= 0) is valid and equivalent to `OK`.
+`ALL` (= 0) in `transform()` is equivalent to `OK`.
 
-### $in.0 / $out.0 access rules — violations throw NPE at runtime
+## $in.0 / $out.0 Access — violations throw NPE
 
 | Function | `$in.0` | `$out.0` |
 |---|---|---|
@@ -113,7 +85,7 @@ Note: in `transform()`, `ALL` (= 0) is valid and equivalent to `OK`.
 | `transformOnError()` | ✗ | ✓ |
 | `clean()` | ✗ | ✗ |
 
-## Official Examples (from docs)
+## Examples
 
 ### Key-based — group by companyName, collect products
 ```ctl
@@ -126,51 +98,42 @@ function integer append() {
     companyName = $in.0.companyName;
     return OK;
 }
-
 function integer transform() {
     $out.0.companyName = companyName;
     $out.0.products = join(",", products);
     return OK;
 }
-
 function void clean() {
     clear(products);
 }
 ```
-Node: `key="companyName"`. Input sorted by companyName.
-Output: `Denormalizer Limited|chocolate,coffee,pizza` / `ZXCV International|coffee`
+`key="companyName"`. Input sorted by companyName.
 
-### groupSize — fixed N records per group, counter in init()
+### groupSize — fixed N records per group
 ```ctl
 //#CTL2
 integer groupNumber;
 string[] names;
 
 function boolean init() {
-    groupNumber = 1;    // init() runs once before first record — for one-time initialization
+    groupNumber = 1;    // runs once — use for one-time initialization
     return true;
 }
-
 function integer append() {
     append(names, $in.0.name);
     return OK;
 }
-
 function integer transform() {
     $out.0.groupNo = groupNumber;
     $out.0.members = join(",", names);
-    groupNumber++;      // counter advances in transform(), not clean()
+    groupNumber++;      // increment in transform(), not clean()
     return OK;
 }
-
 function void clean() {
-    clear(names);       // only accumulated list is cleared — groupNumber persists
+    clear(names);       // groupNumber intentionally not reset here
 }
 ```
-Node: `groupSize="3"` + `incompleteGroupAllowed="true"`. No `key` or upstream sort needed.
-Output: `1|Charlie,Daniel,Agatha` / `2|Henry,Oscar,Kate` / `3|Romeo,Jane`
-
-## Real Sandbox Examples
+`groupSize="3"` + `incompleteGroupAllowed="true"`.
 
 ### DWHExample — collapse VALIDATOR errors per record
 ```xml
@@ -182,13 +145,11 @@ function integer append() {
     reasons.append($in.0.rejectReason);
     return OK;
 }
-
 function integer transform() {
     $out.0 = $in.0;
     $out.0.rejectReason = join("|", reasons);
     return OK;
 }
-
 function void clean() {
     clear(reasons);
 }
@@ -196,7 +157,7 @@ function void clean() {
 </Node>
 ```
 
-### MiscExamples — accumulate state, mark matching fields
+### MiscExamples — capture base record, mark failing fields
 ```xml
 <Node id="DENORMALIZER" key="id(a)" type="DENORMALIZER">
     <attr name="denormalize"><![CDATA[//#CTL2
@@ -205,12 +166,11 @@ list[string] validationErrors;
 
 function integer append() {
     if (isNull(inputR, "id")) {
-        inputR.* = $in.0.*;   // capture first record of group as base
+        inputR.* = $in.0.*;
     }
     append(validationErrors, $in.0.ruleName);
     return OK;
 }
-
 function integer transform() {
     $out.0.* = inputR.*;
     for (integer idx = 0; idx < length($out.0); idx++) {
@@ -220,7 +180,6 @@ function integer transform() {
     }
     return OK;
 }
-
 function void clean() {
     resetRecord(inputR);
     clear(validationErrors);
@@ -232,56 +191,49 @@ function void clean() {
 ## key Format
 
 ```
-key="fieldName"           -- single field
-key="field1;field2"       -- composite key (semicolon)
-key="field1:field2"       -- colon separator also valid
-key="field1|field2"       -- pipe separator also valid
-key="recordNo(a)"         -- with ascending sort direction annotation
-key="recordNo(d)"         -- descending sort direction annotation
+key="fieldName"
+key="field1;field2"       -- composite (semicolon, colon, or pipe)
+key="recordNo(a)"         -- (a) ascending / (d) descending — must match upstream sortKey
 ```
 
-Sort direction suffix `(a)` / `(d)` must match the upstream FAST_SORT/EXT_SORT `sortKey`.
+## Upstream Sort Requirement
 
-## Upstream Sort and Adjacency Requirement
-
-Input MUST be sorted so that records with the same key are **adjacent** (contiguous). Records with the same key arriving in non-contiguous runs produce **separate output records per run** — not one merged record. This is the most common silent correctness bug.
+Same-key records must be **adjacent**. Non-contiguous same-key runs produce **separate output records** — most common silent correctness bug.
 
 ```xml
-<Node id="SORT"        sortKey="recordNo(a)"  type="FAST_SORT"/>
+<Node id="SORT"         sortKey="recordNo(a)" type="FAST_SORT"/>
 <Node id="DENORMALIZER" key="recordNo(a)"     type="DENORMALIZER"/>
 ```
 
-Exception: `order="Ignore"` skips sort-order tracking — use when groups are naturally contiguous (e.g. DB query with GROUP BY-equivalent ordering) but not globally sorted ascending or descending.
+`order="Ignore"` — use when groups are naturally contiguous but not globally sorted.
 
-## Validator Error Collapse Pattern (canonical use case)
+## Validator Error Collapse Pattern
 
 ```
 READER → VALIDATOR(root lazyEvaluation=false, sub-group lazyEvaluation=true)
-  invalid port (1) → FAST_SORT(sortKey="recordNo(a)") → DENORMALIZER(key="recordNo(a)") → ERROR_WRITER
+  port 1 (invalid) → FAST_SORT(sortKey="recordNo(a)") → DENORMALIZER(key="recordNo(a)") → ERROR_WRITER
 ```
-VALIDATOR `errorMapping` produces one record per failing rule with `$in.1.recordNo` + `$in.1.validationMessage`. DENORMALIZER collapses all failures per recordNo into one row.
 
 ## Decision Guide
 
 | Need | Use |
 |---|---|
-| N same-key rows → 1 row | DENORMALIZER with `key` |
-| Every N rows → 1 row | DENORMALIZER with `groupSize` |
-| All rows → 1 row | DENORMALIZER with neither (single group) |
-| 1 group → M rows (variable output) | ROLLUP |
+| N same-key rows → 1 row | DENORMALIZER `key` |
+| Every N rows → 1 row | DENORMALIZER `groupSize` |
+| All rows → 1 row | DENORMALIZER (neither) |
+| 1 group → M rows | ROLLUP |
 
 ## Mistakes
 
 | Wrong | Correct |
 |---|---|
-| Module-level variables without `clean()` | State bleeds between groups — always implement `clean()` |
-| `$out.0` in `append()` | NPE — only accessible in `transform()` |
-| `$in.0` in `transform()` | NPE — only accessible in `append()` |
+| Module-level variables without `clean()` | State bleeds between groups |
+| `$out.0` in `append()` | NPE — only in `transform()` |
+| `$in.0` in `transform()` | NPE — only in `append()` |
 | `$in.0` or `$out.0` in `clean()` | NPE — neither accessible |
 | Input not sorted on key | Add FAST_SORT upstream with matching `sortKey` |
-| Same-key records not adjacent | Sort the input; non-contiguous same-key records produce multiple output records |
+| Same-key records not adjacent | Sort input; non-contiguous runs → separate output records |
 | `key` and `groupSize` both set | `groupSize` takes priority |
-| `incompleteGroupAllowed` omitted with groupSize | Graph fails if input count not a multiple of groupSize |
-| Counter incremented in `clean()` | Put counter increments in `transform()` — `clean()` is for resetting accumulated values |
-| `return ALL` from `transform()` | `ALL` = 0 = OK — valid but prefer `return OK` for clarity |
-| External CTL without `denormalizeSourceCharset` | Always set charset explicitly for external files |
+| `incompleteGroupAllowed` omitted with `groupSize` | Graph fails if count not multiple of groupSize |
+| Counter incremented in `clean()` | Increment in `transform()` — `clean()` resets accumulated values only |
+| External CTL without `denormalizeSourceCharset` | Always set charset explicitly |
