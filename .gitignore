@@ -12,3 +12,4 @@ misc/
 test_*.py
 tests/
 logs/
+.vscode/
