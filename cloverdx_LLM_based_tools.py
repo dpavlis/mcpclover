@@ -163,53 +163,11 @@ LLM_TOP_P: float = _env_float("CLOVERDX_LLM_TOP_P", 0.9)
 LLM_ALLOW: bool = _env_bool("CLOVERDX_LLM_ALLOW", _env_bool("LLM_ALLOW", False))
 
 VALIDATE_SYSTEM_PROMPT: str = """\
-You are an expert CloverDX CTL2 code reviewer.
-Your job is to analyse CTL2 transformation code for correctness, safety and best practices.
+You are a CloverDX ETL expert specializing in transformation graphs, components, and CTL2. CTL and CTL2 mean the same language.
+Help users write, debug, and explain CTL2 code and related concepts. Provide working code, explanation, or both as needed.
+Prefer correct, practical, minimal solutions.
 
-Focus on the following issue classes:
-
-PORT METADATA INTERPRETATION
-    When CloverDX metadata context is provided, it is organized into two groups:
-    Input Ports Metadata and Output Ports Metadata.
-    - Input Ports Metadata applies only to $in.N.fieldName references.
-    - Output Ports Metadata applies only to $out.N.fieldName references.
-    - Within each group, each labeled port subsection identifies the exact port
-        whose metadata follows.
-    - Port labels should communicate the logical role of the port, not just the
-        direction. Prefer labels such as Port 0 (master), Port 1 (slave1),
-        Port 2 (slave2), Port 0 (rejected), or Port 1 (error output) instead of
-        redundant labels such as Port 0 (input) or Port 0 (output).
-
-FIELD REFERENCE MISMATCHES
-  When CloverDX metadata XML is provided, every $in.N.fieldName and
-  $out.N.fieldName reference in the code must correspond to a <Field name="...">
-  element in the matching <Record>.  Report every reference that cannot be
-  resolved.
-
-UNDECLARED VARIABLES
-  Flag any variable that is read before it has been declared.
-
-SCOPE ISSUES
-  CTL2 variables declared inside an if/else/for/while block are not visible
-  outside that block.  Flag any use of a block-scoped variable beyond the
-  closing brace.
-
-TYPE MISMATCHES
-  Flag obvious type coercion issues, e.g. assigning a string expression to an
-  integer field without an explicit conversion call.
-
-MISSING RETURN / UNREACHABLE CODE
-  Warn if a transform() function has a code path that never returns, or if
-  statements appear after a return.
-
-GENERAL LOGIC ERRORS
-  Flag code where the conditional logic is clearly inverted or contradictory —
-  e.g. checking that a value is null and then using it in arithmetic or
-  assignment, checking a condition and performing the opposite action in the
-  body, or guarding a branch with a predicate that guarantees the branch body
-  will always fail.
-
-Output format — use this exact structure:
+Output format:
 
 ISSUES:
   [severity] Description   (severity is ERROR, WARNING, or INFO)
@@ -227,29 +185,17 @@ If no issues are found respond with just:
 """
 
 VALIDATE_USER_PROMPT_PREPEND: str = """\
-Please review the following CloverDX CTL2 code and report any issues.\
+Please review the following CloverDX CTL2 code and report any issues:
 """
 
 GENERATE_SYSTEM_PROMPT: str = """\
-You are an expert CloverDX CTL2 author.
-Generate correct, runnable CTL2 code based on the requested functionality.
-
-Rules:
-- Output only CTL2 code enclosed in ```ctl fences, with no prose before or after the fenced block.
-- Prefer clear, defensive code and explicit conversions where relevant.
-- When metadata is provided, it is grouped into Input Ports Metadata and Output
-    Ports Metadata sections. Use input-ports metadata only for $in.N references
-    and output-ports metadata only for $out.N references.
-- Port subsection labels should describe the logical role of the port where
-    possible, e.g. Port 0 (master) and Port 1 (slave1), not just input/output.
-- When metadata is provided, reference field names exactly as defined.
-- If the request is for an expression snippet, return only that expression/snippet.
-- If the request is for a component transform, return a full CTL2 block suitable
-    for CloverDX attr transform usage.
+You are a CloverDX ETL expert specializing in transformation graphs, components, and CTL2. CTL and CTL2 mean the same language.
+Help users write, debug, and explain CTL2 code and related concepts. Provide working code, explanation, or both as needed.
+Prefer correct, practical, minimal solutions.
 """
 
 GENERATE_USER_PROMPT_PREPEND: str = """\
-Generate CloverDX CTL2 code according to the request below. Enclose the generated code in ```ctl ticks.\
+Generate CloverDX CTL code according to the request:
 """
 
 
@@ -487,6 +433,7 @@ def validate_CTL(
         "llm_query",
         tool="validate_CTL",
         query=(query or ""),
+        user_message=user_message,
     )
     _log_ctl_event(
         "llm_request",
@@ -586,6 +533,7 @@ def generate_CTL(
         "llm_query",
         tool="generate_CTL",
         query=description,
+        user_message=user_message,
     )
     _log_ctl_event(
         "llm_request",

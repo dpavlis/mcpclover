@@ -13,3 +13,4 @@ test_*.py
 tests/
 logs/
 .vscode/
+.vscode/mcp.json

@@ -192,8 +192,10 @@ const string[] TAGS = ["a", "b", "c"];
 
 | Operator | Notes |
 |---|---|
-| `+` | numeric / string concat (string must be left operand) / list concat / map merge |
+| `+` | `numeric+(numeric,numeric)` / `string+(string,string)` (concat) / `list+(list,list)` (concat) / `map+(map,map)` (union) |
+| `+=` | compound assignment: `x += y` ≡ `x = x + y`; same type rules as `+` (numeric, string concat, list concat, map union) |
 | `-` `*` `%` | numeric; `%` works on float/decimal too (e.g., `6.25 % 2.5` → `1.25`) |
+| `-=` `*=` `/=` `%=` | compound assignment (numeric only): `x -= y` ≡ `x = x - y`; same division/modulus rules as `/` and `%` |
 | `/` | both-integer → truncates (`7/2`→`3`); float operand → float; decimal → decimal; ÷0 → exception for integer/long/decimal, Infinity for number |
 | `++` `--` | pre/post; **cannot use on**: literals, record fields, map/list values |
 
@@ -852,7 +854,7 @@ Date format patterns: Java SimpleDateFormat — `yyyy`, `MM`, `dd`, `HH`, `mm`, 
 |---|---|---|
 | `abs` | `T abs(T)` — T: integer\|long\|number\|decimal | Absolute value. |
 | `acos` | `number acos(number\|decimal)` | Arc cosine (radians). |
-| `addNoise` | `T addNoise(T value, T noise)` | Add random noise ±noise. |
+| `addNoise` | `T addNoise(T value, T noise)` | Add random noise ±noise. Use for anonymization. |
 | | `date addNoise(date, long noise)` | Noise in ms. |
 | | `date addNoise(date, long noise, unit)` | |
 | `asin` | `number asin(number\|decimal)` | |

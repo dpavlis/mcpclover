@@ -882,13 +882,13 @@ def _build_tool_list() -> List[types.Tool]:
         # ── Sandbox / File tools ───────────────────────────────────────────
         types.Tool(
             name="list_sandboxes",
-            description="List all sandboxes on the CloverDX server. Returns sandbox codes and names.",
+            description="List all sandboxes on the CloverDX server (similar to listing top-level projects with ls). Returns sandbox codes and names.",
             inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="list_files",
             description=(
-                "List files and folders in a sandbox directory. "
+                "Unix-like ls for CloverDX sandbox directories (not local shell files). "
                 "Set folder_only=true to return directories only."
             ),
             inputSchema={
@@ -904,8 +904,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="find_file",
             description=(
-                "Recursively find files in a sandbox by shell-style wildcard (* and ?). "
-                "Client-side filtering."
+                "Unix-like find for sandbox files: recursively match shell-style wildcards (* and ?)."
             ),
             inputSchema={
                 "type": "object",
@@ -920,7 +919,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="grep_files",
             description=(
-                "Search file contents across one or more sandboxes (like grep -rn). "
+                "Unix-like grep -rn across sandbox files (not local shell files). "
                 "Supports literal or regex matching, optional file glob filtering, "
                 "optional path scoping, and optional context lines around matches.\n\n"
                 "Examples:\n"
@@ -980,7 +979,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="list_linked_assets",
             description=(
-                "List reusable assets in a sandbox: metadata (.fmt), connections (.cfg), "
+                "List reusable assets in a sandbox (similar to find by extension): metadata (.fmt), connections (.cfg), "
                 "lookups (.lkp), CTL (.ctl), sequences (.seq), parameters (.prm). "
                 "Call early during graph creation to discover shared assets and their fileURL "
                 "paths before defining anything inline. Filter by asset_type to narrow results."
@@ -1007,6 +1006,7 @@ def _build_tool_list() -> List[types.Tool]:
             description=(
                 "Resolve sandbox parameter values (${DATAIN_DIR}, ${DATAOUT_DIR}, ${CONN_DIR}, etc.) "
                 "from workspace.prm with optional server-side overlay. "
+                "Think of this as CloverDX-specific env/printenv for resolved path variables. "
                 "Call before writing file paths into graphs. "
                 "Returns resolved values with source provenance and any unresolved placeholders."
             ),
@@ -1041,6 +1041,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="read_file",
             description=(
+                "Unix-like cat for sandbox files, with optional head/tail-style line slicing. "
                 "Read a file from a sandbox (.grf, .fmt, .prm, .ctl, etc.). "
                 "Optionally read a line range via start_line + line_count. "
                 "start_line: 1-based; negative counts from end (-1 = last line). "
@@ -1073,7 +1074,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="rename_file",
             description=(
-                "Rename a file in a sandbox (same directory only). "
+                "Unix-like mv rename within the same directory in a sandbox. "
                 "To move to a different directory, use copy_file + delete_file."
             ),
             inputSchema={
@@ -1099,7 +1100,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="copy_file",
             description=(
-                "Copy a file within or across sandboxes. Overwrites destination if it exists. "
+                "Unix-like cp for sandbox files: copy within or across sandboxes. Overwrites destination if it exists. "
                 "Always back up a graph (e.g. 'graph/MyGraph.bak.grf') before large edits."
             ),
             inputSchema={
@@ -1135,7 +1136,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="patch_file",
             description=(
-                "Patch a sandbox file using anchor-based line replacements. "
+                "Unix-like sed/patch behavior for sandbox text files using anchor-based line replacements. "
                 "Each patch locates an anchor string, applies from_offset/to_offset to define the "
                 "replacement range, then all patches are applied bottom-up. "
                 "Anchor matching is literal against the raw file content after UTF-8 decode; no HTML/XML entity decoding or escaping is applied. "
@@ -1353,7 +1354,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="write_file",
             description=(
-                "Write a file in a sandbox using one of four modes: overwrite (default), append, insert, replace. "
+                "Unix-like file write/redirection for sandbox files: overwrite, append, insert, replace. "
                 "insert requires start_line and shifts existing lines down. "
                 "replace requires start_line + line_count and replaces that line range with the provided content."
             ),
@@ -1384,7 +1385,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="delete_file",
             description=(
-                "Delete a file from a CloverDX sandbox. "
+                "Unix-like rm for sandbox files. "
                 "Use with caution — this is irreversible."
             ),
             inputSchema={
@@ -1399,7 +1400,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="create_directory",
             description=(
-                "Create a directory in a CloverDX sandbox. "
+                "Unix-like mkdir for sandbox directories (parent must already exist; no mkdir -p behavior). "
                 "Parent directory must already exist."
             ),
             inputSchema={
@@ -1415,7 +1416,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="delete_directory",
             description=(
-                "Delete a directory from a CloverDX sandbox. "
+                "Unix-like rmdir/rm -r for sandbox directories. "
                 "Use with caution — this is irreversible and may remove nested content."
             ),
             inputSchema={
@@ -1433,7 +1434,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="list_resources",
             description=(
-                "List all resource URIs exposed by this MCP server, with their name, "
+                "Unix-like ls for built-in reference resources: list all resource URIs exposed by this MCP server, with their name, "
                 "description, and MIME type. "
                 "Use this to discover what reference material is available before "
                 "calling read_resource."
@@ -1443,7 +1444,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="read_resource",
             description=(
-                "Fetch resource content by URI. "
+                "Unix-like cat for built-in reference resources: fetch resource content by URI. "
                 "URIs: 'cloverdx://reference/graph-xml', 'cloverdx://reference/ctl2', "
                 "'cloverdx://reference/subgraphs', 'cloverdx://reference/data-service', "
                 "'cloverdx://reference/db-connection', "
@@ -1509,7 +1510,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="execute_graph",
             description=(
-                "Submit a graph for async execution. Returns run_id immediately.\n"
+                "Submit a graph for async execution (similar to launching a background job). Returns run_id immediately.\n"
                 "Follow-up tools: await_graph_completion (wait), "
                 "get_graph_execution_log (logs), get_graph_tracking (record counts).\n"
                 "Set debug=true for edge debug data capture."
@@ -1532,7 +1533,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="await_graph_completion",
             description=(
-                "Block until a graph run completes or timeout is reached. "
+                "Wait-style tool for graph runs (similar to shell wait): block until completion or timeout. "
                 "Returns final status, or current status with timed_out=true on timeout. "
                 "Safe to re-call with the same run_id after a timeout."
             ),
@@ -1555,7 +1556,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="abort_graph_execution",
             description=(
-                "Abort a running graph execution. "
+                "Kill-style tool for graph runs: abort a running execution. "
                 "Returns current status if already finished."
             ),
             inputSchema={
@@ -1573,7 +1574,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="list_graph_runs",
             description=(
-                "List recent graph executions. Filter by sandbox, job_file (substring), or status. "
+                "List recent graph executions (similar to combining ps/history for runs). Filter by sandbox, job_file (substring), or status. "
                 "Returns run_id, status, timestamps, duration, errors. "
                 "Use to find run_ids for other graph tools."
             ),
@@ -1611,7 +1612,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="get_graph_run_status",
             description=(
-                "Quick status check for a graph run (no log fetch). "
+                "Quick ps-like status check for a graph run (no log fetch). "
                 "Statuses: RUNNING, SUCCESS, FAILED, ABORTED, WAITING. "
                 "RUNNING includes elapsed time and phase number. "
                 "For completed runs, use get_graph_tracking or get_graph_execution_log."
@@ -1630,7 +1631,7 @@ def _build_tool_list() -> List[types.Tool]:
         ),
         types.Tool(
             name="get_graph_execution_log",
-            description="Fetch the execution log for a graph run by its run ID.",
+            description="Fetch the execution log for a graph run by its run ID (similar to viewing job logs with tail/cat).",
             inputSchema={
                 "type": "object",
                 "required": ["run_id"],
@@ -2304,7 +2305,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="note_add",
             description=(
-                "Append a note under a named section. "
+                "Append a note under a named section (scratchpad-style append behavior). "
                 "Creates the section when it does not exist."
             ),
             inputSchema={
@@ -2326,7 +2327,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="note_read",
             description=(
-                "Read notes from working memory. "
+                "Read notes from working memory (scratchpad-style read). "
                 "When section is provided, returns only that section; otherwise returns all sections."
             ),
             inputSchema={
@@ -2344,7 +2345,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="note_clear",
             description=(
-                "Clear notes from working memory. "
+                "Clear notes from working memory (scratchpad-style clear). "
                 "When section is provided, clears only that section; otherwise clears all sections."
             ),
             inputSchema={
@@ -2393,7 +2394,7 @@ def _build_tool_list() -> List[types.Tool]:
         types.Tool(
             name="kb_search",
             description=(
-                "Search KB entries by query (tags, description, content) or list catalog when query is omitted."
+                "Search KB entries by query (tags, description, content) or list catalog when query is omitted (grep-like over KB content)."
             ),
             inputSchema={
                 "type": "object",
@@ -2414,7 +2415,7 @@ def _build_tool_list() -> List[types.Tool]:
         ),
         types.Tool(
             name="kb_read",
-            description="Read a full knowledge-base entry by name.",
+            description="Read a full knowledge-base entry by name (cat-like read).",
             inputSchema={
                 "type": "object",
                 "required": ["name"],
